@@ -546,6 +546,15 @@ def register_after_otp():
 
     # If ShopOwner → you can return shop info later
     return jsonify({"success": True, "message": "User registered"}), 201
+
+@app.before_request
+def check_auth():
+    public_endpoints = ["login", "register", "send_otp", "static"]  # whitelist OTP
+    if request.endpoint not in public_endpoints:
+        auth = request.headers.get("Authorization")
+        if not auth:
+            return jsonify({"message":"authentication not found in headers","code":"unauthorized"}), 401
+
 if __name__ == "__main__":
     print("Gunicorn setup complete, about to run...")
     app.run(host="0.0.0.0", port=5000, debug=True)
