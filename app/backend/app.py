@@ -70,92 +70,6 @@ def login():
     return jsonify({'success': True, 'user': response_user})
 
 
-# @app.route('/register', methods=['POST'])
-# def register():
-#     data = request.get_json()
-#     username = data.get('username')
-#     password = data.get('password')
-#     role = data.get('role')  # 'customer' or 'shopowner'
-#     if role not in ['customer', 'shopowner']:
-#         return jsonify({'success': False, 'message': 'Invalid role'})
-#
-#     # Check for duplicate username
-#     user = firebase_db.get_user_by_credentials(username, password)
-#     if user:
-#         return jsonify({'success': False, 'message': 'Username already exists'})
-#
-#     user_dict = {
-#         'username': username,
-#         'password': password,
-#         'role': role,
-#         'full_name': data.get('full_name', ''),
-#         'address': data.get('address', ''),
-#         'phone': data.get('phone', ''),
-#         'email': data.get('email', ''),
-#         'location': data.get('location', ''),
-#         'photo_url': '',  # Set on photo upload
-#         'photo_base64': '',  # Optional: base64 for legacy
-#     }
-#
-#     if 'photo_base64' in data and data['photo_base64']:
-#         photo_url = firebase_db.upload_base64_image(data['photo_base64'], folder="profile_photos")
-#         user_dict['photo_url'] = photo_url
-#         user_dict['photo_base64'] = data['photo_base64']
-#
-#     # Assign IDs
-#     user_dict['customer_id'] = str(uuid.uuid4()) if role == 'customer' else ''
-#     user_dict['shopkeeper_id'] = str(uuid.uuid4()) if role == 'shopowner' else ''
-#
-#     firebase_db.append_user(user_dict)
-#     return jsonify({'success': True, 'message': 'Registered successfully'})
-
-# @app.route('/register', methods=['POST'])
-# def register():
-#     data = request.get_json()
-#     username = data.get('username')
-#     password = data.get('password')
-#     email = data.get('email')
-#     role = data.get('role')  # 'customer' or 'shopowner'
-#
-#     if role not in ['customer', 'shopowner']:
-#         return jsonify({'success': False, 'message': 'Invalid role'})
-#
-#     # ✅ Check for duplicate username
-#     existing_user_by_username = firebase_db.get_user_by_username(username)
-#     if existing_user_by_username:
-#         return jsonify({'success': False, 'message': 'Username already exists'})
-#
-#     # ✅ Check for duplicate email
-#     existing_user_by_email = firebase_db.get_user_by_email(email)
-#     if existing_user_by_email:
-#         return jsonify({'success': False, 'message': 'Email already exists'})
-#
-#     user_dict = {
-#         'username': username,
-#         'password': password,
-#         'role': role,
-#         'full_name': data.get('full_name', ''),
-#         'address': data.get('address', ''),
-#         'phone': data.get('phone', ''),
-#         'email': email,
-#         'location': data.get('location', ''),
-#         'photo_url': '',
-#         'photo_base64': '',
-#     }
-#
-#     if 'photo_base64' in data and data['photo_base64']:
-#         photo_url = firebase_db.upload_base64_image(data['photo_base64'], folder="profile_photos")
-#         user_dict['photo_url'] = photo_url
-#         user_dict['photo_base64'] = data['photo_base64']
-#
-#     # Assign IDs
-#     user_dict['customer_id'] = str(uuid.uuid4()) if role == 'customer' else ''
-#     user_dict['shopkeeper_id'] = str(uuid.uuid4()) if role == 'shopowner' else ''
-#
-#     firebase_db.append_user(user_dict)
-#     return jsonify({'success': True, 'message': 'Registered successfully'})
-
-
 @app.route('/register', methods=['POST'])
 def register():
     data = request.get_json()
@@ -491,6 +405,8 @@ def send_otp():
     if send_email_otp(email, otp):
         return jsonify({"status": "success", "message": "OTP sent"}), 200
     return jsonify({"status": "error", "message": "Failed to send OTP"}), 500
+
+
 # ---------------- 2️⃣ Verify OTP ----------------
 @app.route("/verify_otp", methods=["POST"])
 def verify_otp():
@@ -510,6 +426,7 @@ def verify_otp():
         return jsonify({"status": "success", "message": "OTP verified"}), 200
 
     return jsonify({"status": "error", "message": "Invalid OTP"}), 400
+
 
 # ---------------- 3️⃣ Register After OTP ----------------
 @app.route("/register_after_otp", methods=["POST"])
@@ -548,12 +465,22 @@ def register_after_otp():
     return jsonify({"success": True, "message": "User registered"}), 201
 
 @app.before_request
-def check_auth():
-    public_endpoints = ["login", "register", "send_otp", "static"]  # whitelist OTP
-    if request.endpoint not in public_endpoints:
-        auth = request.headers.get("Authorization")
-        if not auth:
-            return jsonify({"message":"authentication not found in headers","code":"unauthorized"}), 401
+def require_authentication():
+    # Publicly accessible endpoints (no authentication required)
+    public_paths = ["/healthz", "/send_otp", "/register", "/login"]
+
+    if request.path in public_paths:
+        return None  # allow without authentication
+
+    # For everything else, enforce auth
+    auth_header = request.headers.get("Authorization")
+    if not auth_header or not auth_header.startswith("Bearer "):
+        return jsonify({"message": "authentication not found in headers", "code": "unauthorized"}), 401
+
+    token = auth_header.split(" ")[1]
+    # TODO: validate token (e.g., check in Google Sheets or JWT)
+    if token != "expected_token":  # placeholder
+        return jsonify({"message": "invalid token", "code": "unauthorized"}), 401
 
 if __name__ == "__main__":
     print("Gunicorn setup complete, about to run...")
