@@ -375,6 +375,8 @@ def healthz():
 
 # ---------------- Helper Function ----------------
 def send_email_otp(email, otp):
+    print(f"SENDINBLUE_API_KEY {SENDINBLUE_API_KEY}")
+    print(f"FROM_EMAIL : {FROM_EMAIL}")
     url = "https://api.sendinblue.com/v3/smtp/email"
     headers = {
         "api-key": SENDINBLUE_API_KEY,
@@ -467,20 +469,21 @@ def register_after_otp():
 
 @app.before_request
 def require_authentication():
-    # Publicly accessible endpoints (no authentication required)
     public_paths = ["/healthz", "/send_otp", "/verify_otp", "/register", "/login", "/register_after_otp"]
 
-    if any(request.path.startswith(path) for path in public_paths):
-        return None  # allow without authentication
+    # Allow if matches or starts with
+    for path in public_paths:
+        if request.path.startswith(path):
+            return None
 
-    # For everything else, enforce auth
     auth_header = request.headers.get("Authorization")
     if not auth_header or not auth_header.startswith("Bearer "):
         return jsonify({"message": "authentication not found in headers", "code": "unauthorized"}), 401
 
     token = auth_header.split(" ")[1]
-    if token != "expected_token":  # TODO: replace with real validation
+    if token != "expected_token":
         return jsonify({"message": "invalid token", "code": "unauthorized"}), 401
+
 
 
 if __name__ == "__main__":
