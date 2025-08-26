@@ -1,0 +1,144 @@
+<resources>
+    <string name="app_name">ಶಾಪ್ ಮಾಲೀಕ</string>
+    <string name="navigation_drawer_open">ನವಿಗೇಶನ್ ಡ್ರಾಯರ್ ತೆರೆಯಿರಿ</string>
+    <string name="navigation_drawer_close">ನವಿಗೇಶನ್ ಡ್ರಾಯರ್ ಮುಚ್ಚಿರಿ</string>
+    <string-array name="roles_array">
+        <item>ಗ್ರಾಹಕ</item>
+        <item>ಶಾಪ್ ಮಾಲೀಕ</item>
+    </string-array>
+    <string-array name="order_status_options">
+        <item>ಬಾಕಿ</item>
+        <item>ಪ್ಯಾಕಿಂಗ್</item>
+        <item>ಪ್ಯಾಕ್ ಮಾಡಲಾಗಿದೆ</item>
+        <item>ವಿತರಿಸಲಾಗಿದೆ</item>
+        <item>ರದ್ದು</item>
+    </string-array>
+
+    <string name="customer_login">ಗ್ರಾಹಕ ಲಾಗಿನ್</string>
+    <string name="shop_owner_login">ಅಂಗಡಿ ಮಾಲೀಕ ಲಾಗಿನ್</string>
+    <string name="login">ಲಾಗಿನ್</string>
+
+    <string name="enter_username_password">ದಯವಿಟ್ಟು ಬಳಕೆದಾರ ಹೆಸರು ಮತ್ತು ಪಾಸ್ವರ್ಡ್ ನಮೂದಿಸಿ</string>
+
+    <string name="failed_to_load_shops">ಅಂಗಡಿಗಳನ್ನು ಲೋಡ್ ಮಾಡಲು ವಿಫಲವಾಗಿದೆ</string>
+    <string name="error_fetching_shops">ಅಂಗಡಿಗಳನ್ನು ಪಡೆದುಕೊಳ್ಳುವಲ್ಲಿ ದೋಷ: %1$s</string>
+
+    <string name="role_mismatch">ಬಳಕೆದಾರರ ಪಾತ್ರ ಹೊಂದಿಕೆ ಇಲ್ಲ</string>
+    <string name="unknown_user_role">ಅಜ್ಞಾತ ಬಳಕೆದಾರರ ಪಾತ್ರ</string>
+    <string name="invalid_username_password">ಅಮಾನ್ಯ ಬಳಕೆದಾರ ಹೆಸರು ಅಥವಾ ಪಾಸ್ವರ್ಡ್</string>
+    <string name="login_failed">ಲಾಗಿನ್ ವಿಫಲವಾಗಿದೆ. ದಯವಿಟ್ಟು ಮರುಪ್ರಯತ್ನಿಸಿ</string>
+
+    <string name="ui__select_a_cart_to_continue">🛒 ಮುಂದುವರಿಸಲು ಕಾರ್ಟ್ ಆಯ್ಕೆಮಾಡಿ</string>
+    <string name="ui_order_placed_successfully">ಆರ್ಡರ್ ಯಶಸ್ವಿಯಾಗಿ ಇರಿಸಲಾಗಿದೆ!</string>
+    <string name="ui_back_to_home">ಮನೆಗೆ ಹಿಂತಿರುಗಿ</string>
+    <string name="ui_confirm_your_order">ನಿಮ್ಮ ಆರ್ಡರ್ ದೃಢೀಕರಿಸಿ</string>
+    <string name="ui_total_000">ಒಟ್ಟು: ₹0.00</string>
+    <string name="ui_select_payment_method">ಪಾವತಿ ವಿಧಾನ ಆಯ್ಕೆಮಾಡಿ:</string>
+    <string name="ui_place_order">ಆರ್ಡರ್ ಇಡಿ</string>
+    <string name="ui_add_item">ಐಟಂ ಸೇರಿಸಿ</string>
+    <string name="ui_added_items">ಸೇರಿಸಿದ ಐಟಂಗಳು:</string>
+    <string name="ui_finish">ಮುಗಿಸು</string>
+    <string name="ui_item_name">ಐಟಂ ಹೆಸರು</string>
+    <string name="ui_login">ಲಾಗಿನ್</string>
+    <string name="ui_login_2">ಲಾಗಿನ್</string>
+    <string name="ui_no_account_register">ಖಾತೆ ಇಲ್ಲವೇ? ನೋಂದಣಿ ಮಾಡಿ</string>
+    <string name="ui_create_shop">ಅಂಗಡಿ ರಚಿಸಿ</string>
+    <string name="ui_username">ಬಳಕೆದಾರ ಹೆಸರು: </string>
+    <string name="ui_role">ಪಾತ್ರ: </string>
+    <string name="ui_change_password">ಪಾಸ್ವರ್ಡ್ ಬದಲಾಯಿಸಿ</string>
+    <string name="ui_logout">ಲಾಗ್ ಔಟ್</string>
+    <string name="ui_order_">ಆರ್ಡರ್ #</string>
+    <string name="ui_my_shop">ನನ್ನ ಅಂಗಡಿ</string>
+    <string name="ui__refresh">🔄 ರಿಫ್ರೆಶ್</string>
+    <string name="ui__back">⬅ ಹಿಂತಿರುಗಿ</string>
+    <string name="ui_shop_owner_dashboard">ಅಂಗಡಿ ಮಾಲೀಕರ ಡ್ಯಾಶ್‌ಬೋರ್ಡ್</string>
+    <string name="ui_view_orders">ಆರ್ಡರ್‌ಗಳನ್ನು ವೀಕ್ಷಿಸಿ</string>
+    <string name="ui_place_order_2">ಆರ್ಡರ್ ಇಡಿ</string>
+    <string name="ui_back">ಹಿಂತಿರುಗಿ</string>
+    <string name="ui_item_name_2">ಐಟಂ ಹೆಸರು</string>
+    <string name="ui_qty_1">ಪ್ರಮಾಣ: 1</string>
+    <string name="ui__000">₹ 0.00</string>
+    <string name="ui_shop_name">ಅಂಗಡಿ ಹೆಸರು</string>
+    <string name="ui_ordered_on">ಆರ್ಡರ್ ಮಾಡಿದ ದಿನಾಂಕ: </string>
+    <string name="ui_payment">ಪಾವತಿ:</string>
+    <string name="ui_total_000_2">ಒಟ್ಟು: ₹0.00</string>
+    <string name="ui_cancel_order">ಆರ್ಡರ್ ರದ್ದುಮಾಡಿ</string>
+    <string name="ui_modify_order">ಆರ್ಡರ್ ತಿದ್ದು</string>
+    <string name="ui_confirm_final_order">ಅಂತಿಮ ಆರ್ಡರ್ ದೃಢೀಕರಿಸಿ</string>
+    <string name="ui_register">ನೋಂದಣಿ</string>
+    <string name="ui_already_have_an_account_login_here">ಖಾತೆ ಇದೆಯೇ? ಇಲ್ಲಿ ಲಾಗಿನ್ ಮಾಡಿ</string>
+    <string name="ui_item_name_3">ಐಟಂ ಹೆಸರು</string>
+    <string name="ui_qty_2">ಪ್ರಮಾಣ: 2</string>
+    <string name="ui_s_4000">₹40.00</string>
+    <string name="ui_no_orders_found">ಯಾವುದೇ ಆರ್ಡರ್‌ಗಳು ಕಂಡುಬಂದಿಲ್ಲ.</string>
+    <string name="ui_filter">ಫಿಲ್ಟರ್:</string>
+    <string name="ui_refresh">ರಿಫ್ರೆಶ್</string>
+    <string name="ui_back_2">ಹಿಂತಿರುಗಿ</string>
+    <string name="ui_add_new_item">ಹೊಸ ಐಟಂ ಸೇರಿಸಿ</string>
+    <string name="ui_save">ಉಳಿಸಿ</string>
+    <string name="ui_item_name_4">ಐಟಂ ಹೆಸರು</string>
+    <string name="ui_s_000">₹0.00</string>
+    <string name="ui_add">ಸೇರಿಸಿ</string>
+    <string name="ui_order_id">ಆರ್ಡರ್ ಐಡಿ</string>
+    <string name="ui_items">ಐಟಂಗಳು</string>
+    <string name="ui_delivered">ವಿತರಿಸಲಾಗಿದೆ</string>
+    <string name="ui_browse_shops">ಅಂಗಡಿಗಳನ್ನು ಬ್ರೌಸ್ ಮಾಡಿ</string>
+    <string name="ui_view_cart">ಕಾರ್ಟ್ ವೀಕ್ಷಿಸಿ</string>
+    <string name="ui_update_item">ಐಟಂ ನವೀಕರಿಸಿ</string>
+    <string name="ui_delete_item">ಐಟಂ ಅಳಿಸಿ</string>
+    <string name="ui_back_3">ಹಿಂತಿರುಗಿ</string>
+    <string name="ui_refresh_2">ರಿಫ್ರೆಶ್</string>
+    <string name="ui_update_status">ಸ್ಥಿತಿಯನ್ನು ನವೀಕರಿಸಿ</string>
+    <string name="ui_customer_name">ಗ್ರಾಹಕರ ಹೆಸರು</string>
+    <string name="ui_order_details">ಆರ್ಡರ್ ವಿವರಗಳು</string>
+    <string name="ui_status_pending">ಸ್ಥಿತಿ: ಬಾಕಿ</string>
+    <string name="ui_update_status_2">ಸ್ಥಿತಿಯನ್ನು ನವೀಕರಿಸಿ</string>
+    <string name="ui_change_password_2">ಪಾಸ್ವರ್ಡ್ ಬದಲಾಯಿಸಿ</string>
+    <string name="ui_name">ಹೆಸರು</string>
+    <string name="ui_email">ಇಮೇಲ್</string>
+    <string name="ui_phone">ಫೋನ್</string>
+    <string name="ui_address">ವಿಳಾಸ</string>
+    <string name="ui_location">ಸ್ಥಳ</string>
+    <string name="ui_edit_profile">ಪ್ರೊಫೈಲ್ ಸಂಪಾದಿಸಿ</string>
+    <string name="ui_incoming_orders">ಬರುವ ಆರ್ಡರ್‌ಗಳು</string>
+    <string name="ui_no_current_orders">ಯಾವುದೇ ಪ್ರಸ್ತುತ ಆರ್ಡರ್‌ಗಳಿಲ್ಲ</string>
+    <string name="ui_your_cart">ನಿಮ್ಮ ಕಾರ್ಟ್</string>
+    <string name="ui_total_000_3">ಒಟ್ಟು: ₹0.00</string>
+    <string name="ui_your_cart_is_empty">ನಿಮ್ಮ ಕಾರ್ಟ್ ಖಾಲಿಯಾಗಿದೆ.</string>
+    <string name="ui_confirm_order">ಆರ್ಡರ್ ದೃಢೀಕರಿಸಿ</string>
+    <string name="ui_back_to_items">ಐಟಂಗಳಿಗೆ ಹಿಂತಿರುಗಿ</string>
+    <string name="ui_text">✔️</string>
+    <string name="ui_update">ನವೀಕರಿಸಿ</string>
+    <string name="ui_delete">ಅಳಿಸಿ</string>
+    <string name="ui_shop_name_2">ಅಂಗಡಿ ಹೆಸರು</string>
+    <string name="ui_items_3__total_12000">ಐಟಂಗಳು: 3 | ಒಟ್ಟು: ₹120.00</string>
+    <string name="ui_thank_you_for_your_order">ನಿಮ್ಮ ಆರ್ಡರ್‌ಗೆ ಧನ್ಯವಾದಗಳು!</string>
+    <string name="ui_back_to_home_2">ಮನೆಗೆ ಹಿಂತಿರುಗಿ</string>
+    <string name="ui_login_as_customer">ಗ್ರಾಹಕರಾಗಿ ಲಾಗಿನ್ ಮಾಡಿ</string>
+    <string name="ui_login_as_shopkeeper">ಅಂಗಡಿ ಮಾಲೀಕರಾಗಿ ಲಾಗಿನ್ ಮಾಡಿ</string>
+    <string name="ui__refresh_2">🔄 ರಿಫ್ರೆಶ್</string>
+    <string name="ui__back_2">⬅ ಹಿಂತಿರುಗಿ</string>
+    <string name="ui_select_a_shop">ಅಂಗಡಿ ಆಯ್ಕೆಮಾಡಿ</string>
+    <string name="ui_home">ಮನೆ</string>
+    <string name="ui_back_4">ಹಿಂತಿರುಗಿ</string>
+    <string name="ui_cart">ಕಾರ್ಟ್</string>
+    <string name="ui_shop_items">ಅಂಗಡಿ ಐಟಂಗಳು</string>
+    <string name="ui_go_to_cart">ಕಾರ್ಟ್‌ಗೆ ಹೋಗಿ</string>
+    <string name="ui_back_to_shop_list">ಅಂಗಡಿ ಪಟ್ಟಿಗೆ ಹಿಂತಿರುಗಿ</string>
+    <string name="ui_home_2">ಮನೆ</string>
+    <string name="ui_shop_name_3">ಅಂಗಡಿ ಹೆಸರು</string>
+    <string name="ui_shop_address">ಅಂಗಡಿ ವಿಳಾಸ</string>
+    <string name="ui_select_shop">ಅಂಗಡಿ ಆಯ್ಕೆಮಾಡಿ</string>
+    <string name="ui_orders">ಆರ್ಡರ್‌ಗಳು</string>
+    <string name="select_language">ನಿಮ್ಮ ಭಾಷೆಯನ್ನು ಆಯ್ಕೆಮಾಡಿ</string>
+    <string name="ui_change_language">ಭಾಷೆ ಬದಲಾಯಿಸಿ</string>
+
+
+    <string name="lang_kannada">ಕನ್ನಡ</string>
+    <string name="lang_hindi">ಹಿಂದಿ</string>
+    <string name="lang_telugu">ತೆಲುಗು</string>
+    <string name="lang_tamil">ತಮಿಳು</string>
+    <string name="lang_malayalam">ಮಲಯಾಳಂ</string>
+    <string name="lang_english">ಇಂಗ್ಲೀಷ್</string>
+
+</resources>

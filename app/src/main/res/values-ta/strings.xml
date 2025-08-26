@@ -1,0 +1,143 @@
+<resources>
+    <string name="app_name">கடை உரிமையாளர்</string>
+    <string name="navigation_drawer_open">வழிசெலுத்தல் பட்டியை திற</string>
+    <string name="navigation_drawer_close">வழிசெலுத்தல் பட்டியை மூடு</string>
+    <string-array name="roles_array">
+        <item>வாடிக்கையாளர்</item>
+        <item>கடை உரிமையாளர்</item>
+    </string-array>
+    <string-array name="order_status_options">
+        <item>நிலுவையில்</item>
+        <item>பேக்கிங்</item>
+        <item>பேக் செய்யப்பட்டது</item>
+        <item>வழங்கப்பட்டது</item>
+        <item>ரத்து</item>
+    </string-array>
+
+    <string name="customer_login">வாடிக்கையாளர் உள்நுழைவு</string>
+    <string name="shop_owner_login">கடை உரிமையாளர் உள்நுழைவு</string>
+    <string name="login">உள்நுழை</string>
+
+    <string name="enter_username_password">தயவு செய்து பயனர்பெயர் மற்றும் கடவுச்சொல்லை உள்ளிடவும்</string>
+
+    <string name="ui_change_language">மொழியை மாற்றவும்</string>
+
+    <string name="role_mismatch">பயனர் பங்கு பொருந்தவில்லை</string>
+    <string name="unknown_user_role">அறியப்படாத பயனர் பங்கு</string>
+    <string name="invalid_username_password">தவறான பயனர்பெயர் அல்லது கடவுச்சொல்</string>
+    <string name="login_failed">உள்நுழைவு தோல்வியடைந்தது. தயவுசெய்து மீண்டும் முயற்சிக்கவும்</string>
+    <string name="failed_to_load_shops">கடைகளை ஏற்ற முடியவில்லை</string>
+    <string name="error_fetching_shops">கடைகளை பெறுவதில் பிழை: %1$s</string>
+
+    <string name="ui__select_a_cart_to_continue">🛒 தொடர корзினைத் தேர்ந்தெடுக்கவும்</string>
+    <string name="ui_order_placed_successfully">ஆர்டர் வெற்றிகரமாக வைக்கப்பட்டது!</string>
+    <string name="ui_back_to_home">முகப்புக்கு திரும்ப</string>
+    <string name="ui_confirm_your_order">உங்கள் ஆர்டரை உறுதிப்படுத்தவும்</string>
+    <string name="ui_total_000">மொத்தம்: ₹0.00</string>
+    <string name="ui_select_payment_method">கட்டண முறையைத் தேர்ந்தெடுக்கவும்:</string>
+    <string name="ui_place_order">ஆர்டர் செய்</string>
+    <string name="ui_add_item">உருப்படியைச் சேர்க்கவும்</string>
+    <string name="ui_added_items">சேர்க்கப்பட்ட உருப்படிகள்:</string>
+    <string name="ui_finish">முடி</string>
+    <string name="ui_item_name">உருப்படி பெயர்</string>
+    <string name="ui_login">உள்நுழைக</string>
+    <string name="ui_login_2">உள்நுழைக</string>
+    <string name="ui_no_account_register">கணக்கு இல்லையா? பதிவு செய்க</string>
+    <string name="ui_create_shop">கடை உருவாக்கவும்</string>
+    <string name="ui_username">பயனர் பெயர்: </string>
+    <string name="ui_role">பங்கு: </string>
+    <string name="ui_change_password">கடவுச்சொல்லை மாற்றவும்</string>
+    <string name="ui_logout">வெளியேறு</string>
+    <string name="ui_order_">ஆர்டர் #</string>
+    <string name="ui_my_shop">என் கடை</string>
+    <string name="ui__refresh">🔄 புதுப்பி</string>
+    <string name="ui__back">⬅ பின்</string>
+    <string name="ui_shop_owner_dashboard">கடை உரிமையாளர் டாஷ்போர்டு</string>
+    <string name="ui_view_orders">ஆர்டர்களைப் பார்க்கவும்</string>
+    <string name="ui_place_order_2">ஆர்டர் செய்</string>
+    <string name="ui_back">பின்</string>
+    <string name="ui_item_name_2">உருப்படி பெயர்</string>
+    <string name="ui_qty_1">அளவு: 1</string>
+    <string name="ui__000">₹ 0.00</string>
+    <string name="ui_shop_name">கடை பெயர்</string>
+    <string name="ui_ordered_on">ஆர்டர் செய்த தேதி: </string>
+    <string name="ui_payment">கட்டணம்:</string>
+    <string name="ui_total_000_2">மொத்தம்: ₹0.00</string>
+    <string name="ui_cancel_order">ஆர்டரை ரத்து செய்</string>
+    <string name="ui_modify_order">ஆர்டரை மாற்றவும்</string>
+    <string name="ui_confirm_final_order">இறுதி ஆர்டரை உறுதிப்படுத்தவும்</string>
+    <string name="ui_register">பதிவு செய்க</string>
+    <string name="ui_already_have_an_account_login_here">ஏற்கனவே கணக்கு உள்ளதா? இங்கே உள்நுழைக</string>
+    <string name="ui_item_name_3">உருப்படி பெயர்</string>
+    <string name="ui_qty_2">அளவு: 2</string>
+    <string name="ui_s_4000">₹40.00</string>
+    <string name="ui_no_orders_found">எந்த ஆர்டரும் இல்லை.</string>
+    <string name="ui_filter">வடிகட்டு:</string>
+    <string name="ui_refresh">புதுப்பி</string>
+    <string name="ui_back_2">பின்</string>
+    <string name="ui_add_new_item">புதிய உருப்படியைச் சேர்க்கவும்</string>
+    <string name="ui_save">சேமிக்கவும்</string>
+    <string name="ui_item_name_4">உருப்படி பெயர்</string>
+    <string name="ui_s_000">₹0.00</string>
+    <string name="ui_add">சேர்</string>
+    <string name="ui_order_id">ஆர்டர் ஐடி</string>
+    <string name="ui_items">உருப்படிகள்</string>
+    <string name="ui_delivered">வழங்கப்பட்டது</string>
+    <string name="ui_browse_shops">கடைகளை உலாவவும்</string>
+    <string name="ui_view_cart">கார்டைப் பார்க்கவும்</string>
+    <string name="ui_update_item">உருப்படியை புதுப்பிக்கவும்</string>
+    <string name="ui_delete_item">உருப்படியை நீக்கு</string>
+    <string name="ui_back_3">பின்</string>
+    <string name="ui_refresh_2">புதுப்பி</string>
+    <string name="ui_update_status">நிலையைப் புதுப்பிக்கவும்</string>
+    <string name="ui_customer_name">வாடிக்கையாளர் பெயர்</string>
+    <string name="ui_order_details">ஆர்டர் விவரங்கள்</string>
+    <string name="ui_status_pending">நிலை: நிலுவையில்</string>
+    <string name="ui_update_status_2">நிலையைப் புதுப்பிக்கவும்</string>
+    <string name="ui_change_password_2">கடவுச்சொல்லை மாற்றவும்</string>
+    <string name="ui_name">பெயர்</string>
+    <string name="ui_email">மின்னஞ்சல்</string>
+    <string name="ui_phone">தொலைபேசி</string>
+    <string name="ui_address">முகவரி</string>
+    <string name="ui_location">இடம்</string>
+    <string name="ui_edit_profile">சுயவிவரத்தைத் திருத்தவும்</string>
+    <string name="ui_incoming_orders">வரவிருக்கும் ஆர்டர்கள்</string>
+    <string name="ui_no_current_orders">தற்போது ஆர்டர்கள் இல்லை</string>
+    <string name="ui_your_cart">உங்கள் கார்ட்</string>
+    <string name="ui_total_000_3">மொத்தம்: ₹0.00</string>
+    <string name="ui_your_cart_is_empty">உங்கள் கார்ட் காலியாக உள்ளது.</string>
+    <string name="ui_confirm_order">ஆர்டரை உறுதிப்படுத்தவும்</string>
+    <string name="ui_back_to_items">உருப்படிகளுக்கு திரும்பவும்</string>
+    <string name="ui_text">✔️</string>
+    <string name="ui_update">புதுப்பி</string>
+    <string name="ui_delete">நீக்கு</string>
+    <string name="ui_shop_name_2">கடை பெயர்</string>
+    <string name="ui_items_3__total_12000">உருப்படிகள்: 3 | மொத்தம்: ₹120.00</string>
+    <string name="ui_thank_you_for_your_order">உங்கள் ஆர்டருக்கு நன்றி!</string>
+    <string name="ui_back_to_home_2">முகப்புக்கு திரும்ப</string>
+    <string name="ui_login_as_customer">வாடிக்கையாளராக உள்நுழைக</string>
+    <string name="ui_login_as_shopkeeper">கடை உரிமையாளராக உள்நுழைக</string>
+    <string name="ui__refresh_2">🔄 புதுப்பி</string>
+    <string name="ui__back_2">⬅ பின்</string>
+    <string name="ui_select_a_shop">ஒரு கடையைத் தேர்ந்தெடுக்கவும்</string>
+    <string name="ui_home">முகப்பு</string>
+    <string name="ui_back_4">பின்</string>
+    <string name="ui_cart">கார்ட்</string>
+    <string name="ui_shop_items">கடை உருப்படிகள்</string>
+    <string name="ui_go_to_cart">கார்டுக்குச் செல்லவும்</string>
+    <string name="ui_back_to_shop_list">கடை பட்டியலுக்கு திரும்பவும்</string>
+    <string name="ui_home_2">முகப்பு</string>
+    <string name="ui_shop_name_3">கடை பெயர்</string>
+    <string name="ui_shop_address">கடை முகவரி</string>
+    <string name="ui_select_shop">கடை தேர்வு செய்</string>
+    <string name="ui_orders">ஆர்டர்கள்</string>
+    <string name="select_language">உங்கள் மொழியைத் தேர்ந்தெடுக்கவும்</string>
+
+    <string name="lang_kannada">கன்னட</string>
+    <string name="lang_hindi">இந்தி</string>
+    <string name="lang_telugu">தெலுங்கு</string>
+    <string name="lang_tamil">தமிழ்</string>
+    <string name="lang_malayalam">மலையாளம்</string>
+    <string name="lang_english">ஆங்கிலம்</string>
+
+</resources>

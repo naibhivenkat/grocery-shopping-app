@@ -1,0 +1,10 @@
+Flask
+gunicorn
+flask-cors
+gspread
+google-auth
+google-auth-oauthlib
+google-auth-httplib2
+firebase_admin
+elasticsearch
+requests

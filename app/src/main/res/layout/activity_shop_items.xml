@@ -1,0 +1,54 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:id="@+id/shop_items_layout"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:orientation="vertical"
+    android:padding="12dp"
+    android:background="?android:colorBackground">
+
+    <TextView
+        android:id="@+id/tv_shop_title"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:text="@string/ui_shop_items"
+        android:textSize="20sp"
+        android:textStyle="bold"
+        android:layout_gravity="center_horizontal"
+        android:paddingBottom="10dp"
+        android:textColor="?android:textColorPrimary" />
+
+    <androidx.recyclerview.widget.RecyclerView
+        android:id="@+id/rv_shop_items"
+        android:layout_width="match_parent"
+        android:layout_height="0dp"
+        android:layout_weight="1"
+        android:scrollbars="vertical" />
+
+    <Button
+        android:id="@+id/btn_go_to_cart"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:text="@string/ui_go_to_cart"
+        android:layout_marginTop="10dp"
+        android:backgroundTint="?attr/colorPrimary"
+        android:textColor="?android:textColorPrimaryInverse" />
+
+    <Button
+        android:id="@+id/btn_back_to_shop_list"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:text="@string/ui_back_to_shop_list"
+        android:layout_marginTop="6dp"
+        android:backgroundTint="?attr/colorSecondary"
+        android:textColor="?android:textColorPrimaryInverse" />
+
+    <Button
+        android:id="@+id/btn_home"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:text="@string/ui_home_2"
+        android:layout_marginTop="6dp"
+        android:backgroundTint="?attr/colorPrimary"
+        android:textColor="?android:textColorPrimaryInverse" />
+</LinearLayout>

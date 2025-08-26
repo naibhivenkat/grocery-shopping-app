@@ -1,0 +1,142 @@
+<resources>
+    <string name="app_name">Shop Owner</string>
+    <string name="navigation_drawer_open">Open navigation drawer</string>
+    <string name="navigation_drawer_close">Close navigation drawer</string>
+    <string-array name="roles_array">
+        <item>Customer</item>
+        <item>Shopowner</item>
+    </string-array>
+    <string-array name="order_status_options">
+        <item>Pending</item>
+        <item>Packing</item>
+        <item>Packed</item>
+        <item>Delivered</item>
+        <item>Cancelled</item>
+    </string-array>
+    <string name="enter_username_password">Please enter username and password</string>
+    <string name="ui__select_a_cart_to_continue">🛒 Select a cart to continue</string>
+    <string name="ui_order_placed_successfully">Order Placed Successfully!</string>
+    <string name="ui_back_to_home">Back to Home</string>
+    <string name="ui_confirm_your_order">Confirm Your Order</string>
+    <string name="ui_total_000">Total: ₹0.00</string>
+    <string name="ui_select_payment_method">Select Payment Method:</string>
+    <string name="ui_place_order">Place Order</string>
+    <string name="ui_add_item">Add Item</string>
+    <string name="ui_added_items">Added Items:</string>
+    <string name="ui_finish">Finish</string>
+    <string name="ui_item_name">Item Name</string>
+    <string name="ui_login">Login</string>
+    <string name="ui_login_2">Login</string>
+    <string name="ui_no_account_register">No account? Register</string>
+    <string name="ui_create_shop">Create Shop</string>
+    <string name="ui_username">Username: </string>
+    <string name="ui_role">Role: </string>
+    <string name="ui_change_password">Change Password</string>
+    <string name="ui_logout">Logout</string>
+    <string name="ui_order_">Order #</string>
+    <string name="ui_my_shop">My Shop</string>
+    <string name="ui__refresh">🔄 REFRESH</string>
+    <string name="ui__back">⬅ BACK</string>
+    <string name="ui_shop_owner_dashboard">Shop Owner Dashboard</string>
+    <string name="ui_view_orders">View Orders</string>
+    <string name="ui_place_order_2">Place Order</string>
+    <string name="ui_back">Back</string>
+    <string name="ui_item_name_2">Item Name</string>
+    <string name="ui_qty_1">Qty: 1</string>
+    <string name="ui__000">₹ 0.00</string>
+    <string name="ui_shop_name">Shop Name</string>
+    <string name="ui_ordered_on">Ordered On: </string>
+    <string name="ui_payment">Payment:</string>
+    <string name="ui_total_000_2">Total: ₹0.00</string>
+    <string name="ui_cancel_order">Cancel Order</string>
+    <string name="ui_modify_order">Modify Order</string>
+    <string name="ui_confirm_final_order">Confirm Final Order</string>
+    <string name="ui_register">Register</string>
+    <string name="ui_already_have_an_account_login_here">Already have an account? Login here</string>
+    <string name="ui_item_name_3">Item Name</string>
+    <string name="ui_qty_2">Qty: 2</string>
+    <string name="ui_s_4000">₹40.00</string>
+    <string name="ui_no_orders_found">No orders found.</string>
+    <string name="ui_filter">Filter:</string>
+    <string name="ui_refresh">Refresh</string>
+    <string name="ui_back_2">Back</string>
+    <string name="ui_add_new_item">Add New Item</string>
+    <string name="ui_save">Save</string>
+    <string name="ui_item_name_4">Item Name</string>
+    <string name="ui_s_000">₹0.00</string>
+    <string name="ui_add">Add</string>
+    <string name="ui_order_id">Order ID</string>
+    <string name="ui_items">Items</string>
+    <string name="ui_delivered">Delivered</string>
+    <string name="ui_browse_shops">Browse Shops</string>
+    <string name="ui_view_cart">View Cart</string>
+    <string name="ui_update_item">Update Item</string>
+    <string name="ui_delete_item">Delete Item</string>
+    <string name="ui_back_3">Back</string>
+    <string name="ui_refresh_2">Refresh</string>
+    <string name="ui_update_status">Update Status</string>
+    <string name="ui_customer_name">Customer Name</string>
+    <string name="ui_order_details">Order Details</string>
+    <string name="ui_status_pending">Status: Pending</string>
+    <string name="ui_update_status_2">Update Status</string>
+    <string name="ui_change_password_2">Change Password</string>
+    <string name="ui_name">Name</string>
+    <string name="ui_email">Email</string>
+    <string name="ui_phone">Phone</string>
+    <string name="ui_address">Address</string>
+    <string name="ui_location">Location</string>
+    <string name="ui_edit_profile">Edit Profile</string>
+    <string name="ui_incoming_orders">Incoming Orders</string>
+    <string name="ui_no_current_orders">No current orders</string>
+    <string name="ui_your_cart">Your Cart</string>
+    <string name="ui_total_000_3">Total: ₹0.00</string>
+    <string name="ui_your_cart_is_empty">Your cart is empty.</string>
+    <string name="ui_confirm_order">Confirm Order</string>
+    <string name="ui_back_to_items">Back to Items</string>
+    <string name="ui_text">✔️</string>
+    <string name="ui_update">Update</string>
+    <string name="ui_delete">Delete</string>
+    <string name="ui_shop_name_2">Shop Name</string>
+    <string name="ui_items_3__total_12000">Items: 3 | Total: ₹120.00</string>
+    <string name="ui_thank_you_for_your_order">Thank you for your order!</string>
+    <string name="ui_back_to_home_2">Back to Home</string>
+    <string name="ui_login_as_customer">Login as Customer</string>
+    <string name="ui_login_as_shopkeeper">Login as Shopkeeper</string>
+    <string name="ui__refresh_2">🔄 Refresh</string>
+    <string name="ui__back_2">⬅ Back</string>
+    <string name="ui_select_a_shop">Select a Shop</string>
+    <string name="ui_home">Home</string>
+    <string name="ui_back_4">Back</string>
+    <string name="ui_cart">Cart</string>
+    <string name="ui_shop_items">Shop Items</string>
+    <string name="ui_go_to_cart">Go to Cart</string>
+    <string name="ui_back_to_shop_list">Back to Shop List</string>
+    <string name="ui_home_2">Home</string>
+    <string name="ui_shop_name_3">Shop Name</string>
+    <string name="ui_shop_address">Shop Address</string>
+    <string name="ui_select_shop">Select Shop</string>
+    <string name="ui_orders">Orders</string>
+    <string name="select_language">Select Your Language</string>
+    <string name="ui_change_language">Change Language</string>
+
+    <string name="failed_to_load_shops">Failed to load shops</string>
+    <string name="error_fetching_shops">Error fetching shops: %1$s</string>
+
+    <string name="lang_kannada">Kannada</string>
+    <string name="lang_hindi">Hindi</string>
+    <string name="lang_telugu">Telugu</string>
+    <string name="lang_tamil">Tamil</string>
+    <string name="lang_malayalam">Malayalam</string>
+    <string name="lang_english">English</string>
+
+    <string name="customer_login">Customer Login</string>
+    <string name="shop_owner_login">Shop Owner Login</string>
+    <string name="login">Login</string>
+
+    <string name="role_mismatch">User role does not match</string>
+    <string name="unknown_user_role">Unknown user role</string>
+    <string name="invalid_username_password">Invalid username or password</string>
+    <string name="login_failed">Login failed. Please try again</string>
+
+
+</resources>

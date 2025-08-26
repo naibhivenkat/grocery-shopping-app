@@ -1,0 +1,71 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:orientation="horizontal"
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content"
+    android:padding="12dp"
+    android:gravity="center_vertical">
+
+    <ImageView
+        android:id="@+id/imageViewItem"
+        android:layout_width="80dp"
+        android:layout_height="80dp"
+        android:scaleType="centerCrop"
+        android:src="@drawable/placeholder"
+        android:layout_marginEnd="8dp"
+        android:contentDescription="Item image" />
+
+    <LinearLayout
+        android:orientation="vertical"
+        android:layout_weight="1"
+        android:layout_width="0dp"
+        android:layout_height="wrap_content">
+
+        <TextView
+            android:id="@+id/textViewItemName"
+            android:textSize="18sp"
+            android:textStyle="bold"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content" />
+
+        <TextView
+            android:id="@+id/textViewItemPrice"
+            android:textSize="16sp"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content" />
+    </LinearLayout>
+
+    <LinearLayout
+        android:orientation="horizontal"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:gravity="center">
+
+        <Button
+            android:id="@+id/buttonMinus"
+            android:layout_width="36dp"
+            android:layout_height="36dp"
+            android:text="-"
+            android:background="@android:color/transparent"
+            android:textSize="18sp"
+            android:contentDescription="Decrement" />
+
+        <TextView
+            android:id="@+id/textViewQuantity"
+            android:text="1"
+            android:textSize="16sp"
+            android:layout_width="32dp"
+            android:layout_height="36dp"
+            android:gravity="center" />
+
+        <Button
+            android:id="@+id/buttonPlus"
+            android:layout_width="36dp"
+            android:layout_height="36dp"
+            android:text="+"
+            android:background="@android:color/transparent"
+            android:textSize="18sp"
+            android:contentDescription="Increment" />
+
+    </LinearLayout>
+</LinearLayout>

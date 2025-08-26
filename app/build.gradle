@@ -1,0 +1,119 @@
+plugins {
+    id 'com.android.application'
+    id 'kotlin-android'
+    id 'kotlin-parcelize'
+    id 'kotlin-kapt'
+    id 'com.google.gms.google-services'
+}
+
+// --- Load version from version.properties ---
+def versionPropsFile = rootProject.file("version.properties")
+def Properties versionProps = new Properties()
+if (versionPropsFile.canRead()) {
+    versionProps.load(new FileInputStream(versionPropsFile))
+} else {
+    throw new GradleException("Could not read version.properties!")
+}
+def versionCodeValue = versionProps['VERSION_CODE'].toInteger()
+def versionNameValue = versionProps['VERSION_NAME']
+
+android {
+    namespace = "com.example.groceryshoppingapp"
+    compileSdk = 34
+
+    defaultConfig {
+        applicationId "com.example.groceryshoppingapp"
+        minSdk = 24
+        targetSdk = 34
+
+        versionCode versionCodeValue
+        versionName versionNameValue
+    }
+
+    flavorDimensions "mode"
+    productFlavors {
+        customer {
+            dimension "mode"
+            applicationIdSuffix ".customer"
+            versionNameSuffix "-customer"
+            buildConfigField "String", "APP_ROLE", "\"customer\""
+        }
+        shopowner {
+            dimension "mode"
+            applicationIdSuffix ".shopowner"
+            versionNameSuffix "-shopowner"
+            buildConfigField "String", "APP_ROLE", "\"shopowner\""
+        }
+    }
+
+    signingConfigs {
+        debug {
+            // (Optional) Use a shared debug keystore for team/dev environment
+            // If not needed, remove these 4 lines - Android Studio uses its default debug.keystore
+            storeFile file(System.getProperty("user.home") + "/.android/debug.keystore")
+            storePassword 'android'
+            keyAlias 'androiddebugkey'
+            keyPassword 'android'
+        }
+    }
+
+    buildTypes {
+        debug {
+            signingConfig signingConfigs.debug // Use above config
+        }
+        release {
+            minifyEnabled false
+            proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'), 'proguard-rules.pro'
+            // For release, add your release signingConfigs if needed
+        }
+    }
+
+    buildFeatures {
+        viewBinding true
+        buildConfig true
+    }
+
+    compileOptions {
+        sourceCompatibility JavaVersion.VERSION_17
+        targetCompatibility JavaVersion.VERSION_17
+    }
+    kotlinOptions {
+        jvmTarget = '17'
+    }
+}
+
+kapt {
+    correctErrorTypes = true
+}
+
+dependencies {
+    implementation platform('com.google.firebase:firebase-bom:34.1.0')
+    implementation "org.jetbrains.kotlin:kotlin-stdlib:2.0.20"
+    implementation 'androidx.appcompat:appcompat:1.7.1'
+    implementation 'androidx.constraintlayout:constraintlayout:2.2.1'
+    implementation 'com.google.android.material:material:1.12.0'
+
+    // Retrofit, Gson, OkHttp
+    implementation 'com.squareup.retrofit2:retrofit:2.9.0'
+    implementation 'com.squareup.retrofit2:converter-gson:2.9.0'
+    implementation 'com.squareup.okhttp3:okhttp:5.0.0-alpha.11'
+    implementation 'com.squareup.okhttp3:logging-interceptor:5.0.0-alpha.11'
+
+    // Networking + JSON
+    implementation 'com.android.volley:volley:1.2.1'
+    implementation 'com.google.code.gson:gson:2.13.1'
+
+    // Glide for image loading
+    implementation 'com.github.bumptech.glide:glide:4.16.0'
+    //implementation 'com.google.firebase:firebase-firestore-ktx:26.0.0'
+    implementation 'com.google.firebase:firebase-firestore-ktx:24.7.1'
+
+    kapt 'com.github.bumptech.glide:compiler:4.16.0'
+
+    // uCrop for image cropping
+    implementation 'com.github.yalantis:ucrop:2.2.6'
+
+    // Optional: Picasso (if still used)
+    implementation 'com.squareup.picasso:picasso:2.71828'
+    implementation 'com.google.firebase:firebase-analytics'
+}

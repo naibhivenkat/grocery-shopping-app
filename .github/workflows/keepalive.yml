@@ -1,0 +1,13 @@
+name: Keep Backend Awake
+
+on:
+  schedule:
+    - cron: "*/14 * * * *"   # every 14 minutes
+  workflow_dispatch:          # allow manual run for testing
+
+jobs:
+  ping:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Ping to Active Server
+        run: curl -s https://grocery-shopping-app-yyqx.onrender.com/healthz

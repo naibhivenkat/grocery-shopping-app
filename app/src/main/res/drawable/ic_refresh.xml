@@ -1,0 +1,9 @@
+<menu xmlns:android="http://schemas.android.com/apk/res/android">
+
+
+<Button
+    android:id="@+id/btnRefresh"
+    android:layout_width="wrap_content"
+    android:layout_height="wrap_content"
+    android:text="Refresh" />
+</menu>

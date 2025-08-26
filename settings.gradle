@@ -1,0 +1,19 @@
+pluginManagement {
+    repositories {
+        google()
+        mavenCentral()
+        maven { url = uri("https://jitpack.io") } // ✅ Add this for uCrop
+    }
+}
+
+dependencyResolutionManagement {
+    repositoriesMode.set(RepositoriesMode.PREFER_SETTINGS) // ✅ Required!
+    repositories {
+        google()
+        mavenCentral()
+        maven { url = uri("https://jitpack.io") } // ✅ For uCrop
+    }
+}
+
+rootProject.name = "GroceryShoppingApp"
+include(":app")

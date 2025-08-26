@@ -1,0 +1,57 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:id="@+id/order_confirm_layout"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:padding="24dp"
+    android:orientation="vertical"
+    android:gravity="center_horizontal"
+    android:background="?android:colorBackground">
+
+    <TextView
+        android:id="@+id/textViewTitle"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:text="@string/ui_confirm_your_order"
+        android:textSize="22sp"
+        android:textStyle="bold"
+        android:textColor="?android:textColorPrimary"
+        android:layout_marginBottom="24dp" />
+
+    <TextView
+        android:id="@+id/textViewTotal"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:text="@string/ui_total_000"
+        android:textSize="20sp"
+        android:textStyle="bold"
+        android:textColor="?android:colorAccent"
+        android:layout_marginBottom="24dp" />
+
+    <TextView
+        android:id="@+id/textViewPaymentLabel"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:text="@string/ui_select_payment_method"
+        android:textSize="16sp"
+        android:textColor="?android:textColorPrimary"
+        android:layout_marginBottom="8dp" />
+
+    <Spinner
+        android:id="@+id/paymentSpinner"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginBottom="24dp"
+        android:spinnerMode="dropdown" />
+
+    <Button
+        android:id="@+id/buttonPlaceOrder"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:text="@string/ui_place_order"
+        android:textSize="16sp"
+        android:textStyle="bold"
+        android:backgroundTint="@android:color/holo_blue_dark"
+        android:textColor="?android:textColorPrimaryInverse"
+        android:padding="12dp" />
+</LinearLayout>

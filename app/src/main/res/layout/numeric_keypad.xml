@@ -1,0 +1,30 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:id="@+id/customKeypad"
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content"
+    android:orientation="vertical"
+    android:background="@android:color/darker_gray"
+    android:padding="8dp">
+
+    <GridLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:columnCount="3"
+        android:rowCount="4">
+
+        <!-- Buttons -->
+        <Button android:id="@+id/btn1" android:text="1" style="@style/KeyButton"/>
+        <Button android:id="@+id/btn2" android:text="2" style="@style/KeyButton"/>
+        <Button android:id="@+id/btn3" android:text="3" style="@style/KeyButton"/>
+        <Button android:id="@+id/btn4" android:text="4" style="@style/KeyButton"/>
+        <Button android:id="@+id/btn5" android:text="5" style="@style/KeyButton"/>
+        <Button android:id="@+id/btn6" android:text="6" style="@style/KeyButton"/>
+        <Button android:id="@+id/btn7" android:text="7" style="@style/KeyButton"/>
+        <Button android:id="@+id/btn8" android:text="8" style="@style/KeyButton"/>
+        <Button android:id="@+id/btn9" android:text="9" style="@style/KeyButton"/>
+        <Button android:id="@+id/btnClear" android:text="⌫" style="@style/KeyButton"/>
+        <Button android:id="@+id/btn0" android:text="0" style="@style/KeyButton"/>
+        <Button android:id="@+id/btnDone" android:text="@string/ui_text" style="@style/KeyButton"/>
+    </GridLayout>
+</LinearLayout>
