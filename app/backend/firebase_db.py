@@ -3,16 +3,20 @@ from firebase_admin import credentials, firestore, storage as fb_storage
 import uuid
 import base64
 import os
-
+import json
 # ✅ Initialize Firebase (serviceAccountKey.json must be in same folder)
 
 if not firebase_admin._apps:
-    cred_path = os.getenv("GOOGLE_APPLICATION_CREDENTIALS", "/etc/secrets/firebase.json")
-    cred = credentials.Certificate(cred_path)
-    firebase_admin.initialize_app(cred, {
-        "storageBucket": "groceryapp-fe2ec.appspot.com"  # keep your bucket name
-    })
+    cred_env = os.getenv("GOOGLE_APPLICATION_CREDENTIALS")
+    if cred_env and cred_env.strip().startswith("{"):  # JSON string
+        cred_dict = json.loads(cred_env)
+        cred = credentials.Certificate(cred_dict)
+    else:  # assume it's a file path
+        cred = credentials.Certificate(cred_env or "/etc/secrets/firebase.json")
 
+    firebase_admin.initialize_app(cred, {
+        "storageBucket": "groceryapp-fe2ec.appspot.com"
+    })
 
 db = firestore.client()
 bucket = fb_storage.bucket()
