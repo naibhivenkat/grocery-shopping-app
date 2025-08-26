@@ -464,12 +464,13 @@ def register_after_otp():
     # If ShopOwner → you can return shop info later
     return jsonify({"success": True, "message": "User registered"}), 201
 
+
 @app.before_request
 def require_authentication():
     # Publicly accessible endpoints (no authentication required)
-    public_paths = ["/healthz", "/send_otp", "/register", "/login"]
+    public_paths = ["/healthz", "/send_otp", "/verify_otp", "/register", "/login", "/register_after_otp"]
 
-    if request.path in public_paths:
+    if any(request.path.startswith(path) for path in public_paths):
         return None  # allow without authentication
 
     # For everything else, enforce auth
@@ -478,9 +479,9 @@ def require_authentication():
         return jsonify({"message": "authentication not found in headers", "code": "unauthorized"}), 401
 
     token = auth_header.split(" ")[1]
-    # TODO: validate token (e.g., check in Google Sheets or JWT)
-    if token != "expected_token":  # placeholder
+    if token != "expected_token":  # TODO: replace with real validation
         return jsonify({"message": "invalid token", "code": "unauthorized"}), 401
+
 
 if __name__ == "__main__":
     print("Gunicorn setup complete, about to run...")
