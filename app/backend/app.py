@@ -456,6 +456,7 @@ def register_after_otp():
         "profile_photo": ""
     }
     firebase_db.append_user(user_dict)
+    send_welcome_email(email, name)
 
     return jsonify({"success": True, "message": "User registered"}), 201
 
@@ -477,6 +478,29 @@ def require_authentication():
     if token != "expected_token":
         return jsonify({"message": "invalid token", "code": "unauthorized"}), 401
 
+
+
+def send_welcome_email(email, name):
+    url = "https://api.sendinblue.com/v3/smtp/email"
+    headers = {
+        "api-key": SENDINBLUE_API_KEY,
+        "Content-Type": "application/json"
+    }
+    data = {
+        "sender": {"name": "Grocery App", "email": FROM_EMAIL},
+        "to": [{"email": email}],
+        "subject": "🎉 Welcome to Grocery App!",
+        "htmlContent": f"""
+            <h2>Hi {name},</h2>
+            <p>Thank you for registering with <b>Grocery App</b> 🛒</p>
+            <p>You can now log in and start shopping from your favorite stores.</p>
+            <br>
+            <p>Happy Shopping!<br>– The Grocery App Team</p>
+        """
+    }
+    response = requests.post(url, headers=headers, json=data)
+    print("Welcome email response:", response.status_code, response.text)
+    return response.status_code in [200, 201]
 
 
 if __name__ == "__main__":
