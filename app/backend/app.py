@@ -443,7 +443,7 @@ def register_after_otp():
         return jsonify({"success": False, "message": "Missing fields"}), 400
 
     # Check if user already exists in Firestore
-    existing = db.collection("users").where("email", "==", email).stream()
+    existing = firebase_db.db.collection("users").where("email", "==", email).stream()
     for doc in existing:
         return jsonify({"success": False, "message": "User already exists"}), 400
 
