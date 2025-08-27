@@ -442,28 +442,21 @@ def register_after_otp():
     if not all([name, email, phone]):
         return jsonify({"success": False, "message": "Missing fields"}), 400
 
-    # Check if user exists
-    try:
-        user_record = auth.get_user_by_email(email)
+    # Check if user already exists in Firestore
+    existing = db.collection("users").where("email", "==", email).stream()
+    for doc in existing:
         return jsonify({"success": False, "message": "User already exists"}), 400
-    except auth.UserNotFoundError:
-        pass
 
-    # Create Firebase Auth user (temporary password)
-    temp_password = "Temp1234!"
-    user = auth.create_user(email=email, password=temp_password, display_name=name)
-
-    # Save to Firebase Realtime DB
-    ref = db.reference("users")
-    ref.child(user.uid).set({
+    # Add new user to Firestore
+    user_dict = {
         "name": name,
         "email": email,
         "phone": phone,
         "role": role,
         "profile_photo": ""
-    })
+    }
+    firebase_db.append_user(user_dict)
 
-    # If ShopOwner → you can return shop info later
     return jsonify({"success": True, "message": "User registered"}), 201
 
 
