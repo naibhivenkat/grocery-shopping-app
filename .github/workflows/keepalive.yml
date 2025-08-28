@@ -2,7 +2,7 @@ name: Keep Backend Awake
 
 on:
   schedule:
-    - cron: "*/5 * * * *"   # every 5 minutes (UTC)
+    - cron: "*/1 * * * *"   # every 5 minutes (UTC)
   workflow_dispatch:          # allow manual run for testing
 
 jobs:
