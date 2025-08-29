@@ -21,6 +21,7 @@ FROM_EMAIL = os.getenv("FROM_EMAIL")
 
 # Initialize limiter
 limiter = Limiter(app, key_func=get_remote_address)
+limiter.init_app(app)
 
 otp_store = {}
 
