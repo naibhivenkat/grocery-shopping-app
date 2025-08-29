@@ -4,6 +4,7 @@ import android.content.Intent
 import android.os.Bundle
 import android.os.CountDownTimer
 import android.view.View
+import android.view.animation.AnimationUtils
 import android.widget.*
 import androidx.appcompat.app.AppCompatActivity
 import com.example.groceryshoppingapp.network.ApiService
@@ -20,7 +21,15 @@ class RegisterActivity : AppCompatActivity() {
     private lateinit var etEmail: EditText
     private lateinit var etPhone: EditText
     private lateinit var spinnerRole: Spinner
-    private lateinit var etOtp: EditText
+
+    // 🔥 NEW: password + confirm password
+    private lateinit var etPassword: EditText
+    private lateinit var etConfirmPassword: EditText
+    private lateinit var ivPasswordCheck: ImageView
+
+    // 🔥 NEW: OTP as 6 separate boxes
+    private lateinit var otpFields: List<EditText>
+
     private lateinit var btnSendOtp: Button
     private lateinit var btnVerifyOtp: Button
     private lateinit var btnResendOtp: Button
@@ -40,7 +49,22 @@ class RegisterActivity : AppCompatActivity() {
         etEmail = findViewById(R.id.et_email)
         etPhone = findViewById(R.id.et_phone)
         spinnerRole = findViewById(R.id.spinner_role)
-        etOtp = findViewById(R.id.et_otp)
+
+        // 🔥 NEW password + confirm password
+        etPassword = findViewById(R.id.et_password)
+        etConfirmPassword = findViewById(R.id.et_confirm_password)
+        ivPasswordCheck = findViewById(R.id.iv_password_check)
+
+        // 🔥 NEW OTP fields (6 boxes)
+        otpFields = listOf(
+            findViewById(R.id.otp_1),
+            findViewById(R.id.otp_2),
+            findViewById(R.id.otp_3),
+            findViewById(R.id.otp_4),
+            findViewById(R.id.otp_5),
+            findViewById(R.id.otp_6)
+        )
+
         btnSendOtp = findViewById(R.id.btn_send_otp)
         btnVerifyOtp = findViewById(R.id.btn_verify_otp)
         btnResendOtp = findViewById(R.id.btn_resend_otp)
@@ -67,15 +91,93 @@ class RegisterActivity : AppCompatActivity() {
         btnSendOtp.setOnClickListener { sendOtp() }
         btnVerifyOtp.setOnClickListener { verifyOtp() }
         btnResendOtp.setOnClickListener { resendOtp() }
+
+        // 🔥 password live validation
+        setupPasswordValidation()
+
+        // 🔥 OTP box auto-move
+        setupOtpBoxes()
+    }
+
+    private fun setupPasswordValidation() {
+        btnVerifyOtp.isEnabled = false
+        val watcher = object : android.text.TextWatcher {
+            override fun beforeTextChanged(s: CharSequence?, start: Int, count: Int, after: Int) {}
+            override fun onTextChanged(s: CharSequence?, start: Int, before: Int, count: Int) {
+                validatePasswords()
+            }
+            override fun afterTextChanged(s: android.text.Editable?) {}
+        }
+        etPassword.addTextChangedListener(watcher)
+        etConfirmPassword.addTextChangedListener(watcher)
+    }
+
+    private fun validatePasswords() {
+        val password = etPassword.text.toString().trim()
+        val confirmPassword = etConfirmPassword.text.toString().trim()
+
+        if (password.isNotEmpty() && confirmPassword.isNotEmpty()) {
+            ivPasswordCheck.visibility = View.VISIBLE
+            if (password == confirmPassword) {
+                btnVerifyOtp.isEnabled = true
+                ivPasswordCheck.setImageResource(R.drawable.ic_check_green)
+                etConfirmPassword.error = null
+            } else {
+                btnVerifyOtp.isEnabled = false
+                ivPasswordCheck.setImageResource(R.drawable.ic_close_red)
+                etConfirmPassword.error = "Passwords do not match"
+                val shake = AnimationUtils.loadAnimation(this, R.anim.shake)
+                etConfirmPassword.startAnimation(shake)
+            }
+        } else {
+            btnVerifyOtp.isEnabled = false
+            ivPasswordCheck.visibility = View.GONE
+        }
+    }
+
+    private fun setupOtpBoxes() {
+        for (i in otpFields.indices) {
+            otpFields[i].addTextChangedListener(object : android.text.TextWatcher {
+                override fun beforeTextChanged(s: CharSequence?, start: Int, count: Int, after: Int) {}
+                override fun onTextChanged(s: CharSequence?, start: Int, before: Int, count: Int) {
+                    if (s?.length == 1 && i < otpFields.size - 1) {
+                        otpFields[i + 1].requestFocus()
+                    } else if (s?.isEmpty() == true && i > 0) {
+                        otpFields[i - 1].requestFocus()
+                    }
+                    validateOtpBoxes()
+                }
+                override fun afterTextChanged(s: android.text.Editable?) {}
+            })
+        }
+    }
+
+    private fun getOtpFromBoxes(): String {
+        val sb = StringBuilder()
+        for (field in otpFields) {
+            sb.append(field.text.toString().trim())
+        }
+        return sb.toString()
+    }
+
+    private fun validateOtpBoxes() {
+        val otp = getOtpFromBoxes()
+        btnVerifyOtp.isEnabled = otp.length == 6
     }
 
     private fun sendOtp() {
         val email = etEmail.text.toString().trim()
         val name = etName.text.toString().trim()
         val phone = etPhone.text.toString().trim()
+        val password = etPassword.text.toString().trim()
+        val confirmPassword = etConfirmPassword.text.toString().trim()
 
-        if (email.isEmpty() || name.isEmpty() || phone.isEmpty()) {
+        if (email.isEmpty() || name.isEmpty() || phone.isEmpty() || password.isEmpty() || confirmPassword.isEmpty()) {
             Toast.makeText(this, "Fill all fields", Toast.LENGTH_SHORT).show()
+            return
+        }
+        if (password != confirmPassword) {
+            Toast.makeText(this, "Passwords do not match", Toast.LENGTH_SHORT).show()
             return
         }
 
@@ -99,10 +201,11 @@ class RegisterActivity : AppCompatActivity() {
     }
 
     private fun showOtpFields() {
-        etOtp.visibility = View.VISIBLE
+        findViewById<LinearLayout>(R.id.layout_otp_boxes).visibility = View.VISIBLE
         btnVerifyOtp.visibility = View.VISIBLE
         tvTimer.visibility = View.VISIBLE
         btnResendOtp.visibility = View.VISIBLE
+        otpFields[0].requestFocus()
     }
 
     private fun startTimer() {
@@ -118,19 +221,20 @@ class RegisterActivity : AppCompatActivity() {
                 btnVerifyOtp.isEnabled = false
             }
         }.start()
-        btnVerifyOtp.isEnabled = true
+        btnVerifyOtp.isEnabled = false
     }
 
     private fun verifyOtp() {
         if (!otpSent) return
         val email = etEmail.text.toString().trim()
-        val otp = etOtp.text.toString().trim()
+        val otp = getOtpFromBoxes()
         val name = etName.text.toString().trim()
         val phone = etPhone.text.toString().trim()
         val role = spinnerRole.selectedItem.toString().lowercase()
+        val password = etPassword.text.toString().trim()
 
-        if (otp.isEmpty()) {
-            Toast.makeText(this, "Enter OTP", Toast.LENGTH_SHORT).show()
+        if (otp.length != 6) {
+            Toast.makeText(this, "Enter a valid 6-digit OTP", Toast.LENGTH_SHORT).show()
             return
         }
 
@@ -138,8 +242,7 @@ class RegisterActivity : AppCompatActivity() {
         api.verifyOtp(body).enqueue(object : Callback<Map<String, String>> {
             override fun onResponse(call: Call<Map<String, String>>, response: Response<Map<String, String>>) {
                 if (response.isSuccessful && response.body()?.get("status") == "success") {
-                    // OTP verified → register user in backend (Firebase handled there)
-                    registerUserBackend(name, email, phone, role)
+                    registerUserBackend(name, email, phone, role, password)
                 } else {
                     Toast.makeText(this@RegisterActivity, "Invalid OTP", Toast.LENGTH_SHORT).show()
                 }
@@ -151,12 +254,13 @@ class RegisterActivity : AppCompatActivity() {
         })
     }
 
-    private fun registerUserBackend(name: String, email: String, phone: String, role: String) {
+    private fun registerUserBackend(name: String, email: String, phone: String, role: String, password: String) {
         val body = mapOf(
             "name" to name,
             "email" to email,
             "phone" to phone,
-            "role" to role
+            "role" to role,
+            "password" to password // 🔥 added
         )
 
         api.registerAfterOtp(body).enqueue(object : Callback<Map<String, String>> {
@@ -164,12 +268,9 @@ class RegisterActivity : AppCompatActivity() {
                 if (response.isSuccessful && response.body()?.get("success") == "true") {
                     Toast.makeText(this@RegisterActivity, "✅ Registered successfully!", Toast.LENGTH_SHORT).show()
 
-                    // Save basic profile locally
                     SessionManager.saveUserProfile(this@RegisterActivity, name, "", phone, email, "", "")
 
-                    // Redirect based on role
                     if (role == "shopowner") {
-                        val shop = response.body()?.get("shop") // optional
                         val intent = Intent(this@RegisterActivity, CreateShopActivity::class.java)
                         startActivity(intent)
                     } else {
