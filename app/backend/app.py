@@ -455,6 +455,7 @@ def register_after_otp():
     email = data.get("email")
     phone = data.get("phone")
     role = data.get("role", "customer").lower()
+    password = data.get("password")
 
     if not all([name, email, phone]):
         return jsonify({"success": False, "message": "Missing fields"}), 400
@@ -470,6 +471,7 @@ def register_after_otp():
         "email": email,
         "phone": phone,
         "role": role,
+        "password" : password,
         "profile_photo": ""
     }
     firebase_db.append_user(user_dict)
