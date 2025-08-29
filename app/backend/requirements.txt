@@ -8,3 +8,4 @@ google-auth-httplib2
 firebase_admin
 elasticsearch
 requests
+Flask-Limiter

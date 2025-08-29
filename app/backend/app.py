@@ -8,10 +8,9 @@ from flask_cors import CORS
 import uuid
 import time
 from firebase_admin import credentials, auth, db
-
+from flask_limiter import Limiter
+from flask_limiter.util import get_remote_address
 import firebase_db
-
-print("Starting Flask app (with Firebase)...")
 
 app = Flask(__name__)
 CORS(app)
@@ -20,7 +19,22 @@ logging.basicConfig(level=logging.INFO)
 SENDINBLUE_API_KEY = os.getenv("SENDINBLUE_API_KEY")
 FROM_EMAIL = os.getenv("FROM_EMAIL")
 
+# Initialize limiter
+limiter = Limiter(app, key_func=get_remote_address)
+
 otp_store = {}
+
+# Health check endpoint – exempt from rate limits
+@app.get("/healthz")
+@limiter.exempt
+def healthz():
+    # Simulate a failure randomly
+    if random.choice([True, False, False]):  # ~33% chance
+        logging.error("❌ Health check failed!")
+        return jsonify(status="Service Down", error="Server unreachable"), 503
+
+    logging.info("✅ Health check ping received")
+    return jsonify(status="Up and Running"), 200
 
 @app.route('/login', methods=['POST'])
 def login():
@@ -366,11 +380,6 @@ def check_update():
         logging.exception("Error checking update")
         return jsonify({"error": str(e)}), 500
 
-
-@app.get("/healthz")
-def healthz():
-    print("Checking health...")
-    return jsonify(status="ok"), 200
 
 
 # ---------------- Helper Function ----------------
