@@ -29,13 +29,20 @@ otp_store = {}
 @app.get("/healthz")
 @limiter.exempt
 def healthz():
-    # Simulate a failure randomly
-    if random.choice([True, False, False]):  # ~33% chance
-        logging.error("❌ Health check failed!")
-        return jsonify(status="Service Down", error="Server unreachable"), 503
+    try:
+        # Example: check some real condition instead of random
+        service_ok = True  # replace with actual check, e.g., DB ping, cache, etc.
 
-    logging.info("✅ Health check ping received")
-    return jsonify(status="Up and Running"), 200
+        if service_ok:
+            logging.info("✅ Health check ping received")
+            return jsonify(status="Up and Running"), 200
+        else:
+            logging.error("❌ Health check failed!")
+            return jsonify(status="Service Down", error="Server unreachable"), 503
+    except Exception as e:
+        logging.error(f"❌ Health check exception: {e}")
+        return jsonify(status="Service Down", error=str(e)), 503
+
 
 @app.route('/login', methods=['POST'])
 def login():
