@@ -13,6 +13,7 @@ import retrofit2.http.PATCH
 import okhttp3.ResponseBody
 import retrofit2.http.DELETE
 import retrofit2.http.PUT
+import retrofit2.http.Header
 
 interface ApiService {
     @PATCH("api/orders/{order_id}")
@@ -84,14 +85,21 @@ interface ApiService {
     ): Call<Map<String, Any>>
 
 
-        @POST("/update_profile")
-        fun updateProfile(@Body profileData: Map<String, String>): Call<ResponseBody>
+    @POST("/update_profile")
+    fun updateProfile(@Body profileData: Map<String, String>): Call<ResponseBody>
 
     @GET("/api/shops/{shop_id}/items")
     fun getItems(@Path("shop_id") shopId: String): Call<List<Item>>
 
+//    @POST("/add_items")
+//    fun addItems(@Body body: Map<String, Any>): Call<Map<String, Boolean>>
+
     @POST("/add_items")
-    fun addItems(@Body body: Map<String, Any>): Call<Map<String, Boolean>>
+    fun addItems(
+        @Header("Authorization") token: String,
+        @Body body: Map<String, Any>
+    ): Call<Map<String, Boolean>>
+
 
     @PUT("/update_item/{item_id}")
     fun updateItem(

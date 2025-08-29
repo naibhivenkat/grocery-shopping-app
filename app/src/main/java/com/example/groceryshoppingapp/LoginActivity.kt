@@ -84,6 +84,7 @@ class LoginActivity : AppCompatActivity() {
                         errorText.visibility = View.VISIBLE
                         return
                     }
+                    loginResponse.token?.let { SessionManager.saveAuthToken(this@LoginActivity, it) }
 
                     // Save login + profile
                     SessionManager.saveLogin(this@LoginActivity, user?.username ?: "", loginRole ?: "")

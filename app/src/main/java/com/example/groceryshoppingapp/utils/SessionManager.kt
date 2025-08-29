@@ -18,6 +18,9 @@ object SessionManager {
     private const val KEY_HAS_ITEMS = "has_items_added"  // unified flag
     private const val KEY_SHOP_IDS = "shop_ids"          // multiple shop UUIDs
 
+    // --- 🔑 NEW: AUTH TOKEN ---
+    private const val KEY_AUTH_TOKEN = "auth_token"   // <-- ADDED
+
     // language
     private const val KEY_LANGUAGE_SELECTED = "language_selected"
     private const val KEY_LANGUAGE_CODE = "language_code"
@@ -29,7 +32,7 @@ object SessionManager {
     fun saveLogin(context: Context, username: String, role: String) {
         prefs(context).edit {
             putString(KEY_USERNAME, username)
-                .putString(KEY_ROLE, role)
+            putString(KEY_ROLE, role)
         }
     }
 
@@ -44,18 +47,11 @@ object SessionManager {
     fun getShopkeeperId(context: Context): Int = prefs(context).getInt(KEY_SHOPKEEPER_ID, -1)
 
     // --- SINGLE SHOP UUID ---
-
     fun setShopId(context: Context, shopId: String) {
-        val sharedPreferences = context.getSharedPreferences(PREF_NAME, Context.MODE_PRIVATE)
-        val editor = sharedPreferences.edit()
-        editor.putString(KEY_SHOP_ID, shopId) // ✅ save as String
-        editor.apply()
+        prefs(context).edit().putString(KEY_SHOP_ID, shopId).apply()
     }
 
-    fun getShopId(context: Context): String? {
-        val sharedPreferences = context.getSharedPreferences(PREF_NAME, Context.MODE_PRIVATE)
-        return sharedPreferences.getString(KEY_SHOP_ID, null) // ✅ getString, not getInt
-    }
+    fun getShopId(context: Context): String? = prefs(context).getString(KEY_SHOP_ID, null)
 
     fun setShopInfo(context: Context, id: String?, name: String) {
         prefs(context).edit().putString(KEY_SHOP_ID, id).putString(KEY_SHOP_NAME, name).apply()
@@ -119,9 +115,15 @@ object SessionManager {
     fun hasItemsAdded(context: Context): Boolean =
         prefs(context).getBoolean(KEY_HAS_ITEMS, false)
 
-    // --- LOGOUT ---
-    // funlogout(context: Context) { prefs(context).edit().clear().apply() }
+    // --- 🔑 AUTH TOKEN (NEW) ---
+    fun saveAuthToken(context: Context, token: String) {   // <-- ADDED
+        prefs(context).edit().putString(KEY_AUTH_TOKEN, token).apply()
+    }
 
+    fun getAuthToken(context: Context): String? =          // <-- ADDED
+        prefs(context).getString(KEY_AUTH_TOKEN, null)
+
+    // --- LOGOUT ---
     fun logout(context: Context) {
         val langSelected = isLanguageSelected(context)
         val langCode = getLanguageCode(context)
@@ -132,7 +134,6 @@ object SessionManager {
         setLanguageSelected(context, langSelected)
         setLanguageCode(context, langCode ?: "en")
     }
-
 
     // --- LANGUAGE ---
     fun isLanguageSelected(context: Context): Boolean =

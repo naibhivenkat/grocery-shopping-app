@@ -4,11 +4,11 @@ import uuid
 import base64
 import os
 import json
-# ✅ Initialize Firebase (serviceAccountKey.json must be in same folder)
 
+
+# ✅ Initialize Firebase (serviceAccountKey.json must be in same folder)
 if not firebase_admin._apps:
     cred_env = os.getenv("GOOGLE_APPLICATION_CREDENTIALS")
-    print(f"cred env: {cred_env}")
     if cred_env and cred_env.strip().startswith("{"):  # JSON string
         cred_dict = json.loads(cred_env)
         cred = credentials.Certificate(cred_dict)

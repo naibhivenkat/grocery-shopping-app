@@ -4,11 +4,13 @@ import android.content.Intent
 import android.os.Bundle
 import android.widget.*
 import androidx.appcompat.app.AppCompatActivity
-import com.android.volley.toolbox.JsonObjectRequest
-import com.android.volley.toolbox.Volley
+import com.example.groceryshoppingapp.network.ApiClient
 import com.example.groceryshoppingapp.utils.SessionManager
 import org.json.JSONArray
 import org.json.JSONObject
+import retrofit2.Call
+import retrofit2.Callback
+import retrofit2.Response
 
 class AddItemsActivity : AppCompatActivity() {
 
@@ -83,30 +85,44 @@ class AddItemsActivity : AppCompatActivity() {
     }
 
     private fun sendItemsToBackend(shopId: String?, items: List<JSONObject>) {
-        val url = "https://grocery-shopping-app-yyqx.onrender.com/add_items"
-        val requestQueue = Volley.newRequestQueue(this)
+        val token = SessionManager.getAuthToken(this) ?: ""
 
-        val payload = JSONObject().apply {
-            put("shop_id", shopId)
-            put("items", JSONArray(items))
+        // Convert JSONObjects to Map
+        val itemsList = items.map { json ->
+            mapOf(
+                "name" to json.optString("name"),
+                "price" to json.optString("price"),
+                "stock_quantity" to json.optString("stock_quantity"),
+                "description" to json.optString("description")
+            )
         }
 
-        val request = object : JsonObjectRequest(
-            Method.POST, url, payload,
-            {
-                // ✅ Save flag that items have been added
-                SessionManager.setHasItemsAdded(this, true)
+        val payload = mapOf(
+            "shop_id" to (shopId ?: ""),
+            "items" to itemsList
+        )
 
-                Toast.makeText(this, "Items saved. Returning to dashboard.", Toast.LENGTH_SHORT).show()
-                val intent = Intent(this, ShopOwnerDashboardActivity::class.java)
-                intent.flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK
-                startActivity(intent)
-            },
-            { error ->
-                Toast.makeText(this, "Failed to save items: ${error.message}", Toast.LENGTH_LONG).show()
+        val call = ApiClient.apiService.addItems("Bearer $token", payload)
+        call.enqueue(object : retrofit2.Callback<Map<String, Boolean>> {
+            override fun onResponse(
+                call: Call<Map<String, Boolean>>,
+                response: retrofit2.Response<Map<String, Boolean>>
+            ) {
+                if (response.isSuccessful) {
+                    SessionManager.setHasItemsAdded(this@AddItemsActivity, true)
+                    Toast.makeText(this@AddItemsActivity, "Items saved. Returning to dashboard.", Toast.LENGTH_SHORT).show()
+                    val intent = Intent(this@AddItemsActivity, ShopOwnerDashboardActivity::class.java)
+                    intent.flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK
+                    startActivity(intent)
+                } else {
+                    Toast.makeText(this@AddItemsActivity, "Failed to save items", Toast.LENGTH_LONG).show()
+                }
             }
-        ) {}
 
-        requestQueue.add(request)
+            override fun onFailure(call: Call<Map<String, Boolean>>, t: Throwable) {
+                Toast.makeText(this@AddItemsActivity, "Error: ${t.message}", Toast.LENGTH_LONG).show()
+            }
+        })
     }
+
 }
