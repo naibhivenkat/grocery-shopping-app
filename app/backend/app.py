@@ -95,6 +95,8 @@ def login():
 @app.route('/register', methods=['POST'])
 def register():
     data = request.get_json()
+    # accept both "name" and "full_name"
+    name = data.get("name") or data.get("full_name")
     username = data.get('username')
     password = data.get('password')
     email = data.get('email')
@@ -109,12 +111,11 @@ def register():
     if firebase_db.get_user_by_email(email):
         return jsonify({'success': False, 'message': 'Email already exists'})
 
-    # Create user dict
     user_dict = {
         'username': username,
         'password': password,
         'role': role,
-        'full_name': data.get('full_name', ''),
+        'name': name,   # ✅ standardized
         'address': data.get('address', ''),
         'phone': data.get('phone', ''),
         'email': email,
@@ -447,34 +448,34 @@ def verify_otp():
     return jsonify({"status": "error", "message": "Invalid OTP"}), 400
 
 
-# ---------------- 3️⃣ Register After OTP ----------------
+## ---------------- 3️⃣ Register After OTP ----------------
 @app.route("/register_after_otp", methods=["POST"])
 def register_after_otp():
     data = request.get_json()
-    name = data.get("name")
+    # accept both "name" and "full_name"
+    name = data.get("name") or data.get("full_name")
     email = data.get("email")
     phone = data.get("phone")
     username = data.get("username")
     role = data.get("role", "customer").lower()
     password = data.get("password")
 
-
     if not all([name, email, phone]):
         return jsonify({"success": False, "message": "Missing fields"}), 400
 
-    # Check if user already exists in Firestore
+    # Check if user already exists
     existing = firebase_db.db.collection("users").where("email", "==", email).stream()
     for doc in existing:
         return jsonify({"success": False, "message": "User already exists"}), 400
 
-    # Add new user to Firestore
+    # Add new user
     user_dict = {
         "name": name,
+        "username": username,
         "email": email,
         "phone": phone,
         "role": role,
-        "username": username,
-        "password" : password,
+        "password": password,
         "profile_photo": ""
     }
     firebase_db.append_user(user_dict)
