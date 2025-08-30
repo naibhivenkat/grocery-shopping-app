@@ -454,6 +454,7 @@ def register_after_otp():
     name = data.get("name")
     email = data.get("email")
     phone = data.get("phone")
+    username = data.get("username")
     role = data.get("role", "customer").lower()
     password = data.get("password")
 
@@ -472,6 +473,7 @@ def register_after_otp():
         "email": email,
         "phone": phone,
         "role": role,
+        "username": username,
         "password" : password,
         "profile_photo": ""
     }
