@@ -234,13 +234,36 @@ def get_items(shop_id):
     return jsonify(items), 200
 
 
+# @app.route('/add_items', methods=['POST'])
+# def add_items():
+#     data = request.get_json()
+#     items_data = data.get("items", [])
+#     shop_id = data.get("shop_id")
+#     if not shop_id or not items_data:
+#         return jsonify({'success': False, 'message': 'Missing shop_id or items'}), 400
+#
+#     for item_data in items_data:
+#         item_dict = {
+#             "name": item_data.get("name"),
+#             "price": item_data.get("price"),
+#             "stock_quantity": item_data.get("stock_quantity", item_data.get("stock", 0)),
+#             "description": item_data.get("description", ""),
+#             "shopid": shop_id,
+#             "imageurl": item_data.get("imageurl", ""),
+#         }
+#         firebase_db.append_item(item_dict)
+#     return jsonify({'success': True})
 @app.route('/add_items', methods=['POST'])
 def add_items():
     data = request.get_json()
     items_data = data.get("items", [])
     shop_id = data.get("shop_id")
+
     if not shop_id or not items_data:
-        return jsonify({'success': False, 'message': 'Missing shop_id or items'}), 400
+        return jsonify({
+            'success': False,
+            'message': 'Missing shop_id or items'
+        }), 400
 
     for item_data in items_data:
         item_dict = {
@@ -252,7 +275,11 @@ def add_items():
             "imageurl": item_data.get("imageurl", ""),
         }
         firebase_db.append_item(item_dict)
-    return jsonify({'success': True})
+
+    return jsonify({
+        'success': True,
+        'message': 'Items added successfully'
+    }), 201
 
 @app.route("/update_item/<item_id>", methods=["PUT"])
 def update_item(item_id):
