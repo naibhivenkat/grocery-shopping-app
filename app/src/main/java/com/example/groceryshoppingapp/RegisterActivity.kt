@@ -262,8 +262,8 @@ class RegisterActivity : AppCompatActivity() {
 
     private fun registerUserBackend(name: String, username: String, email: String, phone: String, role: String, password: String) {
         val body = mapOf(
-            "name" to name,
-            "username" to username,
+            "full_name" to name,       // ✅ match backend
+            "username" to username,    // ✅ backend uses this
             "email" to email,
             "phone" to phone,
             "role" to role,
