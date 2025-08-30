@@ -21,6 +21,7 @@ class RegisterActivity : AppCompatActivity() {
     private lateinit var etEmail: EditText
     private lateinit var etPhone: EditText
     private lateinit var spinnerRole: Spinner
+    private lateinit var etUsername: EditText
 
     // 🔥 NEW: password + confirm password
     private lateinit var etPassword: EditText
@@ -48,6 +49,7 @@ class RegisterActivity : AppCompatActivity() {
         etName = findViewById(R.id.et_name)
         etEmail = findViewById(R.id.et_email)
         etPhone = findViewById(R.id.et_phone)
+        etUsername = findViewById(R.id.et_username)
         spinnerRole = findViewById(R.id.spinner_role)
 
         // 🔥 NEW password + confirm password
@@ -169,13 +171,16 @@ class RegisterActivity : AppCompatActivity() {
         val email = etEmail.text.toString().trim()
         val name = etName.text.toString().trim()
         val phone = etPhone.text.toString().trim()
+        val username = etUsername.text.toString().trim()
         val password = etPassword.text.toString().trim()
         val confirmPassword = etConfirmPassword.text.toString().trim()
 
-        if (email.isEmpty() || name.isEmpty() || phone.isEmpty() || password.isEmpty() || confirmPassword.isEmpty()) {
+        if (username.isEmpty() || email.isEmpty() || name.isEmpty() || phone.isEmpty() ||
+            password.isEmpty() || confirmPassword.isEmpty()) {
             Toast.makeText(this, "Fill all fields", Toast.LENGTH_SHORT).show()
             return
         }
+
         if (password != confirmPassword) {
             Toast.makeText(this, "Passwords do not match", Toast.LENGTH_SHORT).show()
             return
@@ -230,6 +235,7 @@ class RegisterActivity : AppCompatActivity() {
         val otp = getOtpFromBoxes()
         val name = etName.text.toString().trim()
         val phone = etPhone.text.toString().trim()
+        val username = etUsername.text.toString().trim()
         val role = spinnerRole.selectedItem.toString().lowercase()
         val password = etPassword.text.toString().trim()
 
@@ -242,7 +248,7 @@ class RegisterActivity : AppCompatActivity() {
         api.verifyOtp(body).enqueue(object : Callback<Map<String, String>> {
             override fun onResponse(call: Call<Map<String, String>>, response: Response<Map<String, String>>) {
                 if (response.isSuccessful && response.body()?.get("status") == "success") {
-                    registerUserBackend(name, email, phone, role, password)
+                    registerUserBackend(name, username, email, phone, role, password)
                 } else {
                     Toast.makeText(this@RegisterActivity, "Invalid OTP", Toast.LENGTH_SHORT).show()
                 }
@@ -254,28 +260,27 @@ class RegisterActivity : AppCompatActivity() {
         })
     }
 
-    private fun registerUserBackend(name: String, email: String, phone: String, role: String, password: String) {
+    private fun registerUserBackend(name: String, username: String, email: String, phone: String, role: String, password: String) {
         val body = mapOf(
             "name" to name,
+            "username" to username,
             "email" to email,
             "phone" to phone,
             "role" to role,
-            "password" to password // 🔥 added
+            "password" to password
         )
-
         api.registerAfterOtp(body).enqueue(object : Callback<Map<String, String>> {
             override fun onResponse(call: Call<Map<String, String>>, response: Response<Map<String, String>>) {
                 if (response.isSuccessful && response.body()?.get("success") == "true") {
                     Toast.makeText(this@RegisterActivity, "✅ Registered successfully!", Toast.LENGTH_SHORT).show()
 
-                    SessionManager.saveUserProfile(this@RegisterActivity, name, "", phone, email, "", "")
+                    // save profile locally with username
+                    SessionManager.saveUserProfile(this@RegisterActivity, name, username, phone, email, "", "")
 
                     if (role == "shopowner") {
-                        val intent = Intent(this@RegisterActivity, CreateShopActivity::class.java)
-                        startActivity(intent)
+                        startActivity(Intent(this@RegisterActivity, CreateShopActivity::class.java))
                     } else {
-                        val intent = Intent(this@RegisterActivity, CustomerHomeActivity::class.java)
-                        startActivity(intent)
+                        startActivity(Intent(this@RegisterActivity, CustomerHomeActivity::class.java))
                     }
                     finish()
                 } else {
@@ -288,6 +293,7 @@ class RegisterActivity : AppCompatActivity() {
             }
         })
     }
+
 
     private fun resendOtp() {
         if (resendAttempts >= 3) {

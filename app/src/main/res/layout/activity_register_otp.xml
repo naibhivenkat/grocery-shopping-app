@@ -30,6 +30,13 @@
             android:layout_width="match_parent"
             android:layout_height="wrap_content"/>
 
+        <EditText
+            android:id="@+id/et_username"
+            android:hint="Username"
+            android:inputType="text"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"/>
+
         <!-- Password field with toggle -->
         <com.google.android.material.textfield.TextInputLayout
             android:layout_width="match_parent"
