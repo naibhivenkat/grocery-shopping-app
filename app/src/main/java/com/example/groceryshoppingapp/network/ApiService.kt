@@ -98,7 +98,7 @@ interface ApiService {
     fun addItems(
         @Header("Authorization") token: String,
         @Body body: Map<String, Any>
-    ): Call<Map<String, Boolean>>
+    ): Call<ApiResponse>
 
 
     @PUT("/update_item/{item_id}")

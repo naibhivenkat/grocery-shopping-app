@@ -11,6 +11,7 @@ import org.json.JSONObject
 import retrofit2.Call
 import retrofit2.Callback
 import retrofit2.Response
+import com.example.groceryshoppingapp.network.ApiResponse
 
 class AddItemsActivity : AppCompatActivity() {
 
@@ -103,26 +104,28 @@ class AddItemsActivity : AppCompatActivity() {
         )
 
         val call = ApiClient.apiService.addItems("Bearer $token", payload)
-        call.enqueue(object : retrofit2.Callback<Map<String, Boolean>> {
-            override fun onResponse(
-                call: Call<Map<String, Boolean>>,
-                response: retrofit2.Response<Map<String, Boolean>>
-            ) {
-                if (response.isSuccessful) {
+        call.enqueue(object : Callback<ApiResponse> {
+            override fun onResponse(call: Call<ApiResponse>, response: Response<ApiResponse>) {
+                if (response.isSuccessful && response.body()?.success == true) {
                     SessionManager.setHasItemsAdded(this@AddItemsActivity, true)
                     Toast.makeText(this@AddItemsActivity, "Items saved. Returning to dashboard.", Toast.LENGTH_SHORT).show()
                     val intent = Intent(this@AddItemsActivity, ShopOwnerDashboardActivity::class.java)
                     intent.flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK
                     startActivity(intent)
                 } else {
-                    Toast.makeText(this@AddItemsActivity, "Failed to save items", Toast.LENGTH_LONG).show()
+                    Toast.makeText(
+                        this@AddItemsActivity,
+                        response.body()?.message ?: "Failed to save items",
+                        Toast.LENGTH_LONG
+                    ).show()
                 }
             }
 
-            override fun onFailure(call: Call<Map<String, Boolean>>, t: Throwable) {
+            override fun onFailure(call: Call<ApiResponse>, t: Throwable) {
                 Toast.makeText(this@AddItemsActivity, "Error: ${t.message}", Toast.LENGTH_LONG).show()
             }
         })
+
     }
 
 }

@@ -7,12 +7,14 @@ import androidx.appcompat.app.AppCompatActivity
 import androidx.recyclerview.widget.LinearLayoutManager
 import com.example.groceryshoppingapp.databinding.ActivityShopkeeperOrdersBinding
 import com.example.groceryshoppingapp.models.Order
-import com.example.groceryshoppingapp.models.ApiResponse
+//import com.example.groceryshoppingapp.models.ApiResponse
 import com.example.groceryshoppingapp.network.ApiService
 import com.example.groceryshoppingapp.network.RetrofitClient
 import retrofit2.Call
 import retrofit2.Callback
 import retrofit2.Response
+import com.example.groceryshoppingapp.network.ApiResponse
+
 
 class ShopkeeperOrdersActivity : AppCompatActivity() {
 
@@ -68,7 +70,7 @@ class ShopkeeperOrdersActivity : AppCompatActivity() {
         api.updateOrderStatus(orderId, status).enqueue(object : Callback<ApiResponse> {
             override fun onResponse(call: Call<ApiResponse>, response: Response<ApiResponse>) {
                 val apiResponse = response.body()
-                if (response.isSuccessful && apiResponse != null && apiResponse.status == "success") {
+                if (response.isSuccessful && response.body()?.success == true)  {
                     Toast.makeText(this@ShopkeeperOrdersActivity, "Order updated", Toast.LENGTH_SHORT).show()
                     fetchOrders()
                 } else {
