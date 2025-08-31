@@ -88,44 +88,59 @@ class AddItemsActivity : AppCompatActivity() {
     private fun sendItemsToBackend(shopId: String?, items: List<JSONObject>) {
         val token = SessionManager.getAuthToken(this) ?: ""
 
-        // Convert JSONObjects to Map
+        if (shopId.isNullOrEmpty()) {
+            Toast.makeText(this, "Shop ID missing. Please create a shop first.", Toast.LENGTH_SHORT).show()
+            return
+        }
+
+        // Convert JSONObjects to proper Map with correct types
         val itemsList = items.map { json ->
             mapOf(
                 "name" to json.optString("name"),
-                "price" to json.optString("price"),
-                "stock_quantity" to json.optString("stock_quantity"),
+                "price" to (json.optString("price").toDoubleOrNull() ?: 0.0),
+                "stock_quantity" to (json.optString("stock_quantity").toIntOrNull() ?: 0),
                 "description" to json.optString("description")
             )
         }
 
         val payload = mapOf(
-            "shop_id" to (shopId ?: ""),
+            "shop_id" to shopId,
             "items" to itemsList
         )
 
         val call = ApiClient.apiService.addItems("Bearer $token", payload)
         call.enqueue(object : Callback<ApiResponse> {
             override fun onResponse(call: Call<ApiResponse>, response: Response<ApiResponse>) {
-                if (response.isSuccessful && response.body()?.success == true) {
-                    SessionManager.setHasItemsAdded(this@AddItemsActivity, true)
-                    Toast.makeText(this@AddItemsActivity, "Items saved. Returning to dashboard.", Toast.LENGTH_SHORT).show()
-                    val intent = Intent(this@AddItemsActivity, ShopOwnerDashboardActivity::class.java)
-                    intent.flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK
-                    startActivity(intent)
+                if (response.isSuccessful) {
+                    val apiResponse = response.body()
+                    if (apiResponse?.success == true) {
+                        SessionManager.setHasItemsAdded(this@AddItemsActivity, true)
+                        Toast.makeText(this@AddItemsActivity, "Items saved. Returning to dashboard.", Toast.LENGTH_SHORT).show()
+
+                        val intent = Intent(this@AddItemsActivity, ShopOwnerDashboardActivity::class.java)
+                        intent.flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK
+                        startActivity(intent)
+                    } else {
+                        Toast.makeText(
+                            this@AddItemsActivity,
+                            apiResponse?.message ?: "Unknown error occurred",
+                            Toast.LENGTH_LONG
+                        ).show()
+                    }
                 } else {
                     Toast.makeText(
                         this@AddItemsActivity,
-                        response.body()?.message ?: "Failed to save items",
+                        "Server error: ${response.code()}",
                         Toast.LENGTH_LONG
                     ).show()
                 }
             }
 
             override fun onFailure(call: Call<ApiResponse>, t: Throwable) {
-                Toast.makeText(this@AddItemsActivity, "Error: ${t.message}", Toast.LENGTH_LONG).show()
+                Toast.makeText(this@AddItemsActivity, "Network error: ${t.message}", Toast.LENGTH_LONG).show()
             }
         })
-
     }
+
 
 }
