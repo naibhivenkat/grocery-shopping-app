@@ -126,13 +126,15 @@ class LoginActivity : AppCompatActivity() {
                                 val hasShop = user.shopExists == true && user.shop != null
 
                                 if (hasShop) {
-                                    // Shop exists → save info and go to dashboard
                                     val shop = user.shop!!
-                                    SessionManager.setShopId(this@LoginActivity, shop.id)
-                                    SessionManager.setShopInfo(this@LoginActivity, shop.id, shop.name)
+                                    val shopIdStr = shop.id.toString() // always store as String
+                                    SessionManager.setShopId(this@LoginActivity, shopIdStr)
+                                    SessionManager.setShopInfo(this@LoginActivity, shopIdStr, shop.name)
                                     startActivity(Intent(this@LoginActivity, ShopOwnerDashboardActivity::class.java))
                                     finish()
-                                } else {
+                                
+
+                            } else {
                                     // First-time → redirect to CreateShopActivity
                                     val intent = Intent(this@LoginActivity, CreateShopActivity::class.java)
                                     intent.putExtra("shopkeeperId", shopkeeperId)

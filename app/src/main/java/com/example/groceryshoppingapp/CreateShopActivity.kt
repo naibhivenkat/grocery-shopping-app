@@ -65,7 +65,12 @@ class CreateShopActivity : AppCompatActivity() {
             .add(shopData)
             .addOnSuccessListener { documentRef ->
                 // 2️⃣ Update SessionManager
-                SessionManager.setShopInfo(this, shopId.toString(), shopName)
+                //SessionManager.setShopInfo(this, shopId.toString(), shopName)
+                // Always store as String
+                val shopIdStr = shopId.toString()
+                SessionManager.setShopId(this, shopIdStr)
+                SessionManager.setShopInfo(this, shopIdStr, shopName)
+
 
                 // 3️⃣ Update the user document to mark shopExists = true
                 db.collection("users")
