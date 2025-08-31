@@ -479,7 +479,6 @@ def verify_otp():
 @app.route("/register_after_otp", methods=["POST"])
 def register_after_otp():
     data = request.get_json()
-    # accept both "name" and "full_name"
     name = data.get("name") or data.get("full_name")
     email = data.get("email")
     phone = data.get("phone")
@@ -487,15 +486,18 @@ def register_after_otp():
     role = data.get("role", "customer").lower()
     password = data.get("password")
 
-    if not all([name, email, phone]):
+    if not all([name, email, phone, username, password]):
         return jsonify({"success": False, "message": "Missing fields"}), 400
 
-    # Check if user already exists
+    # Check if user exists
     existing = firebase_db.db.collection("users").where("email", "==", email).stream()
     for doc in existing:
         return jsonify({"success": False, "message": "User already exists"}), 400
 
-    # Add new user
+    # Assign IDs
+    customer_id = str(uuid.uuid4()) if role == "customer" else ""
+    shopkeeper_id = str(uuid.uuid4()) if role == "shopowner" else ""
+
     user_dict = {
         "name": name,
         "username": username,
@@ -503,12 +505,28 @@ def register_after_otp():
         "phone": phone,
         "role": role,
         "password": password,
-        "profile_photo": ""
+        "profile_photo": "",
+        "customer_id": customer_id,
+        "shopkeeper_id": shopkeeper_id
     }
+
     firebase_db.append_user(user_dict)
     send_welcome_email(email, name)
 
-    return jsonify({"success": True, "message": "User registered"}), 201
+    # For shopowner, also return shop info if you want
+    shop_info = None
+    if role == "shopowner":
+        shop_info = {
+            "shop_id": "",  # user will create shop later
+            "name": ""
+        }
+
+    return jsonify({
+        "success": True,
+        "message": "User registered",
+        "user": user_dict,
+        "shop": shop_info
+    }), 201
 
 
 @app.before_request

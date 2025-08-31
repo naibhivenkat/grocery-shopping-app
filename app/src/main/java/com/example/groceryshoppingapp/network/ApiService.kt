@@ -137,5 +137,5 @@ interface ApiService {
     fun verifyOtp(@Body body: Map<String, String>): Call<Map<String, String>>
 
     @POST("register_after_otp")
-    fun registerAfterOtp(@Body body: Map<String, String>): Call<Map<String, String>>
+    fun registerAfterOtp(@Body body: Map<String, Any>): Call<Map<String, Any>>
 }
