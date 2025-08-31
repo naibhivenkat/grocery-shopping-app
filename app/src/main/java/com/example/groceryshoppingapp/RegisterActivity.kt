@@ -312,7 +312,7 @@ class RegisterActivity : AppCompatActivity() {
                         )
 
                         // Navigate depending on role
-                        if (user.role == "shopkeeper") {
+                        if (user.role == "shopkeeper" || user.role == "shopowner") {
                             if (user.shopExists == true && user.shop != null) {
                                 startActivity(Intent(this@RegisterActivity, ShopOwnerDashboardActivity::class.java))
                             } else {

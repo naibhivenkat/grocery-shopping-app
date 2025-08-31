@@ -512,6 +512,7 @@ def register_after_otp():
         "role": role,
         "customerId": customer_id,
         "shopkeeperId": shopkeeper_id,
+        "password": password,
         "fullName": name,
         "address": "",
         "phone": phone,
