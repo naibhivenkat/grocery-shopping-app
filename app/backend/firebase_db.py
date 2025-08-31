@@ -110,17 +110,44 @@ def get_shop_by_shopkeeper(shopkeeper_id):
     return None
 
 
-def get_user_by_username(username):
-    users = db.collection("users")
-    for user in users:
-        if user.get("username") == username:
-            return user
-    return None
+# def get_user_by_username(username):
+#     users = db.collection("users")
+#     for user in users:
+#         if user.get("username") == username:
+#             return user
+#     return None
 
-def get_user_by_email(email):
-    users = db.collection("users")
-    for user in users:
-        if user.get("email") == email:
+# def get_user_by_email(email):
+#     users = db.collection("users")
+#     for user in users:
+#         if user.get("email") == email:
+#             return user
+#     return None
+
+def get_user_by_username(username: str):
+    try:
+        users_ref = db.collection("users")
+        query = users_ref.where("username", "==", username).limit(1).stream()
+        for doc in query:
+            user = doc.to_dict()
+            user["id"] = doc.id   # keep Firestore doc id if needed
             return user
-    return None
+        return None
+    except Exception as e:
+        print(f"[ERROR] get_user_by_username failed: {e}")
+        return None
+
+
+def get_user_by_email(email: str):
+    try:
+        users_ref = db.collection("users")
+        query = users_ref.where("email", "==", email).limit(1).stream()
+        for doc in query:
+            user = doc.to_dict()
+            user["id"] = doc.id
+            return user
+        return None
+    except Exception as e:
+        print(f"[ERROR] get_user_by_email failed: {e}")
+        return None
 

@@ -98,33 +98,37 @@ def login():
     password = data.get("password")
 
     user = firebase_db.get_user_by_username(username)
-    if not user or user.get("password") != password:
-        return jsonify({"success": False, "message": "Invalid username or password"}), 401
+    if not user:
+        return jsonify({"success": False, "message": "User not found"}), 404
 
-    # Normalize field names to camelCase
-    normalized_user = {
+    # password check
+    if user.get("password") != password:
+        return jsonify({"success": False, "message": "Invalid password"}), 401
+
+    # ✅ Normalize response (camelCase everywhere)
+    response_user = {
         "id": user.get("id"),
         "username": user.get("username"),
-        "password": user.get("password"),
-        "role": user.get("role"),
         "fullName": user.get("fullName") or user.get("name", ""),
-        "address": user.get("address", ""),
-        "phone": user.get("phone", ""),
         "email": user.get("email", ""),
-        "location": user.get("location", ""),
-        "photoBase64": user.get("photoBase64", ""),
-        "photoUrl": user.get("photoUrl", ""),
+        "phone": user.get("phone", ""),
+        "role": user.get("role", ""),
         "customerId": user.get("customerId") or user.get("customer_id"),
         "shopkeeperId": user.get("shopkeeperId") or user.get("shopkeeper_id"),
+        "address": user.get("address", ""),
+        "location": user.get("location", ""),
+        "photoUrl": user.get("photoUrl") or user.get("photo_url", ""),
+        "photoBase64": user.get("photoBase64") or user.get("photo_base64", ""),
         "shopExists": user.get("shopExists", False),
-        "shop": user.get("shop")
+        "shop": user.get("shop", None)
     }
 
     return jsonify({
         "success": True,
         "message": "Login successful",
-        "user": normalized_user
+        "user": response_user
     }), 200
+
 
 @app.route('/register', methods=['POST'])
 def register():
