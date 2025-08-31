@@ -7,6 +7,7 @@ import android.view.View
 import android.view.animation.AnimationUtils
 import android.widget.*
 import androidx.appcompat.app.AppCompatActivity
+import com.example.groceryshoppingapp.models.RegisterResponse
 import com.example.groceryshoppingapp.network.ApiService
 import com.example.groceryshoppingapp.utils.SessionManager
 import retrofit2.Call
@@ -23,10 +24,12 @@ class RegisterActivity : AppCompatActivity() {
     private lateinit var spinnerRole: Spinner
     private lateinit var etUsername: EditText
 
+    // 🔥 NEW: password + confirm password
     private lateinit var etPassword: EditText
     private lateinit var etConfirmPassword: EditText
     private lateinit var ivPasswordCheck: ImageView
 
+    // 🔥 NEW: OTP as 6 separate boxes
     private lateinit var otpFields: List<EditText>
 
     private lateinit var btnSendOtp: Button
@@ -39,6 +42,7 @@ class RegisterActivity : AppCompatActivity() {
     private var countdownTimer: CountDownTimer? = null
     private lateinit var api: ApiService
 
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_register_otp)
@@ -49,10 +53,12 @@ class RegisterActivity : AppCompatActivity() {
         etUsername = findViewById(R.id.et_username)
         spinnerRole = findViewById(R.id.spinner_role)
 
+        // 🔥 NEW password + confirm password
         etPassword = findViewById(R.id.et_password)
         etConfirmPassword = findViewById(R.id.et_confirm_password)
         ivPasswordCheck = findViewById(R.id.iv_password_check)
 
+        // 🔥 NEW OTP fields (6 boxes)
         otpFields = listOf(
             findViewById(R.id.otp_1),
             findViewById(R.id.otp_2),
@@ -67,15 +73,17 @@ class RegisterActivity : AppCompatActivity() {
         btnResendOtp = findViewById(R.id.btn_resend_otp)
         tvTimer = findViewById(R.id.tv_timer)
 
+        // Spinner for role selection
         ArrayAdapter.createFromResource(
             this,
-            R.array.roles_array,
+            R.array.roles_array, // ["Customer", "ShopOwner"]
             android.R.layout.simple_spinner_item
         ).also { adapter ->
             adapter.setDropDownViewResource(android.R.layout.simple_spinner_dropdown_item)
             spinnerRole.adapter = adapter
         }
 
+        // Retrofit setup
         val retrofit = Retrofit.Builder()
             .baseUrl("https://grocery-shopping-app-yyqx.onrender.com/")
             .addConverterFactory(GsonConverterFactory.create())
@@ -87,7 +95,10 @@ class RegisterActivity : AppCompatActivity() {
         btnVerifyOtp.setOnClickListener { verifyOtp() }
         btnResendOtp.setOnClickListener { resendOtp() }
 
+        // 🔥 password live validation
         setupPasswordValidation()
+
+        // 🔥 OTP box auto-move
         setupOtpBoxes()
     }
 
@@ -132,8 +143,11 @@ class RegisterActivity : AppCompatActivity() {
             otpFields[i].addTextChangedListener(object : android.text.TextWatcher {
                 override fun beforeTextChanged(s: CharSequence?, start: Int, count: Int, after: Int) {}
                 override fun onTextChanged(s: CharSequence?, start: Int, before: Int, count: Int) {
-                    if (s?.length == 1 && i < otpFields.size - 1) otpFields[i + 1].requestFocus()
-                    else if (s?.isEmpty() == true && i > 0) otpFields[i - 1].requestFocus()
+                    if (s?.length == 1 && i < otpFields.size - 1) {
+                        otpFields[i + 1].requestFocus()
+                    } else if (s?.isEmpty() == true && i > 0) {
+                        otpFields[i - 1].requestFocus()
+                    }
                     validateOtpBoxes()
                 }
                 override fun afterTextChanged(s: android.text.Editable?) {}
@@ -143,12 +157,15 @@ class RegisterActivity : AppCompatActivity() {
 
     private fun getOtpFromBoxes(): String {
         val sb = StringBuilder()
-        otpFields.forEach { sb.append(it.text.toString().trim()) }
+        for (field in otpFields) {
+            sb.append(field.text.toString().trim())
+        }
         return sb.toString()
     }
 
     private fun validateOtpBoxes() {
-        btnVerifyOtp.isEnabled = getOtpFromBoxes().length == 6
+        val otp = getOtpFromBoxes()
+        btnVerifyOtp.isEnabled = otp.length == 6
     }
 
     private fun sendOtp() {
@@ -160,8 +177,7 @@ class RegisterActivity : AppCompatActivity() {
         val confirmPassword = etConfirmPassword.text.toString().trim()
 
         if (username.isEmpty() || email.isEmpty() || name.isEmpty() || phone.isEmpty() ||
-            password.isEmpty() || confirmPassword.isEmpty()
-        ) {
+            password.isEmpty() || confirmPassword.isEmpty()) {
             Toast.makeText(this, "Fill all fields", Toast.LENGTH_SHORT).show()
             return
         }
@@ -171,24 +187,23 @@ class RegisterActivity : AppCompatActivity() {
             return
         }
 
-        api.sendOtp(mapOf("email" to email))
-            .enqueue(object : Callback<Map<String, String>> {
-                override fun onResponse(
-                    call: Call<Map<String, String>>,
-                    response: Response<Map<String, String>>
-                ) {
-                    if (response.isSuccessful) {
-                        Toast.makeText(this@RegisterActivity, "OTP sent!", Toast.LENGTH_SHORT).show()
-                        otpSent = true
-                        showOtpFields()
-                        startTimer()
-                    } else Toast.makeText(this@RegisterActivity, "Failed to send OTP", Toast.LENGTH_SHORT).show()
+        val body = mapOf("email" to email)
+        api.sendOtp(body).enqueue(object : Callback<Map<String, String>> {
+            override fun onResponse(call: Call<Map<String, String>>, response: Response<Map<String, String>>) {
+                if (response.isSuccessful) {
+                    Toast.makeText(this@RegisterActivity, "OTP sent!", Toast.LENGTH_SHORT).show()
+                    otpSent = true
+                    showOtpFields()
+                    startTimer()
+                } else {
+                    Toast.makeText(this@RegisterActivity, "Failed to send OTP", Toast.LENGTH_SHORT).show()
                 }
+            }
 
-                override fun onFailure(call: Call<Map<String, String>>, t: Throwable) {
-                    Toast.makeText(this@RegisterActivity, "Error: ${t.message}", Toast.LENGTH_SHORT).show()
-                }
-            })
+            override fun onFailure(call: Call<Map<String, String>>, t: Throwable) {
+                Toast.makeText(this@RegisterActivity, "Error: ${t.message}", Toast.LENGTH_SHORT).show()
+            }
+        })
     }
 
     private fun showOtpFields() {
@@ -230,25 +245,21 @@ class RegisterActivity : AppCompatActivity() {
             return
         }
 
-        api.verifyOtp(mapOf("email" to email, "otp" to otp))
-            .enqueue(object : Callback<Map<String, String>> {
-                override fun onResponse(
-                    call: Call<Map<String, String>>,
-                    response: Response<Map<String, String>>
-                ) {
-                    if (response.isSuccessful && response.body()?.get("status") == "success") {
-                        registerUserBackend(name, username, email, phone, role, password)
-                    } else {
-                        Toast.makeText(this@RegisterActivity, "Invalid OTP", Toast.LENGTH_SHORT).show()
-                    }
+        val body = mapOf("email" to email, "otp" to otp)
+        api.verifyOtp(body).enqueue(object : Callback<Map<String, String>> {
+            override fun onResponse(call: Call<Map<String, String>>, response: Response<Map<String, String>>) {
+                if (response.isSuccessful && response.body()?.get("status") == "success") {
+                    registerUserBackend(name, username, email, phone, role, password)
+                } else {
+                    Toast.makeText(this@RegisterActivity, "Invalid OTP", Toast.LENGTH_SHORT).show()
                 }
+            }
 
-                override fun onFailure(call: Call<Map<String, String>>, t: Throwable) {
-                    Toast.makeText(this@RegisterActivity, "Error: ${t.message}", Toast.LENGTH_SHORT).show()
-                }
-            })
+            override fun onFailure(call: Call<Map<String, String>>, t: Throwable) {
+                Toast.makeText(this@RegisterActivity, "Error: ${t.message}", Toast.LENGTH_SHORT).show()
+            }
+        })
     }
-
     private fun registerUserBackend(
         name: String,
         username: String,
@@ -266,59 +277,59 @@ class RegisterActivity : AppCompatActivity() {
             "password" to password
         )
 
-        api.registerAfterOtp(body)
-            .enqueue(object : Callback<Map<String, Any>> {
-                override fun onResponse(
-                    call: Call<Map<String, Any>>,
-                    response: Response<Map<String, Any>>
-                ) {
-                    if (response.isSuccessful) {
-                        val resBody = response.body()
-                        val success = resBody?.get("success") as? Boolean ?: false
+        api.registerAfterOtp(body).enqueue(object : Callback<RegisterResponse> {
+            override fun onResponse(
+                call: Call<RegisterResponse>,
+                response: Response<RegisterResponse>
+            ) {
+                if (response.isSuccessful && response.body()?.success == true) {
+                    val user = response.body()?.user
+                    if (user != null) {
+                        // Save login info
+                        SessionManager.saveLogin(
+                            this@RegisterActivity,
+                            user.username,
+                            user.role
+                        )
 
-                        if (success) {
-                            val user = resBody?.get("user") as? Map<*, *>
-                            val shop = resBody?.get("shop") as? Map<*, *>
+                        // Save profile info
+                        SessionManager.saveUserProfile(
+                            this@RegisterActivity,
+                            user.fullName ?: "",
+                            user.address ?: "",
+                            user.phone ?: "",
+                            user.email ?: "",
+                            user.location ?: "",
+                            user.photoBase64
+                        )
 
-                            val savedRole = user?.get("role") as? String ?: role
-                            val usernameSaved = user?.get("username") as? String ?: username
-
-                            SessionManager.saveLogin(this@RegisterActivity, usernameSaved, savedRole)
-
-                            if (savedRole == "shopowner") {
-                                val shopkeeperId = user?.get("shopkeeper_id") as? String ?: ""
-                                SessionManager.setShopkeeperId(this@RegisterActivity, shopkeeperId)
-
-                                shop?.let {
-                                    val shopId = it["shop_id"] as? String ?: ""
-                                    val shopName = it["name"] as? String ?: ""
-                                    SessionManager.setShopInfo(this@RegisterActivity, shopId, shopName)
-                                }
-
-                                startActivity(Intent(this@RegisterActivity, CreateShopActivity::class.java))
+                        // Navigate depending on role
+                        if (user.role == "shopkeeper") {
+                            if (user.shopExists == true && user.shop != null) {
+                                startActivity(Intent(this@RegisterActivity, ShopOwnerDashboardActivity::class.java))
                             } else {
-                                val customerId = user?.get("customer_id") as? String ?: ""
-                                SessionManager.setCustomerId(this@RegisterActivity, customerId)
-                                startActivity(Intent(this@RegisterActivity, CustomerHomeActivity::class.java))
+                                startActivity(Intent(this@RegisterActivity, CreateShopActivity::class.java))
                             }
-
-                            finish()
                         } else {
-                            val msg = resBody?.get("message") as? String ?: "Registration failed"
-                            Toast.makeText(this@RegisterActivity, msg, Toast.LENGTH_SHORT).show()
+                            startActivity(Intent(this@RegisterActivity, CustomerHomeActivity::class.java))
                         }
-                    } else {
-                        Toast.makeText(this@RegisterActivity, "Registration failed: ${response.code()}", Toast.LENGTH_SHORT).show()
+                        finish()
                     }
+                } else {
+                    Toast.makeText(this@RegisterActivity, "❌ Registration failed", Toast.LENGTH_SHORT).show()
                 }
+            }
 
-                override fun onFailure(call: Call<Map<String, Any>>, t: Throwable) {
-                    Toast.makeText(this@RegisterActivity, "Error: ${t.message}", Toast.LENGTH_SHORT).show()
-                }
-            })
+            override fun onFailure(call: Call<RegisterResponse>, t: Throwable) {
+                Toast.makeText(this@RegisterActivity, "⚠️ Error: ${t.message}", Toast.LENGTH_SHORT).show()
+            }
+        })
+
+
     }
 
-    private fun resendOtp() {
+
+        private fun resendOtp() {
         if (resendAttempts >= 3) {
             Toast.makeText(this, "Maximum resend attempts reached", Toast.LENGTH_SHORT).show()
             return
