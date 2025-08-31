@@ -296,16 +296,18 @@ class RegisterActivity : AppCompatActivity() {
 
                     // Navigate to next screen
                     if (role == "shopowner") {
-                        SessionManager.setShopkeeperId(this@RegisterActivity, username)
-                        startActivity(Intent(this@RegisterActivity, CreateShopActivity::class.java))
+                        // Use backend-provided shopkeeper ID if available
+                        val shopkeeperId = response.body()?.get("shopkeeper_id") ?: username
+                        SessionManager.setShopkeeperId(this@RegisterActivity, shopkeeperId)
+
+                        // Redirect to create shop
+                        val intent = Intent(this@RegisterActivity, CreateShopActivity::class.java)
+                        intent.putExtra("shopkeeperId", shopkeeperId)
+                        startActivity(intent)
                     } else {
-                        SessionManager.setCustomerId(this@RegisterActivity, username)
-                        startActivity(
-                            Intent(
-                                this@RegisterActivity,
-                                CustomerHomeActivity::class.java
-                            )
-                        )
+                        val customerId = response.body()?.get("customer_id") ?: username
+                        SessionManager.setCustomerId(this@RegisterActivity, customerId)
+                        startActivity(Intent(this@RegisterActivity, CustomerHomeActivity::class.java))
                     }
 
                     finish()

@@ -18,10 +18,10 @@ object SessionManager {
     private const val KEY_HAS_ITEMS = "has_items_added"  // unified flag
     private const val KEY_SHOP_IDS = "shop_ids"          // multiple shop UUIDs
 
-    // --- 🔑 NEW: AUTH TOKEN ---
+    // --- 🔑 AUTH TOKEN ---
     private const val KEY_AUTH_TOKEN = "auth_token"
 
-    // language
+    // --- Language preferences ---
     private const val KEY_LANGUAGE_SELECTED = "language_selected"
     private const val KEY_LANGUAGE_CODE = "language_code"
 
@@ -39,34 +39,35 @@ object SessionManager {
     fun getUsername(context: Context): String? = prefs(context).getString(KEY_USERNAME, null)
     fun getRole(context: Context): String? = prefs(context).getString(KEY_ROLE, null)
 
-    // --- CUSTOMER & SHOPKEEPER IDs (now consistent as String) ---
+    // --- CUSTOMER & SHOPKEEPER IDs ---
     fun setCustomerId(context: Context, id: String) {
-        prefs(context).edit().putString(KEY_CUSTOMER_ID, id).apply()
+        prefs(context).edit { putString(KEY_CUSTOMER_ID, id) }
     }
-    fun getCustomerId(context: Context): String? =
-        prefs(context).getString(KEY_CUSTOMER_ID, null)
+    fun getCustomerId(context: Context): String? = prefs(context).getString(KEY_CUSTOMER_ID, null)
 
     fun setShopkeeperId(context: Context, id: String) {
-        prefs(context).edit().putString(KEY_SHOPKEEPER_ID, id).apply()
+        prefs(context).edit { putString(KEY_SHOPKEEPER_ID, id) }
     }
-    fun getShopkeeperId(context: Context): String? =
-        prefs(context).getString(KEY_SHOPKEEPER_ID, null)
+    fun getShopkeeperId(context: Context): String? = prefs(context).getString(KEY_SHOPKEEPER_ID, null)
 
     // --- SINGLE SHOP UUID ---
     fun setShopId(context: Context, shopId: String) {
-        prefs(context).edit().putString(KEY_SHOP_ID, shopId).apply()
+        prefs(context).edit { putString(KEY_SHOP_ID, shopId) }
     }
     fun getShopId(context: Context): String? = prefs(context).getString(KEY_SHOP_ID, null)
 
     fun setShopInfo(context: Context, id: String?, name: String) {
-        prefs(context).edit().putString(KEY_SHOP_ID, id).putString(KEY_SHOP_NAME, name).apply()
+        prefs(context).edit {
+            putString(KEY_SHOP_ID, id)
+            putString(KEY_SHOP_NAME, name)
+        }
     }
     fun getShopName(context: Context): String? = prefs(context).getString(KEY_SHOP_NAME, null)
 
     // --- MULTIPLE SHOP UUIDs for SHOPKEEPER ---
     fun setShopIds(context: Context, shopIds: List<String>) {
         val joined = shopIds.joinToString(",")
-        prefs(context).edit().putString(KEY_SHOP_IDS, joined).apply()
+        prefs(context).edit { putString(KEY_SHOP_IDS, joined) }
     }
     fun getShopIds(context: Context): List<String> {
         val saved = prefs(context).getString(KEY_SHOP_IDS, "") ?: ""
@@ -83,21 +84,21 @@ object SessionManager {
         location: String,
         photoBase64: String?
     ) {
-        prefs(context).edit()
-            .putString("full_name", fullName)
-            .putString("address", address)
-            .putString("phone", phone)
-            .putString("email", email)
-            .putString("location", location)
-            .putString(KEY_PHOTO_BASE64, photoBase64)
-            .apply()
+        prefs(context).edit {
+            putString("full_name", fullName)
+            putString("address", address)
+            putString("phone", phone)
+            putString("email", email)
+            putString("location", location)
+            putString(KEY_PHOTO_BASE64, photoBase64)
+        }
     }
 
     fun getPhotoBase64(context: Context): String? =
         prefs(context).getString(KEY_PHOTO_BASE64, null)?.takeIf { it.isNotBlank() && it != "null" }
 
     fun setPhotoBase64(context: Context, photoBase64: String) {
-        prefs(context).edit().putString(KEY_PHOTO_BASE64, photoBase64).apply()
+        prefs(context).edit { putString(KEY_PHOTO_BASE64, photoBase64) }
     }
 
     fun getFullName(context: Context): String? = prefs(context).getString("full_name", "")
@@ -108,24 +109,22 @@ object SessionManager {
 
     // --- SHOP ITEMS ---
     fun setShopItems(context: Context, items: List<String>) {
-        prefs(context).edit().putString(KEY_SHOP_ITEMS, items.joinToString("|")).apply()
+        prefs(context).edit { putString(KEY_SHOP_ITEMS, items.joinToString("|")) }
         setHasItemsAdded(context, items.isNotEmpty())
     }
     fun getShopItems(context: Context): List<String> =
         prefs(context).getString(KEY_SHOP_ITEMS, null)?.split("|")?.filter { it.isNotBlank() } ?: emptyList()
 
     fun setHasItemsAdded(context: Context, added: Boolean) {
-        prefs(context).edit().putBoolean(KEY_HAS_ITEMS, added).apply()
+        prefs(context).edit { putBoolean(KEY_HAS_ITEMS, added) }
     }
-    fun hasItemsAdded(context: Context): Boolean =
-        prefs(context).getBoolean(KEY_HAS_ITEMS, false)
+    fun hasItemsAdded(context: Context): Boolean = prefs(context).getBoolean(KEY_HAS_ITEMS, false)
 
     // --- 🔑 AUTH TOKEN ---
     fun saveAuthToken(context: Context, token: String) {
-        prefs(context).edit().putString(KEY_AUTH_TOKEN, token).apply()
+        prefs(context).edit { putString(KEY_AUTH_TOKEN, token) }
     }
-    fun getAuthToken(context: Context): String? =
-        prefs(context).getString(KEY_AUTH_TOKEN, null)
+    fun getAuthToken(context: Context): String? = prefs(context).getString(KEY_AUTH_TOKEN, null)
 
     // --- LOGOUT ---
     fun logout(context: Context) {
@@ -134,7 +133,7 @@ object SessionManager {
 
         prefs(context).edit().clear().apply()
 
-        // restore language
+        // Restore language
         setLanguageSelected(context, langSelected)
         setLanguageCode(context, langCode ?: "en")
     }
@@ -142,14 +141,11 @@ object SessionManager {
     // --- LANGUAGE ---
     fun isLanguageSelected(context: Context): Boolean =
         prefs(context).getBoolean(KEY_LANGUAGE_SELECTED, false)
-
     fun setLanguageSelected(context: Context, selected: Boolean) {
-        prefs(context).edit().putBoolean(KEY_LANGUAGE_SELECTED, selected).apply()
+        prefs(context).edit { putBoolean(KEY_LANGUAGE_SELECTED, selected) }
     }
-
     fun getLanguageCode(context: Context): String? =
         prefs(context).getString(KEY_LANGUAGE_CODE, "en")
-
     fun setLanguageCode(context: Context, code: String) {
         prefs(context).edit { putString(KEY_LANGUAGE_CODE, code) }
     }

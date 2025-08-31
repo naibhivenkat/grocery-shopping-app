@@ -2,26 +2,16 @@ package com.example.groceryshoppingapp
 
 import android.content.Intent
 import android.os.Bundle
-import android.util.Log
 import android.widget.*
 import androidx.appcompat.app.AppCompatActivity
 import com.example.groceryshoppingapp.models.Item
-import com.example.groceryshoppingapp.network.AddItemsRequest
+import com.example.groceryshoppingapp.models.AddItemsRequest
 import com.example.groceryshoppingapp.network.ApiClient
 import com.example.groceryshoppingapp.network.ApiResponse
-import com.example.groceryshoppingapp.network.ApiService
 import com.example.groceryshoppingapp.utils.SessionManager
-import org.json.JSONArray
-import org.json.JSONObject
 import retrofit2.Call
 import retrofit2.Callback
 import retrofit2.Response
-
-// --- Request wrapper for backend ---
-//data class AddItemsRequest(
-//    val shop_id: String,
-//    val items: List<Item>
-//)
 
 class AddItemsActivity : AppCompatActivity() {
 
@@ -33,7 +23,7 @@ class AddItemsActivity : AppCompatActivity() {
     private lateinit var btnFinish: Button
     private lateinit var listViewItems: ListView
 
-    private val itemDataList = mutableListOf<JSONObject>()
+    private val itemDataList = mutableListOf<Item>()
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -62,24 +52,33 @@ class AddItemsActivity : AppCompatActivity() {
             return
         }
 
-        val itemJson = JSONObject().apply {
-            put("name", name)
-            put("price", price)
-            put("stock_quantity", stock)
-            put("description", description)
+        val shopId = SessionManager.getShopId(this)
+        if (shopId.isNullOrEmpty()) {
+            Toast.makeText(this, "Shop ID missing. Please login again.", Toast.LENGTH_SHORT).show()
+            startActivity(Intent(this, LoginActivity::class.java))
+            finish()
+            return
         }
-        itemDataList.add(itemJson)
+
+        val item = Item(
+            id = "", // backend generates ID
+            name = name,
+            price = price.toDoubleOrNull() ?: 0.0,
+            stockQuantity = stock.toIntOrNull() ?: 0,
+            description = description,
+            shopid = shopId,
+            imageUrl = null
+        )
+
+        itemDataList.add(item)
 
         // Update ListView
-        val displayList = itemDataList.map { json ->
-            val displayStock = json.optString("stock_quantity", "0")
-            "Name: ${json.optString("name", "")} | Price: ₹${json.optString("price", "")} | Stock: $displayStock | Desc: ${json.optString("description", "")}"
+        val displayList = itemDataList.map {
+            "Name: ${it.name} | Price: ₹${it.price} | Stock: ${it.stockQuantity} | Desc: ${it.description}"
         }
+        listViewItems.adapter = ArrayAdapter(this, android.R.layout.simple_list_item_1, displayList)
 
-        val adapter = ArrayAdapter(this, android.R.layout.simple_list_item_1, displayList)
-        listViewItems.adapter = adapter
-
-        // Clear fields
+        // Clear input fields
         etItemName.text.clear()
         etItemPrice.text.clear()
         etItemQuantity.text.clear()
@@ -92,34 +91,19 @@ class AddItemsActivity : AppCompatActivity() {
             return
         }
 
-        val jsonArray = JSONArray(itemDataList)
-        sendItemsToBackend(jsonArray)
-    }
-
-    private fun sendItemsToBackend(items: JSONArray) {
         val token = SessionManager.getAuthToken(this)
         val shopId = SessionManager.getShopId(this)
 
         if (token.isNullOrEmpty() || shopId.isNullOrEmpty()) {
             Toast.makeText(this, "❌ Missing auth token or shop ID. Please login again.", Toast.LENGTH_SHORT).show()
-            Log.d("AddItemsActivity", "DEBUG token: $token | shop_id: $shopId")
+            startActivity(Intent(this, LoginActivity::class.java))
+            finish()
             return
         }
 
-        val itemsList = (0 until items.length()).map { i ->
-            val json = items.getJSONObject(i)
-            Item(
-                id = "",
-                name = json.optString("name"),
-                price = json.optString("price").toDoubleOrNull() ?: 0.0,
-                stockQuantity = json.optString("stock_quantity").toIntOrNull() ?: 0,
-                description = json.optString("description"),
-                shopid = shopId,
-                imageUrl = null
-            )
-        }
+        val request = AddItemsRequest(shopId, itemDataList)
 
-        ApiClient.apiService.addItems("Bearer $token", AddItemsRequest(shopId, itemsList))
+        ApiClient.apiService.addItems("Bearer $token", request)
             .enqueue(object : Callback<ApiResponse> {
                 override fun onResponse(call: Call<ApiResponse>, response: Response<ApiResponse>) {
                     if (response.isSuccessful && response.body()?.success == true) {
@@ -128,14 +112,13 @@ class AddItemsActivity : AppCompatActivity() {
                         startActivity(Intent(this@AddItemsActivity, ShopOwnerMainActivity::class.java))
                         finish()
                     } else {
-                        Toast.makeText(this@AddItemsActivity, "❌ Failed: ${response.body()?.message}", Toast.LENGTH_SHORT).show()
+                        Toast.makeText(this@AddItemsActivity, "❌ Failed: ${response.body()?.message ?: "Unknown error"}", Toast.LENGTH_SHORT).show()
                     }
                 }
 
                 override fun onFailure(call: Call<ApiResponse>, t: Throwable) {
-                    Toast.makeText(this@AddItemsActivity, "⚠️ Error: ${t.message}", Toast.LENGTH_SHORT).show()
+                    Toast.makeText(this@AddItemsActivity, "⚠️ Error: ${t.message ?: "Unknown error"}", Toast.LENGTH_SHORT).show()
                 }
             })
     }
-
 }

@@ -1,5 +1,6 @@
 package com.example.groceryshoppingapp.network
 
+import com.example.groceryshoppingapp.models.AddItemsRequest
 import com.example.groceryshoppingapp.models.*
 import retrofit2.Call
 import retrofit2.http.Body
@@ -15,10 +16,7 @@ import retrofit2.http.DELETE
 import retrofit2.http.PUT
 import retrofit2.http.Header
 
-data class AddItemsRequest(
-    val shop_id: String,
-    val items: List<Item>
-)
+
 
 interface ApiService {
     @PATCH("api/orders/{order_id}")
@@ -105,7 +103,7 @@ interface ApiService {
 //        @Body body: Map<String, Any>
 //    ): Call<ApiResponse>
 
-    @POST("add_items")
+    @POST("shop/add_items")
     fun addItems(
         @Header("Authorization") token: String,
         @Body request: AddItemsRequest

@@ -53,7 +53,18 @@ class CreateShopActivity : AppCompatActivity() {
     }
 
     private fun saveShopToFirebase(shopId: Int, shopName: String) {
-        val shopkeeperId = SessionManager.getShopkeeperId(this) ?: return
+        val shopkeeperId = SessionManager.getShopkeeperId(this)
+        if (shopkeeperId.isNullOrEmpty()) {
+            Toast.makeText(
+                this,
+                "Error: Shopkeeper ID missing. Please login again.",
+                Toast.LENGTH_SHORT
+            ).show()
+            startActivity(Intent(this, LoginActivity::class.java))
+            finish()
+            return
+        }
+
         val shopData = hashMapOf(
             "shop_id" to shopId,
             "name" to shopName,
@@ -95,4 +106,3 @@ class CreateShopActivity : AppCompatActivity() {
             }
     }
 }
-
