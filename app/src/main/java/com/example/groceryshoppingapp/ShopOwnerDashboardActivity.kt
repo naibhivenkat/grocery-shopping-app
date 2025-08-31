@@ -2,8 +2,10 @@ package com.example.groceryshoppingapp
 
 import android.content.Intent
 import android.os.Bundle
+import android.util.Log
 import android.view.MenuItem
 import android.widget.Button
+import android.widget.Toast
 import androidx.appcompat.app.ActionBarDrawerToggle
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.view.GravityCompat
@@ -35,7 +37,6 @@ class ShopOwnerDashboardActivity : AppCompatActivity() {
             R.string.navigation_drawer_open,
             R.string.navigation_drawer_close
         )
-
         drawerLayout.addDrawerListener(toggle)
         toggle.syncState()
 
@@ -46,29 +47,6 @@ class ShopOwnerDashboardActivity : AppCompatActivity() {
 
         supportActionBar?.setDisplayHomeAsUpEnabled(true)
         supportActionBar?.setHomeAsUpIndicator(R.drawable.ic_menu)
-
-        // --- SESSION CHECKS ---
-        if (!SessionManager.isLoggedIn(this)) {
-            // not logged in → redirect to Login
-            startActivity(Intent(this, LoginActivity::class.java))
-            finish()
-            return
-        }
-
-        val shopId = SessionManager.getShopId(this)
-        val hasShop = !shopId.isNullOrEmpty()
-
-        val hasItems = SessionManager.hasItemsAdded(this)
-
-        if (!hasShop) {
-            startActivity(Intent(this, CreateShopActivity::class.java))
-            finish()
-            return
-        } else if (!hasItems) {
-            startActivity(Intent(this, AddItemsActivity::class.java))
-            finish()
-            return
-        }
 
         // --- BUTTONS ---
         btnOrders.setOnClickListener {
@@ -91,6 +69,39 @@ class ShopOwnerDashboardActivity : AppCompatActivity() {
             }
             drawerLayout.closeDrawer(GravityCompat.END)
             true
+        }
+    }
+
+    override fun onResume() {
+        super.onResume()
+
+        // --- SESSION CHECKS ---
+        if (!SessionManager.isLoggedIn(this)) {
+            Log.d("DashboardDebug", "Not logged in, redirecting to LoginActivity")
+            Toast.makeText(this, "Not logged in → redirecting", Toast.LENGTH_SHORT).show()
+            startActivity(Intent(this, LoginActivity::class.java))
+            finish()
+            return
+        }
+
+        val shopId = SessionManager.getShopId(this)
+        val hasShop = !shopId.isNullOrEmpty()
+        val hasItems = SessionManager.hasItemsAdded(this)
+
+        // Debug logging
+        Log.d("DashboardDebug", "shopId = $shopId, hasShop = $hasShop, hasItems = $hasItems")
+        Toast.makeText(this, "Debug → shopId=$shopId | hasShop=$hasShop | hasItems=$hasItems", Toast.LENGTH_LONG).show()
+
+        if (!hasShop) {
+            Log.d("DashboardDebug", "Redirecting to CreateShopActivity")
+            startActivity(Intent(this, CreateShopActivity::class.java))
+            finish()
+            return
+        } else if (!hasItems) {
+            Log.d("DashboardDebug", "Redirecting to AddItemsActivity")
+            startActivity(Intent(this, AddItemsActivity::class.java))
+            finish()
+            return
         }
     }
 
