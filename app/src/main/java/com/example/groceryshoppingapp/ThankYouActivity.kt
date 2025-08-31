@@ -10,7 +10,7 @@ import com.example.groceryshoppingapp.utils.SessionManager
 
 class ThankYouActivity : AppCompatActivity() {
     private lateinit var binding: ActivityThankYouBinding
-    private var customerId: Int = -1
+    private var customerId: String? = null
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)

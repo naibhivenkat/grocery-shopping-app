@@ -17,7 +17,7 @@ class ShopSelectionActivity : AppCompatActivity() {
 
     private lateinit var shopListView: ListView
     private lateinit var shops: List<Shop>
-    private var customerId: Int = -1
+    private var customerId: String? = null
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -26,7 +26,7 @@ class ShopSelectionActivity : AppCompatActivity() {
         shopListView = findViewById(R.id.shop_list_view)
         customerId = SessionManager.getCustomerId(this)
 
-        if (customerId == -1) {
+        if (customerId.isNullOrEmpty()) {
             Toast.makeText(this, "Invalid customer ID", Toast.LENGTH_SHORT).show()
             finish()
             return

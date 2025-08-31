@@ -15,7 +15,7 @@ import com.example.groceryshoppingapp.SampleData
 class CartShopListActivity : AppCompatActivity() {
 
     private lateinit var binding: ActivityCartShopListBinding
-    private var customerId: Int = -1
+    private var customerId: String? = null
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -23,7 +23,7 @@ class CartShopListActivity : AppCompatActivity() {
         setContentView(binding.root)
 
         customerId = SessionManager.getCustomerId(this)
-        if (customerId == -1) {
+        if (customerId.isNullOrEmpty()) {
             Toast.makeText(this, "Session expired. Please login again.", Toast.LENGTH_SHORT).show()
             startActivity(Intent(this, LoginActivity::class.java))
             finish()

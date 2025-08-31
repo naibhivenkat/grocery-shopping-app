@@ -20,7 +20,7 @@ class CustomerItemsActivity : AppCompatActivity() {
     private lateinit var fabCart: FloatingActionButton
 
     private var shopId: String? = null
-    private var customerId: Int = -1
+    private var customerId:  String? = null
     private val cartItems = mutableListOf<CartItem>()
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -34,7 +34,7 @@ class CustomerItemsActivity : AppCompatActivity() {
         customerId = SessionManager.getCustomerId(this)
         shopId = SessionManager.getShopId(this)
 
-        if (customerId == -1 || shopId.isNullOrEmpty()) {
+        if (customerId.isNullOrEmpty() || shopId.isNullOrEmpty()) {
             Toast.makeText(this, "Session expired. Please login again.", Toast.LENGTH_SHORT).show()
             startActivity(Intent(this, LoginActivity::class.java))
             finish()

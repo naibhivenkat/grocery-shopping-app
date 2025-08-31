@@ -12,6 +12,7 @@ import retrofit2.Call
 import retrofit2.Callback
 import retrofit2.Response
 import com.example.groceryshoppingapp.network.ApiResponse
+import com.example.groceryshoppingapp.models.Item
 
 class AddItemsActivity : AppCompatActivity() {
 
@@ -80,67 +81,55 @@ class AddItemsActivity : AppCompatActivity() {
             if (itemDataList.isEmpty()) {
                 Toast.makeText(this, "No items to save", Toast.LENGTH_SHORT).show()
             } else {
-                sendItemsToBackend(shopId, itemDataList)
+                // Convert list of JSONObjects → JSONArray
+                val jsonArray = JSONArray(itemDataList)
+                sendItemsToBackend(jsonArray)
             }
         }
     }
 
-    private fun sendItemsToBackend(shopId: String?, items: List<JSONObject>) {
+    private fun sendItemsToBackend(items: JSONArray) {
         val token = SessionManager.getAuthToken(this) ?: ""
+        val shopId = SessionManager.getShopId(this) ?: ""
 
-        if (shopId.isNullOrEmpty()) {
-            Toast.makeText(this, "Shop ID missing. Please create a shop first.", Toast.LENGTH_SHORT).show()
+        if (token.isEmpty() || shopId.isEmpty()) {
+            Toast.makeText(this, "Missing auth token or shop ID", Toast.LENGTH_SHORT).show()
             return
         }
 
-        // Convert JSONObjects to proper Map with correct types
-        val itemsList = items.map { json ->
-            mapOf(
-                "name" to json.optString("name"),
-                "price" to (json.optString("price").toDoubleOrNull() ?: 0.0),
-                "stock_quantity" to (json.optString("stock_quantity").toIntOrNull() ?: 0),
-                "description" to json.optString("description")
+        // Convert JSONArray → List<Item>
+        val itemsList = (0 until items.length()).map { i ->
+            val json = items.getJSONObject(i)
+            Item(
+                id = "", // backend can assign ID
+                name = json.optString("name"),
+                price = json.optString("price").toDoubleOrNull() ?: 0.0,
+                stockQuantity = json.optString("stock_quantity").toIntOrNull() ?: 0,
+                description = json.optString("description"),
+                shopid = shopId,
+                imageUrl = null
             )
         }
 
-        val payload = mapOf(
-            "shop_id" to shopId,
-            "items" to itemsList
-        )
-
-        val call = ApiClient.apiService.addItems("Bearer $token", payload)
+        // API call
+        val call = ApiClient.apiService.addItems("Bearer $token", shopId, itemsList)
         call.enqueue(object : Callback<ApiResponse> {
             override fun onResponse(call: Call<ApiResponse>, response: Response<ApiResponse>) {
-                if (response.isSuccessful) {
-                    val apiResponse = response.body()
-                    if (apiResponse?.success == true) {
-                        SessionManager.setHasItemsAdded(this@AddItemsActivity, true)
-                        Toast.makeText(this@AddItemsActivity, "Items saved. Returning to dashboard.", Toast.LENGTH_SHORT).show()
-
-                        val intent = Intent(this@AddItemsActivity, ShopOwnerDashboardActivity::class.java)
-                        intent.flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK
-                        startActivity(intent)
-                    } else {
-                        Toast.makeText(
-                            this@AddItemsActivity,
-                            apiResponse?.message ?: "Unknown error occurred",
-                            Toast.LENGTH_LONG
-                        ).show()
-                    }
+                if (response.isSuccessful && response.body()?.success == true) {
+                    Toast.makeText(this@AddItemsActivity, "Items added successfully!", Toast.LENGTH_SHORT).show()
+                    SessionManager.setHasItemsAdded(this@AddItemsActivity, true)
+                    finish() // close activity
                 } else {
-                    Toast.makeText(
-                        this@AddItemsActivity,
-                        "Server error: ${response.code()}",
-                        Toast.LENGTH_LONG
-                    ).show()
+                    Toast.makeText(this@AddItemsActivity, "Failed to add items", Toast.LENGTH_SHORT).show()
                 }
             }
 
             override fun onFailure(call: Call<ApiResponse>, t: Throwable) {
-                Toast.makeText(this@AddItemsActivity, "Network error: ${t.message}", Toast.LENGTH_LONG).show()
+                Toast.makeText(this@AddItemsActivity, "Error: ${t.message}", Toast.LENGTH_SHORT).show()
             }
         })
     }
+
 
 
 }

@@ -55,7 +55,7 @@ interface ApiService {
 
     // New multi‑shop endpoint using query params
     @GET("api/orders/shopkeeper")
-    fun getShopOrdersMulti(@Query("shop_id") shopIds: List<Int>): Call<List<Order>>
+    fun getShopOrdersMulti(@Query("shop_id") shopIds: List<String>): Call<List<Order>>
 
 
     @POST("order/{order_id}/status")
@@ -91,14 +91,23 @@ interface ApiService {
     @GET("/api/shops/{shop_id}/items")
     fun getItems(@Path("shop_id") shopId: String): Call<List<Item>>
 
-//    @POST("/add_items")
+    //@POST("/add_items")
 //    fun addItems(@Body body: Map<String, Any>): Call<Map<String, Boolean>>
 
-    @POST("/add_items")
+    //@POST("/add_items")
+//    fun addItems(
+//        @Header("Authorization") token: String,
+//        @Body body: Map<String, Any>
+//    ): Call<ApiResponse>
+
+
+    @POST("add_items")
     fun addItems(
         @Header("Authorization") token: String,
-        @Body body: Map<String, Any>
+        @Query("shop_id") shopId: String,
+        @Body items: List<Item>
     ): Call<ApiResponse>
+
 
 
     @PUT("/update_item/{item_id}")

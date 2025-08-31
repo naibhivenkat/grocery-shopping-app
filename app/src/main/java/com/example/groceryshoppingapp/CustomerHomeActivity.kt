@@ -14,7 +14,7 @@ import com.example.groceryshoppingapp.ShopSelectionActivity
 
 class CustomerHomeActivity : AppCompatActivity() {
 
-    private var customerId: Int = -1
+    private var customerId:  String? = null
     private lateinit var drawerLayout: DrawerLayout
     private lateinit var navigationView: NavigationView
 

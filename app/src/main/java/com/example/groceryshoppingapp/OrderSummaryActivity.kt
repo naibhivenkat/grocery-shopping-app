@@ -25,7 +25,7 @@ class OrderSummaryActivity : AppCompatActivity() {
     private var paymentMethod: String = "Unknown"
     private var shopName: String = "My Grocery Shop"
 
-    private var customerId: Int = -1
+    private var customerId: String? = null
     private var shopId: String? = null
     private var userName : String = ""
 
@@ -49,7 +49,7 @@ class OrderSummaryActivity : AppCompatActivity() {
         shopId = SessionManager.getShopId(this)
         shopName = SessionManager.getShopName(this) ?: "My Grocery Shop"
 
-        if (customerId == -1 || shopId.isNullOrEmpty()) {
+        if (customerId.isNullOrEmpty() || shopId.isNullOrEmpty()) {
             Toast.makeText(this, "Session expired or invalid. Please log in again.", Toast.LENGTH_LONG).show()
             startActivity(Intent(this, LoginActivity::class.java))
             finish()

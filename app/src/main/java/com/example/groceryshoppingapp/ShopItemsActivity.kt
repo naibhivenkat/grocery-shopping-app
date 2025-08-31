@@ -48,7 +48,7 @@ class ShopItemsActivity : AppCompatActivity() {
 
         val customerId = SessionManager.getCustomerId(this)
 
-        if (shopId.isNullOrEmpty() || customerId == -1) {
+        if (shopId.isNullOrEmpty() || customerId.isNullOrEmpty()) {
             Toast.makeText(this, "Invalid session or shop. Please login again.", Toast.LENGTH_SHORT).show()
             startActivity(Intent(this, LoginActivity::class.java))
             finish()

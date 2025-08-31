@@ -19,7 +19,7 @@ object SessionManager {
     private const val KEY_SHOP_IDS = "shop_ids"          // multiple shop UUIDs
 
     // --- 🔑 NEW: AUTH TOKEN ---
-    private const val KEY_AUTH_TOKEN = "auth_token"   // <-- ADDED
+    private const val KEY_AUTH_TOKEN = "auth_token"
 
     // language
     private const val KEY_LANGUAGE_SELECTED = "language_selected"
@@ -39,18 +39,23 @@ object SessionManager {
     fun getUsername(context: Context): String? = prefs(context).getString(KEY_USERNAME, null)
     fun getRole(context: Context): String? = prefs(context).getString(KEY_ROLE, null)
 
-    // --- CUSTOMER & SHOPKEEPER IDs ---
-    fun setCustomerId(context: Context, id: String) { prefs(context).edit().putString(KEY_CUSTOMER_ID, id).apply() }
-    fun getCustomerId(context: Context): Int = prefs(context).getInt(KEY_CUSTOMER_ID, -1)
+    // --- CUSTOMER & SHOPKEEPER IDs (now consistent as String) ---
+    fun setCustomerId(context: Context, id: String) {
+        prefs(context).edit().putString(KEY_CUSTOMER_ID, id).apply()
+    }
+    fun getCustomerId(context: Context): String? =
+        prefs(context).getString(KEY_CUSTOMER_ID, null)
 
-    fun setShopkeeperId(context: Context, id: String) { prefs(context).edit().putString(KEY_SHOPKEEPER_ID, id).apply() }
-    fun getShopkeeperId(context: Context): Int = prefs(context).getInt(KEY_SHOPKEEPER_ID, -1)
+    fun setShopkeeperId(context: Context, id: String) {
+        prefs(context).edit().putString(KEY_SHOPKEEPER_ID, id).apply()
+    }
+    fun getShopkeeperId(context: Context): String? =
+        prefs(context).getString(KEY_SHOPKEEPER_ID, null)
 
     // --- SINGLE SHOP UUID ---
     fun setShopId(context: Context, shopId: String) {
         prefs(context).edit().putString(KEY_SHOP_ID, shopId).apply()
     }
-
     fun getShopId(context: Context): String? = prefs(context).getString(KEY_SHOP_ID, null)
 
     fun setShopInfo(context: Context, id: String?, name: String) {
@@ -59,13 +64,13 @@ object SessionManager {
     fun getShopName(context: Context): String? = prefs(context).getString(KEY_SHOP_NAME, null)
 
     // --- MULTIPLE SHOP UUIDs for SHOPKEEPER ---
-    fun setShopIds(context: Context, shopIds: List<Int>) {
+    fun setShopIds(context: Context, shopIds: List<String>) {
         val joined = shopIds.joinToString(",")
-        prefs(context).edit().putString("shop_ids", joined).apply()
+        prefs(context).edit().putString(KEY_SHOP_IDS, joined).apply()
     }
-    fun getShopIds(context: Context): List<Int> {
-        val saved = prefs(context).getString("shop_ids", "") ?: ""
-        return if (saved.isEmpty()) emptyList() else saved.split(",").mapNotNull { it.toIntOrNull() }
+    fun getShopIds(context: Context): List<String> {
+        val saved = prefs(context).getString(KEY_SHOP_IDS, "") ?: ""
+        return if (saved.isEmpty()) emptyList() else saved.split(",")
     }
 
     // --- PROFILE ---
@@ -115,12 +120,11 @@ object SessionManager {
     fun hasItemsAdded(context: Context): Boolean =
         prefs(context).getBoolean(KEY_HAS_ITEMS, false)
 
-    // --- 🔑 AUTH TOKEN (NEW) ---
-    fun saveAuthToken(context: Context, token: String) {   // <-- ADDED
+    // --- 🔑 AUTH TOKEN ---
+    fun saveAuthToken(context: Context, token: String) {
         prefs(context).edit().putString(KEY_AUTH_TOKEN, token).apply()
     }
-
-    fun getAuthToken(context: Context): String? =          // <-- ADDED
+    fun getAuthToken(context: Context): String? =
         prefs(context).getString(KEY_AUTH_TOKEN, null)
 
     // --- LOGOUT ---

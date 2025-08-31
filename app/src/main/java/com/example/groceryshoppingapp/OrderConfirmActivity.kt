@@ -18,7 +18,7 @@ class OrderConfirmActivity : AppCompatActivity() {
     private lateinit var binding: ActivityOrderConfirmBinding
     private lateinit var cartItems: List<CartItem>
     private var totalAmount: Double = 0.0
-    private var customerId: Int = -1
+    private var customerId: String? = null
     private var shopId: String? = null
     private var shopName = String
 
@@ -33,7 +33,7 @@ class OrderConfirmActivity : AppCompatActivity() {
         customerId = SessionManager.getCustomerId(this)
         shopId = SessionManager.getShopId(this)
 
-        if (customerId == -1 || shopId.isNullOrEmpty()) {
+        if (customerId.isNullOrEmpty() || shopId.isNullOrEmpty()) {
             Toast.makeText(this, "Session expired. Please login again.", Toast.LENGTH_SHORT).show()
             startActivity(Intent(this, LoginActivity::class.java))
             finish()
