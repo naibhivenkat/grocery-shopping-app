@@ -25,6 +25,7 @@ limiter.init_app(app)
 
 otp_store = {}
 
+
 # Health check endpoint – exempt from rate limits
 @app.get("/healthz")
 @limiter.exempt
@@ -101,11 +102,22 @@ def login():
     if not user:
         return jsonify({"success": False, "message": "User not found"}), 404
 
-    # password check
     if user.get("password") != password:
         return jsonify({"success": False, "message": "Invalid password"}), 401
 
-    # ✅ Normalize response (camelCase everywhere)
+    # Check shops if shopkeeper
+    shop_data = None
+    shop_exists = False
+    if user.get("role") in ["shopowner", "shopkeeper"] and user.get("shopkeeperId"):
+        shop_doc = firebase_db.db.collection("shops").where(
+            "shopkeeper_id", "==", user.get("shopkeeperId")
+        ).stream()
+        for s in shop_doc:
+            shop_data = s.to_dict()
+            shop_data["id"] = s.id
+            shop_exists = True
+            break
+
     response_user = {
         "id": user.get("id"),
         "username": user.get("username"),
@@ -113,14 +125,15 @@ def login():
         "email": user.get("email", ""),
         "phone": user.get("phone", ""),
         "role": user.get("role", ""),
-        "customerId": user.get("customerId") or user.get("customer_id"),
-        "shopkeeperId": user.get("shopkeeperId") or user.get("shopkeeper_id"),
+        "customerId": user.get("customerId"),
+        "shopkeeperId": user.get("shopkeeperId"),
         "address": user.get("address", ""),
         "location": user.get("location", ""),
-        "photoUrl": user.get("photoUrl") or user.get("photo_url", ""),
-        "photoBase64": user.get("photoBase64") or user.get("photo_base64", ""),
-        "shopExists": user.get("shopExists", False),
-        "shop": user.get("shop", None)
+        "photoUrl": user.get("photoUrl", ""),
+        "photoBase64": user.get("photoBase64", ""),
+        # Shops are fetched separately
+        "shopExists": shop_exists,
+        "shop": shop_data
     }
 
     return jsonify({
@@ -130,11 +143,11 @@ def login():
     }), 200
 
 
+
 @app.route('/register', methods=['POST'])
 def register():
     data = request.get_json()
 
-    # Accept both "name" and "full_name"
     name = data.get("name") or data.get("full_name")
     username = data.get('username')
     password = data.get('password')
@@ -145,7 +158,7 @@ def register():
     if role not in ['customer', 'shopowner', 'shopkeeper']:
         return jsonify({'success': False, 'message': 'Invalid role'})
 
-    # Check duplicates
+    # Duplicate check
     if firebase_db.get_user_by_username(username):
         return jsonify({'success': False, 'message': 'Username already exists'})
     if firebase_db.get_user_by_email(email):
@@ -165,10 +178,7 @@ def register():
         "photoUrl": "",
         # IDs
         "customerId": str(uuid.uuid4()) if role == "customer" else None,
-        "shopkeeperId": str(uuid.uuid4()) if role in ["shopowner", "shopkeeper"] else None,
-        # Shop info
-        "shopExists": False,
-        "shop": None
+        "shopkeeperId": str(uuid.uuid4()) if role in ["shopowner", "shopkeeper"] else None
     }
 
     # Handle profile photo
@@ -186,7 +196,6 @@ def register():
     }), 201
 
 
-
 @app.route('/change_password', methods=['POST'])
 def change_password():
     data = request.get_json() if request.is_json else request.form
@@ -199,6 +208,7 @@ def change_password():
     user_id = user.get('id')
     firebase_db.db.collection("users").document(user_id).update({"password": new_password})
     return jsonify({"success": True, "message": "Password updated"}), 200
+
 
 @app.route('/update_profile', methods=['POST'])
 def update_profile():
@@ -219,10 +229,12 @@ def update_profile():
         "location": data.get("location", "")
     }
     if data.get("photo_base64"):
-        update_fields["photo_url"] = firebase_db.upload_base64_image(data["photo_base64"], folder="profile_photos")
+        update_fields["photo_url"] = firebase_db.upload_base64_image(data["photo_base64"],
+                                                                     folder="profile_photos")
         update_fields["photo_base64"] = data["photo_base64"]
     firebase_db.db.collection("users").document(uid).update(update_fields)
     return jsonify({'success': True})
+
 
 # ----------- SHOPS -----------
 
@@ -230,29 +242,47 @@ def update_profile():
 def get_shops():
     return jsonify(firebase_db.get_all_shops())
 
+
 @app.route('/api/shops/shopkeeper/<shopkeeper_id>', methods=['GET'])
 def get_shops_for_shopkeeper(shopkeeper_id):
     all_shops = firebase_db.get_all_shops()
     result = [s for s in all_shops if s.get("shopkeeper_id") == shopkeeper_id]
     return jsonify(result)
 
+# ----------- CREATE SHOP -----------
 @app.route('/create_shop', methods=['POST'])
 def create_shop():
-    data = request.form
+    data = request.get_json() or request.form  # allow both JSON & form
+
     name = data.get('name')
     address = data.get('address')
     contact = data.get('contact')
     shopkeeper_id = data.get('shopkeeper_id')
+
     if not all([name, address, contact, shopkeeper_id]):
-        return jsonify({'success': False, 'message': 'Missing fields'})
+        return jsonify({
+            'success': False,
+            'message': 'Missing fields'
+        }), 400
+
     shop_dict = {
         "name": name,
         "address": address,
         "contact": contact,
         "shopkeeper_id": shopkeeper_id,
+        "createdAt": datetime.utcnow().isoformat()
     }
+
     shop = firebase_db.append_shop(shop_dict)
-    return jsonify({'success': True, 'shop_id': shop['id']})
+
+    return jsonify({
+        'success': True,
+        'message': 'Shop created successfully',
+        'shop_id': shop['id'],
+        'shop': shop
+    }), 201
+
+
 
 # ----------- ITEMS -----------
 
@@ -312,6 +342,7 @@ def add_items():
         'message': 'Items added successfully'
     }), 201
 
+
 @app.route("/update_item/<item_id>", methods=["PUT"])
 def update_item(item_id):
     ref = firebase_db.db.collection("items").document(item_id)
@@ -328,6 +359,7 @@ def update_item(item_id):
     })
     return jsonify({"success": True})
 
+
 @app.route('/delete_item/<item_id>', methods=['POST'])
 def delete_item(item_id):
     doc = firebase_db.db.collection("items").document(item_id).get()
@@ -335,6 +367,7 @@ def delete_item(item_id):
         return jsonify({'success': False, 'message': 'Item not found'})
     firebase_db.db.collection("items").document(item_id).delete()
     return jsonify({'success': True, 'message': 'Item deleted'})
+
 
 # ----------- ORDERS -----------
 
@@ -355,7 +388,9 @@ def create_order():
             item = item_doc.to_dict()
             item_price = float(item.get("price", 0))
             total += item_price * quantity
-            detailed_items.append({"item_id": item_id, "name": item.get("name", ""), "price": item_price, "quantity": quantity})
+            detailed_items.append(
+                {"item_id": item_id, "name": item.get("name", ""), "price": item_price,
+                 "quantity": quantity})
 
     order_dict = {
         "shop_id": data["shop_id"],
@@ -368,15 +403,18 @@ def create_order():
     new_order = firebase_db.append_order(order_dict)
     return jsonify({"success": True, "order_id": new_order["order_uuid"]})
 
+
 @app.route("/api/orders/shopkeeper/<shop_id>", methods=["GET"])
 def get_shop_orders(shop_id):
     orders = firebase_db.get_orders_by_shop(shop_id)
     return jsonify(orders)
 
+
 @app.route("/api/orders/customer/<customer_id>", methods=["GET"])
 def get_customer_orders(customer_id):
     orders = firebase_db.get_orders_by_customer(customer_id)
     return jsonify(orders)
+
 
 @app.route('/api/orders/<order_uuid>', methods=['GET'])
 def get_order_details(order_uuid):
@@ -384,6 +422,7 @@ def get_order_details(order_uuid):
     if not order_doc.exists:
         return jsonify({'error': 'Order not found'}), 404
     return jsonify(order_doc.to_dict())
+
 
 @app.route("/api/orders/<order_uuid>", methods=["PATCH"])
 def patch_order_by_uuid(order_uuid):
@@ -395,9 +434,11 @@ def patch_order_by_uuid(order_uuid):
     if updated:
         # Optionally update cancel_message
         if new_status and new_status.lower() == "cancelled" and cancel_message:
-            firebase_db.db.collection("orders").document(order_uuid).update({"cancel_message": cancel_message})
+            firebase_db.db.collection("orders").document(order_uuid).update(
+                {"cancel_message": cancel_message})
         return jsonify({"success": True, "message": "Order updated successfully"})
     return jsonify({"success": False, "message": "Order not found"}), 404
+
 
 @app.route("/api/orders/shopkeeper", methods=["GET"])
 def get_shop_orders_multi():
@@ -407,6 +448,7 @@ def get_shop_orders_multi():
     for shop_id in ids:
         all_orders.extend(firebase_db.get_orders_by_shop(shop_id))
     return jsonify(all_orders), 200
+
 
 # ----------- APP VERSION ------------
 
@@ -436,7 +478,8 @@ def check_update():
         except Exception as e:
             logging.error(f"Unable to fetch APK size: {e}")
             apk_size = 0
-        logging.info("Returning version %s (code %d) with size %d", version_name, version_code, apk_size)
+        logging.info("Returning version %s (code %d) with size %d", version_name, version_code,
+                     apk_size)
         return jsonify({
             "versionCode": version_code,
             "versionName": version_name,
@@ -446,7 +489,6 @@ def check_update():
     except Exception as e:
         logging.exception("Error checking update")
         return jsonify({"error": str(e)}), 500
-
 
 
 # ---------------- Helper Function ----------------
@@ -467,6 +509,7 @@ def send_email_otp(email, otp):
     response = requests.post(url, headers=headers, json=data)
     print(response.status_code, response.text)
     return response.status_code == 201 or response.status_code == 200
+
 
 # ---------------- 1️⃣ Send OTP ----------------
 @app.route("/send_otp", methods=["POST"])
@@ -521,7 +564,7 @@ def register_after_otp():
     if not all([name, email, phone, username, password]):
         return jsonify({"success": False, "message": "Missing fields"}), 400
 
-    # Check if user already exists
+    # Check if user already exists by email
     existing = firebase_db.db.collection("users").where("email", "==", email).stream()
     for doc in existing:
         return jsonify({"success": False, "message": "User already exists"}), 400
@@ -540,10 +583,7 @@ def register_after_otp():
         "photoUrl": "",
         # IDs
         "customerId": str(uuid.uuid4()) if role == "customer" else None,
-        "shopkeeperId": str(uuid.uuid4()) if role in ["shopowner", "shopkeeper"] else None,
-        # Shop info
-        "shopExists": False,
-        "shop": None
+        "shopkeeperId": str(uuid.uuid4()) if role in ["shopowner", "shopkeeper"] else None
     }
 
     # Save user
@@ -560,10 +600,10 @@ def register_after_otp():
 
 
 
-
 @app.before_request
 def require_authentication():
-    public_paths = ["/healthz", "/send_otp", "/verify_otp", "/register", "/login", "/register_after_otp"]
+    public_paths = ["/healthz", "/send_otp", "/verify_otp", "/register", "/login",
+                    "/register_after_otp"]
 
     # Allow if matches or starts with
     for path in public_paths:
@@ -572,12 +612,12 @@ def require_authentication():
 
     auth_header = request.headers.get("Authorization")
     if not auth_header or not auth_header.startswith("Bearer "):
-        return jsonify({"message": "authentication not found in headers", "code": "unauthorized"}), 401
+        return jsonify(
+            {"message": "authentication not found in headers", "code": "unauthorized"}), 401
 
     token = auth_header.split(" ")[1]
     if token != "expected_token":
         return jsonify({"message": "invalid token", "code": "unauthorized"}), 401
-
 
 
 def send_welcome_email(email, name):
