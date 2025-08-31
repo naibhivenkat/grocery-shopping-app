@@ -3,6 +3,7 @@ package com.example.groceryshoppingapp
 import android.content.Intent
 import android.os.Bundle
 import android.os.CountDownTimer
+import android.util.Log
 import android.view.View
 import android.view.animation.AnimationUtils
 import android.widget.*
@@ -282,9 +283,16 @@ class RegisterActivity : AppCompatActivity() {
                 call: Call<RegisterResponse>,
                 response: Response<RegisterResponse>
             ) {
+                // 🔥 Log everything
+                Log.d("REGISTER_API", "Raw response: ${response.raw()}")
+                Log.d("REGISTER_API", "Body: ${response.body()}")
+                Log.d("REGISTER_API", "ErrorBody: ${response.errorBody()?.string()}")
+
                 if (response.isSuccessful && response.body()?.success == true) {
                     val user = response.body()?.user
                     if (user != null) {
+                        Log.d("REGISTER_API", "User object: $user")
+
                         // Save login info
                         SessionManager.saveLogin(
                             this@RegisterActivity,
@@ -300,7 +308,7 @@ class RegisterActivity : AppCompatActivity() {
                             user.phone ?: "",
                             user.email ?: "",
                             user.location ?: "",
-                            user.photoBase64
+                            user.photoBase64 ?: ""
                         )
 
                         // Navigate depending on role
@@ -314,6 +322,9 @@ class RegisterActivity : AppCompatActivity() {
                             startActivity(Intent(this@RegisterActivity, CustomerHomeActivity::class.java))
                         }
                         finish()
+                    } else {
+                        Log.e("REGISTER_API", "User is null in response")
+                        Toast.makeText(this@RegisterActivity, "❌ No user data in response", Toast.LENGTH_SHORT).show()
                     }
                 } else {
                     Toast.makeText(this@RegisterActivity, "❌ Registration failed", Toast.LENGTH_SHORT).show()
@@ -321,15 +332,15 @@ class RegisterActivity : AppCompatActivity() {
             }
 
             override fun onFailure(call: Call<RegisterResponse>, t: Throwable) {
+                Log.e("REGISTER_API", "API call failed: ${t.message}", t)
                 Toast.makeText(this@RegisterActivity, "⚠️ Error: ${t.message}", Toast.LENGTH_SHORT).show()
             }
         })
-
-
     }
 
 
-        private fun resendOtp() {
+
+    private fun resendOtp() {
         if (resendAttempts >= 3) {
             Toast.makeText(this, "Maximum resend attempts reached", Toast.LENGTH_SHORT).show()
             return
