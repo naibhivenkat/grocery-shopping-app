@@ -44,65 +44,101 @@ def healthz():
         return jsonify(status="Service Down", error=str(e)), 503
 
 
-@app.route('/login', methods=['POST'])
+# @app.route('/login', methods=['POST'])
+# def login():
+#     data = request.get_json()
+#     username = data.get('username', '').strip()
+#     password = data.get('password', '').strip()
+#
+#     if not username or not password:
+#         return jsonify({'success': False, 'message': 'Username and password required'}), 400
+#
+#     user = firebase_db.get_user_by_credentials(username, password)
+#
+#     if not user:
+#         return jsonify({'success': False, 'message': 'Invalid username or password'}), 401
+#
+#     # Remove sensitive info
+#     user.pop('password', None)
+#
+#     role = user.get('role', '').lower()
+#     response_user = {
+#         'username': user.get('username'),
+#         'role': role,
+#         'fullName': user.get('fullName', ''),
+#         'address': user.get('address', ''),
+#         'phone': user.get('phone', ''),
+#         'email': user.get('email', ''),
+#         'location': user.get('location', ''),
+#         'photoBase64': user.get('photoBase64', '')
+#     }
+#
+#     # Add only the relevant ID based on role
+#     if role == 'customer':
+#         response_user['customerId'] = user.get('customer_id')
+#     elif role == 'shopowner':
+#         shopkeeper_id = user.get('shopkeeper_id')
+#         response_user['shopkeeperId'] = shopkeeper_id
+#
+#         # Check if shop exists for this shopkeeper
+#         shop = firebase_db.get_shop_by_shopkeeper(shopkeeper_id)
+#         print(shop)
+#         if shop:
+#             response_user['shopExists'] = True
+#             response_user['shop'] = shop  # optional, include shop info
+#         else:
+#             response_user['shopExists'] = False
+#
+#     return jsonify({'success': True, 'user': response_user})
+
+@app.route("/login", methods=["POST"])
 def login():
     data = request.get_json()
-    username = data.get('username', '').strip()
-    password = data.get('password', '').strip()
+    username = data.get("username")
+    password = data.get("password")
 
-    if not username or not password:
-        return jsonify({'success': False, 'message': 'Username and password required'}), 400
+    user = firebase_db.get_user_by_username(username)
+    if not user or user.get("password") != password:
+        return jsonify({"success": False, "message": "Invalid username or password"}), 401
 
-    user = firebase_db.get_user_by_credentials(username, password)
-
-    if not user:
-        return jsonify({'success': False, 'message': 'Invalid username or password'}), 401
-
-    # Remove sensitive info
-    user.pop('password', None)
-
-    role = user.get('role', '').lower()
-    response_user = {
-        'username': user.get('username'),
-        'role': role,
-        'fullName': user.get('fullName', ''),
-        'address': user.get('address', ''),
-        'phone': user.get('phone', ''),
-        'email': user.get('email', ''),
-        'location': user.get('location', ''),
-        'photoBase64': user.get('photoBase64', '')
+    # Normalize field names to camelCase
+    normalized_user = {
+        "id": user.get("id"),
+        "username": user.get("username"),
+        "password": user.get("password"),
+        "role": user.get("role"),
+        "fullName": user.get("fullName") or user.get("name", ""),
+        "address": user.get("address", ""),
+        "phone": user.get("phone", ""),
+        "email": user.get("email", ""),
+        "location": user.get("location", ""),
+        "photoBase64": user.get("photoBase64", ""),
+        "photoUrl": user.get("photoUrl", ""),
+        "customerId": user.get("customerId") or user.get("customer_id"),
+        "shopkeeperId": user.get("shopkeeperId") or user.get("shopkeeper_id"),
+        "shopExists": user.get("shopExists", False),
+        "shop": user.get("shop")
     }
 
-    # Add only the relevant ID based on role
-    if role == 'customer':
-        response_user['customerId'] = user.get('customer_id')
-    elif role == 'shopowner':
-        shopkeeper_id = user.get('shopkeeper_id')
-        response_user['shopkeeperId'] = shopkeeper_id
-
-        # Check if shop exists for this shopkeeper
-        shop = firebase_db.get_shop_by_shopkeeper(shopkeeper_id)
-        print(shop)
-        if shop:
-            response_user['shopExists'] = True
-            response_user['shop'] = shop  # optional, include shop info
-        else:
-            response_user['shopExists'] = False
-
-    return jsonify({'success': True, 'user': response_user})
-
+    return jsonify({
+        "success": True,
+        "message": "Login successful",
+        "user": normalized_user
+    }), 200
 
 @app.route('/register', methods=['POST'])
 def register():
     data = request.get_json()
-    # accept both "name" and "full_name"
+
+    # Accept both "name" and "full_name"
     name = data.get("name") or data.get("full_name")
     username = data.get('username')
     password = data.get('password')
     email = data.get('email')
-    role = data.get('role')
+    role = data.get('role', '').lower()
+    phone = data.get('phone', '')
 
-    if role not in ['customer', 'shopowner']:
+    if role not in ['customer', 'shopowner', 'shopkeeper']:
         return jsonify({'success': False, 'message': 'Invalid role'})
 
     # Check duplicates
@@ -111,49 +147,40 @@ def register():
     if firebase_db.get_user_by_email(email):
         return jsonify({'success': False, 'message': 'Email already exists'})
 
+    # Build user dict
     user_dict = {
-        'username': username,
-        'password': password,
-        'role': role,
-        'name': name,   # ✅ standardized
-        'address': data.get('address', ''),
-        'phone': data.get('phone', ''),
-        'email': email,
-        'location': data.get('location', ''),
-        'photo_url': '',
-        'photo_base64': '',
+        "username": username,
+        "password": password,
+        "role": role,
+        "fullName": name,
+        "address": data.get("address", ""),
+        "phone": phone,
+        "email": email,
+        "location": data.get("location", ""),
+        "photoBase64": data.get("photo_base64", ""),
+        "photoUrl": "",
+        # IDs
+        "customerId": str(uuid.uuid4()) if role == "customer" else None,
+        "shopkeeperId": str(uuid.uuid4()) if role in ["shopowner", "shopkeeper"] else None,
+        # Shop info
+        "shopExists": False,
+        "shop": None
     }
 
-    if 'photo_base64' in data and data['photo_base64']:
-        photo_url = firebase_db.upload_base64_image(data['photo_base64'], folder="profile_photos")
-        user_dict['photo_url'] = photo_url
-        user_dict['photo_base64'] = data['photo_base64']
+    # Handle profile photo
+    if data.get("photo_base64"):
+        photo_url = firebase_db.upload_base64_image(data["photo_base64"], folder="profile_photos")
+        user_dict["photoUrl"] = photo_url
 
-    # Assign IDs
-    user_dict['customer_id'] = str(uuid.uuid4()) if role == 'customer' else ''
-    user_dict['shopkeeper_id'] = str(uuid.uuid4()) if role == 'shopowner' else ''
-
-    # ✅ Save user first
+    # Save user
     firebase_db.append_user(user_dict)
 
-    shop_info = None
-    if role == 'shopowner':
-        # Auto create shop
-        shop_dict = {
-            "name": data.get("shop_name", f"{username}'s Shop"),
-            "address": data.get("address", ""),
-            "contact": data.get("phone", ""),
-            "shopkeeper_id": user_dict['shopkeeper_id']
-        }
-        shop = firebase_db.append_shop(shop_dict)
-        shop_info = {"shop_id": shop["id"], "name": shop["name"]}
-
     return jsonify({
-        'success': True,
-        'message': 'Registered successfully',
-        'user': user_dict,
-        'shop': shop_info
-    })
+        "success": True,
+        "message": "Registered successfully",
+        "user": user_dict
+    }), 201
+
 
 
 @app.route('/change_password', methods=['POST'])
@@ -479,6 +506,7 @@ def verify_otp():
 @app.route("/register_after_otp", methods=["POST"])
 def register_after_otp():
     data = request.get_json()
+
     name = data.get("name") or data.get("full_name")
     email = data.get("email")
     phone = data.get("phone")
@@ -494,24 +522,10 @@ def register_after_otp():
     for doc in existing:
         return jsonify({"success": False, "message": "User already exists"}), 400
 
-    # Prepare IDs
-    customer_id = None
-    shopkeeper_id = None
-    shop_data = None
-
-    if role == "customer":
-        customer_id = str(uuid.uuid4())
-    elif role == "shopkeeper":
-        shopkeeper_id = str(uuid.uuid4())
-        # At registration shop is not created yet, so shop=None
-        shop_data = None
-
-    # Add new user
+    # Build user dict
     user_dict = {
         "username": username,
         "role": role,
-        "customerId": customer_id,
-        "shopkeeperId": shopkeeper_id,
         "password": password,
         "fullName": name,
         "address": "",
@@ -519,10 +533,19 @@ def register_after_otp():
         "email": email,
         "location": "",
         "photoBase64": "",
+        "photoUrl": "",
+        # IDs
+        "customerId": str(uuid.uuid4()) if role == "customer" else None,
+        "shopkeeperId": str(uuid.uuid4()) if role in ["shopowner", "shopkeeper"] else None,
+        # Shop info
         "shopExists": False,
         "shop": None
     }
+
+    # Save user
     firebase_db.append_user(user_dict)
+
+    # Send welcome email
     send_welcome_email(email, name)
 
     return jsonify({
@@ -530,6 +553,7 @@ def register_after_otp():
         "message": "User registered",
         "user": user_dict
     }), 201
+
 
 
 
