@@ -53,54 +53,46 @@ class CreateShopActivity : AppCompatActivity() {
     }
 
     private fun saveShopToFirebase(shopId: Int, shopName: String) {
-        val shopkeeperId = SessionManager.getShopkeeperId(this)
+        val shopkeeperId = SessionManager.getShopkeeperId(this) ?: return
         val shopData = hashMapOf(
             "shop_id" to shopId,
             "name" to shopName,
             "shopkeeper_id" to shopkeeperId
         )
 
-        // 1️⃣ Save shop in "shops" collection
         db.collection("shops")
             .add(shopData)
-            .addOnSuccessListener { documentRef ->
-                // 2️⃣ Update SessionManager
-                //SessionManager.setShopInfo(this, shopId.toString(), shopName)
-                // Always store as String
+            .addOnSuccessListener { _ ->
+
+                // ✅ Save shop_id in SessionManager
                 val shopIdStr = shopId.toString()
                 SessionManager.setShopId(this, shopIdStr)
                 SessionManager.setShopInfo(this, shopIdStr, shopName)
 
-
-                // 3️⃣ Update the user document to mark shopExists = true
+                // ✅ Update user's shopExists in Firestore
                 db.collection("users")
                     .whereEqualTo("shopkeeperId", shopkeeperId)
                     .get()
-                    .addOnSuccessListener { querySnapshot ->
-                        if (!querySnapshot.isEmpty) {
-                            val userDoc = querySnapshot.documents[0]
-                            val userRef = db.collection("users").document(userDoc.id)
-                            userRef.update(
-                                mapOf(
-                                    "shopExists" to true,
-                                    "shop" to mapOf(
-                                        "id" to shopId.toString(),
-                                        "name" to shopName
-                                    )
+                    .addOnSuccessListener { snapshot ->
+                        if (!snapshot.isEmpty) {
+                            val userDoc = snapshot.documents[0]
+                            db.collection("users").document(userDoc.id)
+                                .update(
+                                    "shopExists", true,
+                                    "shop", mapOf("id" to shopIdStr, "name" to shopName)
                                 )
-                            )
                         }
                     }
 
                 Toast.makeText(this, "Shop created!", Toast.LENGTH_SHORT).show()
 
-                // Redirect to AddItemsActivity
-                val intent = Intent(this, AddItemsActivity::class.java)
-                startActivity(intent)
+                // ✅ Go to AddItemsActivity
+                startActivity(Intent(this, AddItemsActivity::class.java))
                 finish()
             }
             .addOnFailureListener {
                 Toast.makeText(this, "Error saving shop", Toast.LENGTH_SHORT).show()
             }
-    }}
+    }
+}
 

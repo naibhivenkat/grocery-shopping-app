@@ -269,8 +269,8 @@ class RegisterActivity : AppCompatActivity() {
         password: String
     ) {
         val body = mapOf(
-            "full_name" to name,       // ✅ match backend
-            "username" to username,    // ✅ backend uses this
+            "full_name" to name,
+            "username" to username,
             "email" to email,
             "phone" to phone,
             "role" to role,
@@ -283,65 +283,48 @@ class RegisterActivity : AppCompatActivity() {
                 response: Response<Map<String, String>>
             ) {
                 if (response.isSuccessful && response.body()?.get("success") == "true") {
-                    Toast.makeText(
-                        this@RegisterActivity,
-                        "✅ Registered successfully!",
-                        Toast.LENGTH_SHORT
-                    ).show()
+                    val token = response.body()?.get("token") ?: ""
+                    val role = body["role"] ?: ""
+                    val username = body["username"] ?: ""
 
-                    // --- Save basic profile ---
-                    SessionManager.saveUserProfile(
+                    // Save token and session
+                    if (token.isNotEmpty()) SessionManager.saveAuthToken(
                         this@RegisterActivity,
-                        fullName = name,
-                        address = "",   // no address at registration
-                        phone = phone,
-                        email = email,
-                        location = "",
-                        photoBase64 = ""
+                        token
                     )
-
-                    // --- Save login role ---
                     SessionManager.saveLogin(this@RegisterActivity, username, role)
 
-                    // --- Save role-specific IDs ---
+                    // Navigate to next screen
                     if (role == "shopowner") {
-                        // Use username as shopkeeperId (or backend ID if available)
                         SessionManager.setShopkeeperId(this@RegisterActivity, username)
-
-                        // Save auth token if backend sends it (optional)
-                        val token = response.body()?.get("token") ?: ""
-                        if (token.isNotEmpty()) {
-                            SessionManager.saveAuthToken(this@RegisterActivity, token)
-                        }
-
-                        // Go to CreateShopActivity
                         startActivity(Intent(this@RegisterActivity, CreateShopActivity::class.java))
                     } else {
-                        // Customer
                         SessionManager.setCustomerId(this@RegisterActivity, username)
-
-                        startActivity(Intent(this@RegisterActivity, CustomerHomeActivity::class.java))
+                        startActivity(
+                            Intent(
+                                this@RegisterActivity,
+                                CustomerHomeActivity::class.java
+                            )
+                        )
                     }
 
                     finish()
                 } else {
-                    Toast.makeText(
-                        this@RegisterActivity,
-                        "Registration failed",
-                        Toast.LENGTH_SHORT
-                    ).show()
+                    Toast.makeText(this@RegisterActivity, "Registration failed", Toast.LENGTH_SHORT)
+                        .show()
                 }
             }
 
             override fun onFailure(call: Call<Map<String, String>>, t: Throwable) {
-                Toast.makeText(this@RegisterActivity, "Error: ${t.message}", Toast.LENGTH_SHORT).show()
+                Toast.makeText(this@RegisterActivity, "Error: ${t.message}", Toast.LENGTH_SHORT)
+                    .show()
             }
         })
+
+
     }
 
-
-
-    private fun resendOtp() {
+        private fun resendOtp() {
         if (resendAttempts >= 3) {
             Toast.makeText(this, "Maximum resend attempts reached", Toast.LENGTH_SHORT).show()
             return

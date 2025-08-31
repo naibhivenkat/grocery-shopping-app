@@ -2,6 +2,7 @@ package com.example.groceryshoppingapp
 
 import android.content.Intent
 import android.os.Bundle
+import android.util.Log
 import android.widget.*
 import androidx.appcompat.app.AppCompatActivity
 import com.example.groceryshoppingapp.models.Item
@@ -101,14 +102,14 @@ class AddItemsActivity : AppCompatActivity() {
 
         if (token.isNullOrEmpty() || shopId.isNullOrEmpty()) {
             Toast.makeText(this, "❌ Missing auth token or shop ID. Please login again.", Toast.LENGTH_SHORT).show()
+            Log.d("AddItemsActivity", "DEBUG token: $token | shop_id: $shopId")
             return
         }
 
-        // Convert JSONArray → List<Item>
         val itemsList = (0 until items.length()).map { i ->
             val json = items.getJSONObject(i)
             Item(
-                id = "", // backend assigns ID
+                id = "",
                 name = json.optString("name"),
                 price = json.optString("price").toDoubleOrNull() ?: 0.0,
                 stockQuantity = json.optString("stock_quantity").toIntOrNull() ?: 0,
@@ -118,19 +119,13 @@ class AddItemsActivity : AppCompatActivity() {
             )
         }
 
-        // Wrap in request object for backend
-        val request = AddItemsRequest(shopId, itemsList)
-
-        ApiClient.apiService.addItems("Bearer $token", request)
+        ApiClient.apiService.addItems("Bearer $token", AddItemsRequest(shopId, itemsList))
             .enqueue(object : Callback<ApiResponse> {
                 override fun onResponse(call: Call<ApiResponse>, response: Response<ApiResponse>) {
                     if (response.isSuccessful && response.body()?.success == true) {
                         Toast.makeText(this@AddItemsActivity, "✅ Items added successfully!", Toast.LENGTH_SHORT).show()
                         SessionManager.setHasItemsAdded(this@AddItemsActivity, true)
-
-                        // Go to ShopOwnerMainActivity after adding
-                        val intent = Intent(this@AddItemsActivity, ShopOwnerMainActivity::class.java)
-                        startActivity(intent)
+                        startActivity(Intent(this@AddItemsActivity, ShopOwnerMainActivity::class.java))
                         finish()
                     } else {
                         Toast.makeText(this@AddItemsActivity, "❌ Failed: ${response.body()?.message}", Toast.LENGTH_SHORT).show()
@@ -142,4 +137,5 @@ class AddItemsActivity : AppCompatActivity() {
                 }
             })
     }
+
 }
