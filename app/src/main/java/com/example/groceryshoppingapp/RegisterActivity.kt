@@ -260,7 +260,14 @@ class RegisterActivity : AppCompatActivity() {
         })
     }
 
-    private fun registerUserBackend(name: String, username: String, email: String, phone: String, role: String, password: String) {
+    private fun registerUserBackend(
+        name: String,
+        username: String,
+        email: String,
+        phone: String,
+        role: String,
+        password: String
+    ) {
         val body = mapOf(
             "full_name" to name,       // ✅ match backend
             "username" to username,    // ✅ backend uses this
@@ -269,22 +276,60 @@ class RegisterActivity : AppCompatActivity() {
             "role" to role,
             "password" to password
         )
+
         api.registerAfterOtp(body).enqueue(object : Callback<Map<String, String>> {
-            override fun onResponse(call: Call<Map<String, String>>, response: Response<Map<String, String>>) {
+            override fun onResponse(
+                call: Call<Map<String, String>>,
+                response: Response<Map<String, String>>
+            ) {
                 if (response.isSuccessful && response.body()?.get("success") == "true") {
-                    Toast.makeText(this@RegisterActivity, "✅ Registered successfully!", Toast.LENGTH_SHORT).show()
+                    Toast.makeText(
+                        this@RegisterActivity,
+                        "✅ Registered successfully!",
+                        Toast.LENGTH_SHORT
+                    ).show()
 
-                    // save profile locally with username
-                    SessionManager.saveUserProfile(this@RegisterActivity, name, username, phone, email, "", "")
+                    // --- Save basic profile ---
+                    SessionManager.saveUserProfile(
+                        this@RegisterActivity,
+                        fullName = name,
+                        address = "",   // no address at registration
+                        phone = phone,
+                        email = email,
+                        location = "",
+                        photoBase64 = ""
+                    )
 
+                    // --- Save login role ---
+                    SessionManager.saveLogin(this@RegisterActivity, username, role)
+
+                    // --- Save role-specific IDs ---
                     if (role == "shopowner") {
+                        // Use username as shopkeeperId (or backend ID if available)
+                        SessionManager.setShopkeeperId(this@RegisterActivity, username)
+
+                        // Save auth token if backend sends it (optional)
+                        val token = response.body()?.get("token") ?: ""
+                        if (token.isNotEmpty()) {
+                            SessionManager.saveAuthToken(this@RegisterActivity, token)
+                        }
+
+                        // Go to CreateShopActivity
                         startActivity(Intent(this@RegisterActivity, CreateShopActivity::class.java))
                     } else {
+                        // Customer
+                        SessionManager.setCustomerId(this@RegisterActivity, username)
+
                         startActivity(Intent(this@RegisterActivity, CustomerHomeActivity::class.java))
                     }
+
                     finish()
                 } else {
-                    Toast.makeText(this@RegisterActivity, "Registration failed", Toast.LENGTH_SHORT).show()
+                    Toast.makeText(
+                        this@RegisterActivity,
+                        "Registration failed",
+                        Toast.LENGTH_SHORT
+                    ).show()
                 }
             }
 
@@ -293,6 +338,7 @@ class RegisterActivity : AppCompatActivity() {
             }
         })
     }
+
 
 
     private fun resendOtp() {

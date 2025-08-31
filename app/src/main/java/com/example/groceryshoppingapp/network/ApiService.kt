@@ -15,6 +15,11 @@ import retrofit2.http.DELETE
 import retrofit2.http.PUT
 import retrofit2.http.Header
 
+data class AddItemsRequest(
+    val shop_id: String,
+    val items: List<Item>
+)
+
 interface ApiService {
     @PATCH("api/orders/{order_id}")
     fun updateOrder(
@@ -100,13 +105,18 @@ interface ApiService {
 //        @Body body: Map<String, Any>
 //    ): Call<ApiResponse>
 
-
     @POST("add_items")
     fun addItems(
         @Header("Authorization") token: String,
-        @Query("shop_id") shopId: String,
-        @Body items: List<Item>
+        @Body request: AddItemsRequest
     ): Call<ApiResponse>
+
+//    @POST("add_items")
+//    fun addItems(
+//        @Header("Authorization") token: String,
+//        @Query("shop_id") shopId: String,
+//        @Body items: List<Item>
+//    ): Call<ApiResponse>
 
 
 
