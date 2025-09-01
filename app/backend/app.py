@@ -28,6 +28,7 @@ limiter.init_app(app)
 
 otp_store = {}
 
+
 def generate_token(user):
     payload = {
         "username": user["username"],
@@ -37,6 +38,7 @@ def generate_token(user):
     token = jwt.encode(payload, SECRET_KEY, algorithm="HS256")
     print(f"SECRET_KEY {SECRET_KEY}")
     return token
+
 
 # Health check endpoint – exempt from rate limits
 @app.get("/healthz")
@@ -156,8 +158,6 @@ def login():
     }), 200
 
 
-
-
 @app.route('/register', methods=['POST'])
 def register():
     data = request.get_json()
@@ -267,6 +267,7 @@ def get_shops_for_shopkeeper(shopkeeper_id):
     result = [s for s in all_shops if s.get("shopkeeper_id") == shopkeeper_id]
     return jsonify(result)
 
+
 # ----------- CREATE SHOP -----------
 @app.route('/create_shop', methods=['POST'])
 def create_shop():
@@ -290,7 +291,8 @@ def create_shop():
     shop = firebase_db.append_shop(shop_dict)
 
     # ✅ Update shopkeeper record with this shopId
-    user_ref = firebase_db.db.collection("users").where("shopkeeperId", "==", shopkeeper_id).stream()
+    user_ref = firebase_db.db.collection("users").where("shopkeeperId", "==",
+                                                        shopkeeper_id).stream()
     for doc in user_ref:
         firebase_db.db.collection("users").document(doc.id).update({"shopId": shop["id"]})
         break
@@ -306,7 +308,6 @@ def create_shop():
             'contact': shop['contact']
         }
     }), 200
-
 
 
 # ----------- ITEMS -----------
@@ -382,7 +383,7 @@ def get_items(shop_id):
 #         }
 #     }), 201
 
-@app.route('/add_item', methods=['POST'])
+@app.route('/shop/add_item', methods=['POST'])
 def add_item():
     auth_header = request.headers.get('Authorization', '')
     if not auth_header.startswith("Bearer "):
@@ -701,7 +702,6 @@ def register_after_otp():
     }), 201
 
 
-
 @app.before_request
 def require_authentication():
     public_paths = ["/healthz", "/send_otp", "/verify_otp", "/register", "/login",
@@ -744,53 +744,6 @@ def send_welcome_email(email, name):
     print("Welcome email response:", response.status_code, response.text)
     return response.status_code in [200, 201]
 
-
-
-# Add near your other routes
-
-@app.route("/shop/add_items", methods=["POST"])
-def shop_add_items():
-    # 1) Auth: expect "Authorization: Bearer <jwt>"
-    auth_header = request.headers.get("Authorization", "")
-    if not auth_header.startswith("Bearer "):
-        return jsonify({"success": False, "message": "Missing or invalid auth header"}), 401
-
-    token = auth_header.split(" ", 1)[1]
-    try:
-        payload = jwt.decode(token, SECRET_KEY, algorithms=["HS256"])
-    except jwt.ExpiredSignatureError:
-        return jsonify({"success": False, "message": "Token expired"}), 401
-    except jwt.InvalidTokenError:
-        return jsonify({"success": False, "message": "Invalid token"}), 401
-
-    role = (payload.get("role") or "").lower()
-    if role not in ("shopowner", "shopkeeper"):
-        return jsonify({"success": False, "message": "Unauthorized role"}), 403
-
-    body = request.get_json(silent=True) or {}
-    shop_id = str(body.get("shop_id") or body.get("shopId") or "").strip()
-    items = body.get("items") or []
-
-    if not shop_id or not isinstance(items, list) or not items:
-        return jsonify({"success": False, "message": "Missing shop_id or items"}), 400
-
-    # 2) Normalize fields from Android -> backend
-    normalized = []
-    for it in items:
-        normalized.append({
-            "name": it.get("name"),
-            "price": float(it.get("price") or 0),
-            "quantity": int(it.get("stockQuantity") or it.get("quantity") or 0),
-            "description": it.get("description") or "",
-            "shopId": shop_id,
-            "imageUrl": it.get("imageUrl")
-        })
-
-    # 3) Persist (adapt this to your firebase_db helper)
-    for n in normalized:
-        firebase_db.add_item_to_shop(n["shopId"], n)  # implement this tiny helper if needed
-
-    return jsonify({"success": True, "message": "Items added"}), 200
 
 if __name__ == "__main__":
     print("Gunicorn setup complete, about to run...")
