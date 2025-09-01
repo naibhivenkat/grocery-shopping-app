@@ -384,8 +384,9 @@ def get_items(shop_id):
 #         }
 #     }), 201
 
-@app.route('/shop/add_item', methods=['POST'])
+@app.route('/shop/add_items', methods=['POST'])
 def add_item():
+    # 1. Verify token
     auth_header = request.headers.get('Authorization', '')
     if not auth_header.startswith("Bearer "):
         return jsonify({'success': False, 'message': 'Missing or invalid auth header'}), 401
@@ -405,41 +406,31 @@ def add_item():
     if role not in ['shopowner', 'shopkeeper']:
         return jsonify({'success': False, 'message': 'Unauthorized role'}), 403
 
-    data = request.get_json()
-    if data is None:
-        return jsonify({'success': False, 'message': 'Invalid request body'}), 400
+    # 2. Parse body
+    data = request.get_json(silent=True) or {}
+    shop_id = data.get("shop_id")
+    items = data.get("items", [])
 
-    name = data.get('name')
-    price = data.get('price')
-    quantity = data.get('quantity')
-    shop_id = data.get('shop_id')
+    if not shop_id or not items:
+        return jsonify({'success': False, 'message': 'Missing shop_id or items'}), 400
 
-    # Optional: verify user owns the shop_id here by querying your DB
-
-    if not all([name, price, quantity, shop_id]):
-        return jsonify({'success': False, 'message': 'Missing item fields or shop ID'}), 400
-
-    # Create item dict and add to DB (your existing code)
-    item_dict = {
-        "name": name,
-        "price": float(price),
-        "quantity": int(quantity),
-        "shopId": shop_id,
-        "createdAt": datetime.utcnow().isoformat()
-    }
-
-    item = firebase_db.append_item(item_dict)
+    saved_items = []
+    for it in items:
+        item_dict = {
+            "name": it.get("name"),
+            "price": float(it.get("price") or 0),
+            "quantity": int(it.get("stockQuantity") or 0),
+            "description": it.get("description") or "",
+            "shopId": shop_id,
+            "createdAt": datetime.utcnow().isoformat()
+        }
+        item = firebase_db.append_item(item_dict)
+        saved_items.append(item)
 
     return jsonify({
         'success': True,
-        'message': 'Item added successfully',
-        'item': {
-            'id': item['id'],
-            'name': item['name'],
-            'price': item['price'],
-            'quantity': item['quantity'],
-            'shopId': item['shopId']
-        }
+        'message': 'Items added successfully',
+        'items': saved_items
     }), 201
 
 
