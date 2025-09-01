@@ -1,8 +1,9 @@
 package com.example.groceryshoppingapp.models
 
-import com.example.groceryshoppingapp.models.Item
+import com.google.gson.annotations.SerializedName
 
 data class AddItemsRequest(
-    val shop_id: String,
+    @SerializedName("shop_id")
+    val shopId: String,
     val items: List<Item>
 )

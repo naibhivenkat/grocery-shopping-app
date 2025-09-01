@@ -2,6 +2,7 @@ package com.example.groceryshoppingapp
 
 import android.content.Intent
 import android.os.Bundle
+import android.util.Log
 import android.widget.*
 import androidx.appcompat.app.AppCompatActivity
 import com.example.groceryshoppingapp.models.Item
@@ -92,6 +93,7 @@ class AddItemsActivity : AppCompatActivity() {
         }
 
         val token = SessionManager.getAuthToken(this)
+        Log.d("AddItemsActivity", "Token value: $token")
         val shopId = SessionManager.getShopId(this)
 
         if (token.isNullOrEmpty() || shopId.isNullOrEmpty()) {
@@ -102,8 +104,9 @@ class AddItemsActivity : AppCompatActivity() {
         }
 
         val request = AddItemsRequest(shopId, itemDataList)
-
-        ApiClient.apiService.addItems("Bearer $token", request)
+        //ApiClient.apiService.addItems("Bearer $token", request)
+        val authHeader = "Bearer $token"
+        ApiClient.apiService.addItems(authHeader, request)
             .enqueue(object : Callback<ApiResponse> {
                 override fun onResponse(call: Call<ApiResponse>, response: Response<ApiResponse>) {
                     if (response.isSuccessful && response.body()?.success == true) {

@@ -338,27 +338,85 @@ def get_items(shop_id):
 #         }
 #         firebase_db.append_item(item_dict)
 #     return jsonify({'success': True})
+# @app.route('/add_item', methods=['POST'])
+# def add_item():
+#     data = request.form if request.form else request.get_json()
+#     name = data.get('name')
+#     price = data.get('price')
+#     quantity = data.get('quantity')
+#
+#     shop_id = data.get('shopId')
+#     shopkeeper_id = data.get('shopkeeperId')
+#
+#     # ✅ Resolve shopId if not provided
+#     if not shop_id and shopkeeper_id:
+#         shop_query = firebase_db.db.collection("shops").where("shopkeeper_id", "==", shopkeeper_id).stream()
+#         for doc in shop_query:
+#             shop_id = doc.id
+#             break
+#
+#     if not all([name, price, quantity, shop_id]):
+#         return jsonify({'success': False, 'message': 'Missing item fields or shop ID'}), 400
+#
+#     # ✅ Create item dictionary
+#     item_dict = {
+#         "name": name,
+#         "price": float(price),
+#         "quantity": int(quantity),
+#         "shopId": shop_id,
+#         "createdAt": datetime.utcnow().isoformat()
+#     }
+#
+#     item = firebase_db.append_item(item_dict)
+#
+#     return jsonify({
+#         'success': True,
+#         'message': 'Item added successfully',
+#         'item': {
+#             'id': item['id'],
+#             'name': item['name'],
+#             'price': item['price'],
+#             'quantity': item['quantity'],
+#             'shopId': item['shopId']
+#         }
+#     }), 201
+
 @app.route('/add_item', methods=['POST'])
 def add_item():
-    data = request.form if request.form else request.get_json()
+    auth_header = request.headers.get('Authorization', '')
+    if not auth_header.startswith("Bearer "):
+        return jsonify({'success': False, 'message': 'Missing or invalid auth header'}), 401
+
+    token = auth_header.split(" ")[1]
+    try:
+        payload = jwt.decode(token, SECRET_KEY, algorithms=["HS256"])
+    except jwt.ExpiredSignatureError:
+        return jsonify({'success': False, 'message': 'Token expired'}), 401
+    except jwt.InvalidTokenError:
+        return jsonify({'success': False, 'message': 'Invalid token'}), 401
+
+    # Now you have user info from token:
+    username = payload.get('username')
+    role = payload.get('role')
+
+    if role not in ['shopowner', 'shopkeeper']:
+        return jsonify({'success': False, 'message': 'Unauthorized role'}), 403
+
+    data = request.get_json()
+    if data is None:
+        return jsonify({'success': False, 'message': 'Invalid request body'}), 400
+
     name = data.get('name')
     price = data.get('price')
     quantity = data.get('quantity')
+    shop_id = data.get('shop_id')
 
-    shop_id = data.get('shopId')
-    shopkeeper_id = data.get('shopkeeperId')
-
-    # ✅ Resolve shopId if not provided
-    if not shop_id and shopkeeper_id:
-        shop_query = firebase_db.db.collection("shops").where("shopkeeper_id", "==", shopkeeper_id).stream()
-        for doc in shop_query:
-            shop_id = doc.id
-            break
+    # Optional: verify user owns the shop_id here by querying your DB
 
     if not all([name, price, quantity, shop_id]):
         return jsonify({'success': False, 'message': 'Missing item fields or shop ID'}), 400
 
-    # ✅ Create item dictionary
+    # Create item dict and add to DB (your existing code)
     item_dict = {
         "name": name,
         "price": float(price),
