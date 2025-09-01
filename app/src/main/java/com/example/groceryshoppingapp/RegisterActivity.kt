@@ -110,6 +110,7 @@ class RegisterActivity : AppCompatActivity() {
             override fun onTextChanged(s: CharSequence?, start: Int, before: Int, count: Int) {
                 validatePasswords()
             }
+
             override fun afterTextChanged(s: android.text.Editable?) {}
         }
         etPassword.addTextChangedListener(watcher)
@@ -142,7 +143,14 @@ class RegisterActivity : AppCompatActivity() {
     private fun setupOtpBoxes() {
         for (i in otpFields.indices) {
             otpFields[i].addTextChangedListener(object : android.text.TextWatcher {
-                override fun beforeTextChanged(s: CharSequence?, start: Int, count: Int, after: Int) {}
+                override fun beforeTextChanged(
+                    s: CharSequence?,
+                    start: Int,
+                    count: Int,
+                    after: Int
+                ) {
+                }
+
                 override fun onTextChanged(s: CharSequence?, start: Int, before: Int, count: Int) {
                     if (s?.length == 1 && i < otpFields.size - 1) {
                         otpFields[i + 1].requestFocus()
@@ -151,6 +159,7 @@ class RegisterActivity : AppCompatActivity() {
                     }
                     validateOtpBoxes()
                 }
+
                 override fun afterTextChanged(s: android.text.Editable?) {}
             })
         }
@@ -178,7 +187,8 @@ class RegisterActivity : AppCompatActivity() {
         val confirmPassword = etConfirmPassword.text.toString().trim()
 
         if (username.isEmpty() || email.isEmpty() || name.isEmpty() || phone.isEmpty() ||
-            password.isEmpty() || confirmPassword.isEmpty()) {
+            password.isEmpty() || confirmPassword.isEmpty()
+        ) {
             Toast.makeText(this, "Fill all fields", Toast.LENGTH_SHORT).show()
             return
         }
@@ -190,19 +200,24 @@ class RegisterActivity : AppCompatActivity() {
 
         val body = mapOf("email" to email)
         api.sendOtp(body).enqueue(object : Callback<Map<String, String>> {
-            override fun onResponse(call: Call<Map<String, String>>, response: Response<Map<String, String>>) {
+            override fun onResponse(
+                call: Call<Map<String, String>>,
+                response: Response<Map<String, String>>
+            ) {
                 if (response.isSuccessful) {
                     Toast.makeText(this@RegisterActivity, "OTP sent!", Toast.LENGTH_SHORT).show()
                     otpSent = true
                     showOtpFields()
                     startTimer()
                 } else {
-                    Toast.makeText(this@RegisterActivity, "Failed to send OTP", Toast.LENGTH_SHORT).show()
+                    Toast.makeText(this@RegisterActivity, "Failed to send OTP", Toast.LENGTH_SHORT)
+                        .show()
                 }
             }
 
             override fun onFailure(call: Call<Map<String, String>>, t: Throwable) {
-                Toast.makeText(this@RegisterActivity, "Error: ${t.message}", Toast.LENGTH_SHORT).show()
+                Toast.makeText(this@RegisterActivity, "Error: ${t.message}", Toast.LENGTH_SHORT)
+                    .show()
             }
         })
     }
@@ -223,8 +238,13 @@ class RegisterActivity : AppCompatActivity() {
                 val seconds = (millisUntilFinished / 1000) % 60
                 tvTimer.text = String.format("%02d:%02d", minutes, seconds)
             }
+
             override fun onFinish() {
-                Toast.makeText(this@RegisterActivity, "OTP expired. Please resend.", Toast.LENGTH_SHORT).show()
+                Toast.makeText(
+                    this@RegisterActivity,
+                    "OTP expired. Please resend.",
+                    Toast.LENGTH_SHORT
+                ).show()
                 btnVerifyOtp.isEnabled = false
             }
         }.start()
@@ -248,7 +268,10 @@ class RegisterActivity : AppCompatActivity() {
 
         val body = mapOf("email" to email, "otp" to otp)
         api.verifyOtp(body).enqueue(object : Callback<Map<String, String>> {
-            override fun onResponse(call: Call<Map<String, String>>, response: Response<Map<String, String>>) {
+            override fun onResponse(
+                call: Call<Map<String, String>>,
+                response: Response<Map<String, String>>
+            ) {
                 if (response.isSuccessful && response.body()?.get("status") == "success") {
                     registerUserBackend(name, username, email, phone, role, password)
                 } else {
@@ -257,10 +280,12 @@ class RegisterActivity : AppCompatActivity() {
             }
 
             override fun onFailure(call: Call<Map<String, String>>, t: Throwable) {
-                Toast.makeText(this@RegisterActivity, "Error: ${t.message}", Toast.LENGTH_SHORT).show()
+                Toast.makeText(this@RegisterActivity, "Error: ${t.message}", Toast.LENGTH_SHORT)
+                    .show()
             }
         })
     }
+
     private fun registerUserBackend(
         name: String,
         username: String,
@@ -291,16 +316,31 @@ class RegisterActivity : AppCompatActivity() {
                 if (response.isSuccessful && response.body()?.success == true) {
                     val user = response.body()?.user
                     if (user != null) {
-                        Log.d("REGISTER_API", "User object: $user")
-
-                        // Save login info
+                        // ✅ Save role + username
                         SessionManager.saveLogin(
                             this@RegisterActivity,
-                            user.username,
-                            user.role
+                            user.username ?: "",
+                            user.role ?: ""
                         )
 
-                        // Save profile info
+                        // ✅ Save auth token if backend provides (skip if not)
+                        // SessionManager.saveAuthToken(this@RegisterActivity, user.token ?: "")
+                        // ❌ comment/remove this line if token is not in response
+
+                        // ✅ Save userId depending on role
+                        if (user.role.equals("shopkeeper", true)) {
+                            SessionManager.setShopkeeperId(
+                                this@RegisterActivity,
+                                user.shopkeeperId ?: ""
+                            )
+                        } else {
+                            SessionManager.setCustomerId(
+                                this@RegisterActivity,
+                                user.customerId ?: ""
+                            )
+                        }
+
+                        // ✅ Save profile info
                         SessionManager.saveUserProfile(
                             this@RegisterActivity,
                             user.fullName ?: "",
@@ -311,33 +351,56 @@ class RegisterActivity : AppCompatActivity() {
                             user.photoBase64 ?: ""
                         )
 
-                        // Navigate depending on role
-                        if (user.role == "shopkeeper" || user.role == "shopowner") {
+                        // ✅ Save shopId if shop exists
+                        if (user.shop != null) {
+                            SessionManager.setShopId(this@RegisterActivity, user.shop.id)
+                        }
+
+                        // --- Navigation ---
+                        if (user.role.equals("shopkeeper", true)) {
                             if (user.shopExists == true && user.shop != null) {
-                                startActivity(Intent(this@RegisterActivity, ShopOwnerDashboardActivity::class.java))
+                                startActivity(
+                                    Intent(
+                                        this@RegisterActivity,
+                                        ShopOwnerDashboardActivity::class.java
+                                    )
+                                )
                             } else {
-                                startActivity(Intent(this@RegisterActivity, CreateShopActivity::class.java))
+                                startActivity(
+                                    Intent(
+                                        this@RegisterActivity,
+                                        CreateShopActivity::class.java
+                                    )
+                                )
                             }
                         } else {
-                            startActivity(Intent(this@RegisterActivity, CustomerHomeActivity::class.java))
+                            startActivity(
+                                Intent(
+                                    this@RegisterActivity,
+                                    CustomerHomeActivity::class.java
+                                )
+                            )
                         }
                         finish()
-                    } else {
-                        Log.e("REGISTER_API", "User is null in response")
-                        Toast.makeText(this@RegisterActivity, "❌ No user data in response", Toast.LENGTH_SHORT).show()
                     }
+
+
                 } else {
-                    Toast.makeText(this@RegisterActivity, "❌ Registration failed", Toast.LENGTH_SHORT).show()
+                    Toast.makeText(
+                        this@RegisterActivity,
+                        "❌ Registration failed",
+                        Toast.LENGTH_SHORT
+                    ).show()
                 }
             }
 
             override fun onFailure(call: Call<RegisterResponse>, t: Throwable) {
                 Log.e("REGISTER_API", "API call failed: ${t.message}", t)
-                Toast.makeText(this@RegisterActivity, "⚠️ Error: ${t.message}", Toast.LENGTH_SHORT).show()
+                Toast.makeText(this@RegisterActivity, "⚠️ Error: ${t.message}", Toast.LENGTH_SHORT)
+                    .show()
             }
         })
     }
-
 
 
     private fun resendOtp() {
