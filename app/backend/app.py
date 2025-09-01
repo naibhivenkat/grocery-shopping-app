@@ -11,10 +11,13 @@ from firebase_admin import credentials, auth, db
 from flask_limiter import Limiter
 from flask_limiter.util import get_remote_address
 import firebase_db
+import jwt
+import datetime
 
 app = Flask(__name__)
 CORS(app)
 logging.basicConfig(level=logging.INFO)
+SECRET_KEY = "SECRET_KEY"  # keep secret and safe!
 
 SENDINBLUE_API_KEY = os.getenv("SENDINBLUE_API_KEY")
 FROM_EMAIL = os.getenv("FROM_EMAIL")
@@ -25,6 +28,14 @@ limiter.init_app(app)
 
 otp_store = {}
 
+def generate_token(user):
+    payload = {
+        "username": user["username"],
+        "role": user["role"],
+        "exp": datetime.datetime.utcnow() + datetime.timedelta(days=7)  # Token valid for 7 days
+    }
+    token = jwt.encode(payload, SECRET_KEY, algorithm="HS256")
+    return token
 
 # Health check endpoint – exempt from rate limits
 @app.get("/healthz")
@@ -182,6 +193,10 @@ def register():
         "customerId": str(uuid.uuid4()) if role == "customer" else None,
         "shopkeeperId": str(uuid.uuid4()) if role in ["shopowner", "shopkeeper"] else None
     }
+
+    # Generate JWT token and add to user_dict
+    token = generate_token(user_dict)
+    user_dict["token"] = token
 
     # Handle profile photo
     if data.get("photo_base64"):
@@ -609,6 +624,10 @@ def register_after_otp():
         "customerId": str(uuid.uuid4()) if role == "customer" else None,
         "shopkeeperId": str(uuid.uuid4()) if role in ["shopowner", "shopkeeper"] else None
     }
+
+    # Generate JWT token and add to user_dict
+    token = generate_token(user_dict)
+    user_dict["token"] = token
 
     # Save user
     firebase_db.append_user(user_dict)

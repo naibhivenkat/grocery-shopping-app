@@ -308,7 +308,6 @@ class RegisterActivity : AppCompatActivity() {
                 call: Call<RegisterResponse>,
                 response: Response<RegisterResponse>
             ) {
-                // 🔥 Log everything
                 Log.d("REGISTER_API", "Raw response: ${response.raw()}")
                 Log.d("REGISTER_API", "Body: ${response.body()}")
                 Log.d("REGISTER_API", "ErrorBody: ${response.errorBody()?.string()}")
@@ -323,12 +322,13 @@ class RegisterActivity : AppCompatActivity() {
                             user.role ?: ""
                         )
 
-                        // ✅ Save auth token if backend provides (skip if not)
-                        // SessionManager.saveAuthToken(this@RegisterActivity, user.token ?: "")
-                        // ❌ comment/remove this line if token is not in response
+                        // ✅ Save auth token if backend provides
+                        if (!user.token.isNullOrEmpty()) { // <-- CHANGE: Now always saves token if present
+                            SessionManager.saveAuthToken(this@RegisterActivity, user.token)
+                        }
 
                         // ✅ Save userId depending on role
-                        if (user.role.equals("shopowner", true) || user.role.equals("shopkeeper", true)) {
+                        if (user.role.lowercase() in listOf("shopowner", "shopkeeper")) {
                             SessionManager.setShopkeeperId(
                                 this@RegisterActivity,
                                 user.shopkeeperId ?: ""
@@ -356,9 +356,10 @@ class RegisterActivity : AppCompatActivity() {
                             SessionManager.setShopId(this@RegisterActivity, user.shop.id)
                         }
 
-                        // --- Navigation ---
-                        if (user.role.equals("shopowner", true) || user.role.equals("shopkeeper", true)) {
+                        // --- NAVIGATION FIX STARTS HERE ---
+                        if (user.role.lowercase() in listOf("shopowner", "shopkeeper")) {
                             if (user.shopExists == true && user.shop != null) {
+                                // Shopowner with shop → Dashboard
                                 startActivity(
                                     Intent(
                                         this@RegisterActivity,
@@ -366,6 +367,7 @@ class RegisterActivity : AppCompatActivity() {
                                     )
                                 )
                             } else {
+                                // Shopowner no shop → CreateShop flow
                                 startActivity(
                                     Intent(
                                         this@RegisterActivity,
@@ -374,6 +376,7 @@ class RegisterActivity : AppCompatActivity() {
                                 )
                             }
                         } else {
+                            // Only for "customer" users
                             startActivity(
                                 Intent(
                                     this@RegisterActivity,
@@ -382,9 +385,8 @@ class RegisterActivity : AppCompatActivity() {
                             )
                         }
                         finish()
+                        // --- END NAVIGATION FIX ---
                     }
-
-
                 } else {
                     Toast.makeText(
                         this@RegisterActivity,
@@ -401,6 +403,7 @@ class RegisterActivity : AppCompatActivity() {
             }
         })
     }
+
 
 
     private fun resendOtp() {

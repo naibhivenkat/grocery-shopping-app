@@ -34,7 +34,8 @@ data class UserData(
     val location: String? = null,
     @SerializedName("photoBase64") val photoBase64: String? = null,
     @SerializedName("shopExists") val shopExists: Boolean? = null,
-    val shop: Shops? = null
+    val shop: Shops? = null,
+    val token: String? = null
 )
 
 // Matches your backend shop structure
