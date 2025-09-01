@@ -17,7 +17,7 @@ import datetime
 app = Flask(__name__)
 CORS(app)
 logging.basicConfig(level=logging.INFO)
-SECRET_KEY = "SECRET_KEY"  # keep secret and safe!
+SECRET_KEY = os.getenv("SECRET_KEY")  # keep secret and safe!
 
 SENDINBLUE_API_KEY = os.getenv("SENDINBLUE_API_KEY")
 FROM_EMAIL = os.getenv("FROM_EMAIL")
