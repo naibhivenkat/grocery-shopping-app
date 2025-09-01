@@ -80,6 +80,12 @@ class CreateShopActivity : AppCompatActivity() {
                 SessionManager.setShopId(this, shopIdStr)
                 SessionManager.setShopInfo(this, shopIdStr, shopName)
 
+                // ✅ Preserve auth token (important for AddItemsActivity)
+                val token = SessionManager.getAuthToken(this)
+                if (!token.isNullOrEmpty()) {
+                    SessionManager.saveAuthToken(this, token) // refresh same token
+                }
+
                 // ✅ Update user's shopExists in Firestore
                 db.collection("users")
                     .whereEqualTo("shopkeeperId", shopkeeperId)
