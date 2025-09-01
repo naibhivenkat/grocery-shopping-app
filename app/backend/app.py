@@ -35,6 +35,7 @@ def generate_token(user):
         "exp": datetime.datetime.utcnow() + datetime.timedelta(days=7)  # Token valid for 7 days
     }
     token = jwt.encode(payload, SECRET_KEY, algorithm="HS256")
+    print(f"SECRET_KEY {SECRET_KEY}")
     return token
 
 # Health check endpoint – exempt from rate limits
