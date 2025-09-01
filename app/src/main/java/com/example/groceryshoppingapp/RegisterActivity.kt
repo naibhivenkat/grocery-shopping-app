@@ -328,7 +328,7 @@ class RegisterActivity : AppCompatActivity() {
                         // ❌ comment/remove this line if token is not in response
 
                         // ✅ Save userId depending on role
-                        if (user.role.equals("shopkeeper", true)) {
+                        if (user.role.equals("shopowner", true) || user.role.equals("shopkeeper", true)) {
                             SessionManager.setShopkeeperId(
                                 this@RegisterActivity,
                                 user.shopkeeperId ?: ""
@@ -357,7 +357,7 @@ class RegisterActivity : AppCompatActivity() {
                         }
 
                         // --- Navigation ---
-                        if (user.role.equals("shopkeeper", true)) {
+                        if (user.role.equals("shopowner", true) || user.role.equals("shopkeeper", true)) {
                             if (user.shopExists == true && user.shop != null) {
                                 startActivity(
                                     Intent(
