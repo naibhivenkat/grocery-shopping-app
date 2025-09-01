@@ -661,7 +661,7 @@ def register_after_otp():
     role = data.get("role", "customer").lower()
     password = data.get("password")
 
-    if not all([name, email, phone, username, password]):
+    if not all([name, email, username, password]):
         return jsonify({"success": False, "message": "Missing fields"}), 400
 
     # Check if user already exists by email
