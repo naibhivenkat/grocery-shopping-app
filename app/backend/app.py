@@ -33,10 +33,14 @@ def generate_token(user):
     payload = {
         "username": user["username"],
         "role": user["role"],
-        "exp": datetime.datetime.utcnow() + datetime.timedelta(days=7)  # Token valid for 7 days
+        "exp": datetime.datetime.utcnow() + datetime.timedelta(days=7)
     }
     token = jwt.encode(payload, SECRET_KEY, algorithm="HS256")
-    print(f"SECRET_KEY {SECRET_KEY}")
+
+    # ensure it's str, not bytes
+    if isinstance(token, bytes):
+        token = token.decode("utf-8")
+
     return token
 
 
