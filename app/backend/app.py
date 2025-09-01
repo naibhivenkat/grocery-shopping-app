@@ -210,7 +210,8 @@ def register():
     return jsonify({
         "success": True,
         "message": "Registered successfully",
-        "user": user_dict
+        "user": user_dict,
+        "token": token   # ✅ add this line
     }), 201
 
 
@@ -697,9 +698,11 @@ def register_after_otp():
 
     return jsonify({
         "success": True,
-        "message": "User registered",
-        "user": user_dict
+        "message": "Registered successfully",
+        "user": user_dict,
+        "token": token   # ✅ add this line
     }), 201
+    
 
 
 @app.before_request
