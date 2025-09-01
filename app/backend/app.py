@@ -408,6 +408,7 @@ def add_item():
 
     # 2. Parse body
     data = request.get_json(silent=True) or {}
+    print(f"body - {data}")
     shop_id = data.get("shop_id")
     items = data.get("items", [])
 
@@ -421,7 +422,7 @@ def add_item():
             "price": float(it.get("price") or 0),
             "quantity": int(it.get("stockQuantity") or 0),
             "description": it.get("description") or "",
-            "shopId": shop_id,
+            "shopId": it.get("shopid") or shop_id,
             "createdAt": datetime.utcnow().isoformat()
         }
         item = firebase_db.append_item(item_dict)
