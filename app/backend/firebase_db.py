@@ -52,8 +52,9 @@ def append_shop(shop_dict):
 # ---------------- ITEMS ----------------
 
 def get_items_by_shop(shop_id):
-    docs = db.collection("items").where("shopid", "==", shop_id).stream()
+    docs = db.collection("items").where("shopId", "==", str(shop_id)).stream()
     return [doc.to_dict() for doc in docs]
+
 
 def append_item(item_dict):
     item_id = str(uuid.uuid4())
