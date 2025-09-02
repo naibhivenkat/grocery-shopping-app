@@ -36,6 +36,7 @@ def generate_token(user):
         "exp": datetime.datetime.utcnow() + datetime.timedelta(days=7)
     }
     token = jwt.encode(payload, SECRET_KEY, algorithm="HS256")
+    print("SECRET_KEY in generate_token:", SECRET_KEY)
 
     # ensure it's str, not bytes
     if isinstance(token, bytes):
@@ -201,6 +202,7 @@ def register():
 
     # Generate JWT token and add to user_dict
     token = generate_token(user_dict)
+    print("token in register:", token)
     user_dict["token"] = token
 
     # Handle profile photo
@@ -392,13 +394,15 @@ def get_items(shop_id):
 def add_item():
     # 1. Verify token
     auth_header = request.headers.get('Authorization', '')
-    print("AUTH HEADER:", request.headers.get("Authorization"))
+    print("AUTH HEADER RAW:", auth_header)
     if not auth_header.startswith("Bearer "):
         return jsonify({'success': False, 'message': 'Missing or invalid auth header'}), 401
 
     token = auth_header.split(" ")[1]
+    print("TOKEN RAW:", token)
     try:
         payload = jwt.decode(token, SECRET_KEY, algorithms=["HS256"])
+        print("Decoded payload:", payload)
     except jwt.ExpiredSignatureError:
         return jsonify({'success': False, 'message': 'Token expired'}), 401
     except jwt.InvalidTokenError:
