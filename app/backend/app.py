@@ -354,7 +354,7 @@ def get_items(shop_id):
     # Optional: check role
     role = user.get('role')
     print(f"roll :  {role}")
-    if role not in ["shopkeeper", "customer"]:
+    if role not in ["shopkeeper", "shopowner", "customer"]:
         return jsonify({'success': False, 'message': 'Forbidden'}), 403
 
     # Fetch items
