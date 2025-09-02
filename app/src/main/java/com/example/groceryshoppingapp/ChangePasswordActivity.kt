@@ -27,7 +27,7 @@ class ChangePasswordActivity : AppCompatActivity() {
         etConfirmPassword = findViewById(R.id.et_confirm_password)
         btnChangePassword = findViewById(R.id.btn_change_password)
         btnBack = findViewById(R.id.btn_back)
-        btnChangePassword.setOnClickListener {btnChangePassword.setOnClickListener {
+        btnChangePassword.setOnClickListener {
             val oldPass = etOldPassword.text.toString().trim()
             val newPass = etNewPassword.text.toString().trim()
             val confirmPass = etConfirmPassword.text.toString().trim()
@@ -43,9 +43,10 @@ class ChangePasswordActivity : AppCompatActivity() {
                 "old_password" to oldPass,
                 "new_password" to newPass
             )
-
+            val token = SessionManager.getAuthToken(this)
+            val authHeader = "Bearer $token"
             val api = RetrofitClient.instance.create(ApiService::class.java)
-            api.changePassword(body).enqueue(object : Callback<Map<String, Any>> {
+            api.changePassword(authHeader, body).enqueue(object : Callback<Map<String, Any>> {
                 override fun onResponse(call: Call<Map<String, Any>>, response: Response<Map<String, Any>>) {
                     if (response.isSuccessful && response.body()?.get("success") == true) {
                         Toast.makeText(this@ChangePasswordActivity, "Password changed", Toast.LENGTH_SHORT).show()

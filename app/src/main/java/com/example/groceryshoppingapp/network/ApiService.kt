@@ -88,7 +88,10 @@ interface ApiService {
 //    ): Call<Map<String, Any>>
 
     @POST("/change_password")
-    fun changePassword(@Body body: Map<String, String>): Call<Map<String, Any>>
+    fun changePassword(
+        @Header("Authorization") auth: String,
+        @Body body: Map<String, String>
+    ): Call<Map<String, Any>>
 
 
     @POST("/update_profile")

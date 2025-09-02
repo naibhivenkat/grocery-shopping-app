@@ -93,7 +93,6 @@ class AddItemsActivity : AppCompatActivity() {
         }
 
         val token = SessionManager.getAuthToken(this)
-        Log.d("AddItemsActivity", "Token value: $token")
         val shopId = SessionManager.getShopId(this)
 
         if (token.isNullOrEmpty() || shopId.isNullOrEmpty()) {

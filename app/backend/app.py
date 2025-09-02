@@ -257,7 +257,7 @@ def change_password():
 
     except Exception as e:
         return jsonify({"success": False, "message": str(e)}), 500
-    
+
 @app.route('/update_profile', methods=['POST'])
 def update_profile():
     data = request.get_json()
