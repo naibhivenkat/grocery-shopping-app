@@ -4,6 +4,7 @@ import os
 import random
 import requests
 from flask import Flask, request, jsonify
+from flask import g
 from flask_cors import CORS
 import uuid
 import time
@@ -389,59 +390,58 @@ def get_items(shop_id):
 #             'shopId': item['shopId']
 #         }
 #     }), 201
-
-@app.route('/shop/add_items', methods=['POST'])
-def add_item():
-    # 1. Verify token
-    auth_header = request.headers.get('Authorization', '')
-    print("AUTH HEADER RAW:", auth_header)
-    if not auth_header.startswith("Bearer "):
-        return jsonify({'success': False, 'message': 'Missing or invalid auth header'}), 401
-
-    token = auth_header.split(" ")[1]
-    print("TOKEN RAW:", token)
-    try:
-        payload = jwt.decode(token, SECRET_KEY, algorithms=["HS256"])
-        print("Decoded payload:", payload)
-    except jwt.ExpiredSignatureError:
-        return jsonify({'success': False, 'message': 'Token expired'}), 401
-    except jwt.InvalidTokenError:
-        return jsonify({'success': False, 'message': 'Invalid token'}), 401
-
-    # Now you have user info from token:
-    username = payload.get('username')
-    role = payload.get('role')
-
-    if role not in ['shopowner', 'shopkeeper']:
-        return jsonify({'success': False, 'message': 'Unauthorized role'}), 403
-
-    # 2. Parse body
-    data = request.get_json(silent=True) or {}
-    print(f"body - {data}")
-    shop_id = data.get("shop_id")
-    items = data.get("items", [])
-
-    if not shop_id or not items:
-        return jsonify({'success': False, 'message': 'Missing shop_id or items'}), 400
-
-    saved_items = []
-    for it in items:
-        item_dict = {
-            "name": it.get("name"),
-            "price": float(it.get("price") or 0),
-            "quantity": int(it.get("stockQuantity") or 0),
-            "description": it.get("description") or "",
-            "shopId": it.get("shopid") or shop_id,
-            "createdAt": datetime.utcnow().isoformat()
-        }
-        item = firebase_db.append_item(item_dict)
-        saved_items.append(item)
-
-    return jsonify({
-        'success': True,
-        'message': 'Items added successfully',
-        'items': saved_items
-    }), 201
+# @app.route('/shop/add_items', methods=['POST'])
+# def add_item():
+#     # 1. Verify token
+#     auth_header = request.headers.get('Authorization', '')
+#     print("AUTH HEADER RAW:", auth_header)
+#     if not auth_header.startswith("Bearer "):
+#         return jsonify({'success': False, 'message': 'Missing or invalid auth header'}), 401
+#
+#     token = auth_header.split(" ")[1]
+#     print("TOKEN RAW:", token)
+#     try:
+#         payload = jwt.decode(token, SECRET_KEY, algorithms=["HS256"])
+#         print("Decoded payload:", payload)
+#     except jwt.ExpiredSignatureError:
+#         return jsonify({'success': False, 'message': 'Token expired'}), 401
+#     except jwt.InvalidTokenError:
+#         return jsonify({'success': False, 'message': 'Invalid token'}), 401
+#
+#     # Now you have user info from token:
+#     username = payload.get('username')
+#     role = payload.get('role')
+#
+#     if role not in ['shopowner', 'shopkeeper']:
+#         return jsonify({'success': False, 'message': 'Unauthorized role'}), 403
+#
+#     # 2. Parse body
+#     data = request.get_json(silent=True) or {}
+#     print(f"body - {data}")
+#     shop_id = data.get("shop_id")
+#     items = data.get("items", [])
+#
+#     if not shop_id or not items:
+#         return jsonify({'success': False, 'message': 'Missing shop_id or items'}), 400
+#
+#     saved_items = []
+#     for it in items:
+#         item_dict = {
+#             "name": it.get("name"),
+#             "price": float(it.get("price") or 0),
+#             "quantity": int(it.get("stockQuantity") or 0),
+#             "description": it.get("description") or "",
+#             "shopId": it.get("shopid") or shop_id,
+#             "createdAt": datetime.utcnow().isoformat()
+#         }
+#         item = firebase_db.append_item(item_dict)
+#         saved_items.append(item)
+#
+#     return jsonify({
+#         'success': True,
+#         'message': 'Items added successfully',
+#         'items': saved_items
+#     }), 201
 
 
 @app.route("/update_item/<item_id>", methods=["PUT"])
@@ -703,30 +703,6 @@ def register_after_otp():
         "user": user_dict,
         "token": token   # ✅ add this line
     }), 201
-    
-
-
-@app.before_request
-def require_authentication():
-    public_paths = ["/healthz", "/send_otp", "/verify_otp", "/register", "/login",
-                    "/register_after_otp"]
-
-    # Allow if matches or starts with
-    for path in public_paths:
-        if request.path.startswith(path):
-            return None
-
-    auth_header = request.headers.get("Authorization")
-    print("AUTH HEADER:", request.headers.get("Authorization"))
-
-    if not auth_header or not auth_header.startswith("Bearer "):
-        return jsonify(
-            {"message": "authentication not found in headers", "code": "unauthorized"}), 401
-
-    token = auth_header.split(" ")[1]
-    if token != "expected_token":
-        return jsonify({"message": "invalid token", "code": "unauthorized"}), 401
-
 
 def send_welcome_email(email, name):
     url = "https://api.sendinblue.com/v3/smtp/email"
@@ -749,6 +725,81 @@ def send_welcome_email(email, name):
     response = requests.post(url, headers=headers, json=data)
     print("Welcome email response:", response.status_code, response.text)
     return response.status_code in [200, 201]
+
+@app.before_request
+def require_authentication():
+    public_paths = [
+        "/healthz", "/send_otp", "/verify_otp", "/register", "/login",
+        "/register_after_otp"
+    ]
+
+    # Allow if matches public paths
+    for path in public_paths:
+        if request.path.startswith(path):
+            return None
+
+    auth_header = request.headers.get("Authorization")
+    print("AUTH HEADER:", auth_header)
+
+    if not auth_header or not auth_header.startswith("Bearer "):
+        return jsonify(
+            {"message": "authentication not found in headers", "code": "unauthorized"}), 401
+
+    token = auth_header.split(" ")[1]
+
+    try:
+        payload = jwt.decode(token, SECRET_KEY, algorithms=["HS256"])
+        # ✅ store user info globally for this request
+        g.current_user = payload
+    except jwt.ExpiredSignatureError:
+        return jsonify({"message": "Token expired", "code": "unauthorized"}), 401
+    except jwt.InvalidTokenError:
+        return jsonify({"message": "Invalid token", "code": "unauthorized"}), 401
+
+
+@app.route('/shop/add_items', methods=['POST'])
+def add_item():
+    # ✅ User info already decoded in @app.before_request
+    user = getattr(g, "current_user", None)
+    if not user:
+        return jsonify({'success': False, 'message': 'Unauthorized'}), 401
+
+    role = user.get('role')
+    username = user.get('username')
+
+    if role not in ['shopowner', 'shopkeeper']:
+        return jsonify({'success': False, 'message': 'Unauthorized role'}), 403
+
+    # ✅ Parse request body
+    data = request.get_json(silent=True) or {}
+    print("Incoming body:", data)
+
+    shop_id = data.get("shop_id")
+    items = data.get("items", [])
+
+    if not shop_id or not items:
+        return jsonify({'success': False, 'message': 'Missing shop_id or items'}), 400
+
+    saved_items = []
+    for it in items:
+        item_dict = {
+            "name": it.get("name"),
+            "price": float(it.get("price") or 0),
+            "quantity": int(it.get("stockQuantity") or 0),
+            "description": it.get("description") or "",
+            "shopId": it.get("shopid") or shop_id,
+            "createdAt": datetime.utcnow().isoformat(),
+            "createdBy": username   # ✅ trace which user added it
+        }
+        item = firebase_db.append_item(item_dict)
+        saved_items.append(item)
+
+    return jsonify({
+        'success': True,
+        'message': 'Items added successfully',
+        'items': saved_items
+    }), 201
+
 
 
 if __name__ == "__main__":
