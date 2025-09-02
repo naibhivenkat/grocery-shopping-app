@@ -90,8 +90,15 @@ class ShopItemsActivity : AppCompatActivity() {
     }
 
     private fun fetchItemsFromBackend(shopId: String) {
+
+        val token = SessionManager.getAuthToken(this)
+        if (token.isNullOrEmpty()) {
+            Toast.makeText(this, "Auth token missing. Please login again.", Toast.LENGTH_SHORT).show()
+            return
+        }
+        val authHeader = "Bearer $token"
         val api = RetrofitClient.instance.create(ApiService::class.java)
-        api.getItemsForShop(shopId).enqueue(object : Callback<List<Item>> {
+        api.getItemsForShop(authHeader, shopId).enqueue(object : Callback<List<Item>> {
             override fun onResponse(call: Call<List<Item>>, response: Response<List<Item>>) {
                 if (response.isSuccessful) {
                     val fetchedItems = response.body() ?: emptyList()

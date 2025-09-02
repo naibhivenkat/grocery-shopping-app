@@ -98,7 +98,10 @@ interface ApiService {
     fun updateProfile(@Body profileData: Map<String, String>): Call<ResponseBody>
 
     @GET("/api/shops/{shop_id}/items")
-    fun getItems(@Path("shop_id") shopId: String): Call<List<Item>>
+    fun getItems(
+        @Header("Authorization") auth: String,
+        @Path("shop_id") shopId: String
+    ): Call<List<Item>>
 
     //@POST("/add_items")
 //    fun addItems(@Body body: Map<String, Any>): Call<Map<String, Boolean>>
@@ -134,7 +137,8 @@ interface ApiService {
     fun deleteItem(@Path("item_id") itemId: String): Call<Map<String, Boolean>>
 
     @GET("api/shops/{shop_id}/items")
-    fun getItemsForShop(@Path("shop_id") shopId: String): Call<List<Item>>
+    fun getItemsForShop(
+        @Header("Authorization") token: String,@Path("shop_id") shopId: String): Call<List<Item>>
 
     @POST("send_otp")
     fun sendOtp(@Body body: Map<String, String>): Call<Map<String, String>>

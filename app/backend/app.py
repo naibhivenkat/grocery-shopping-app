@@ -342,13 +342,28 @@ def create_shop():
 
 # ----------- ITEMS -----------
 
+from flask import g, jsonify
+
 @app.route("/api/shops/<shop_id>/items", methods=["GET"])
 def get_items(shop_id):
-    print(f"📌 Fetching items for shop_id={shop_id}")
+    # Check if user is logged in
+    user = getattr(g, "current_user", None)
+    if not user:
+        return jsonify({'success': False, 'message': 'Unauthorized'}), 401
+
+    # Optional: check role
+    role = user.get('role')
+    if role != "shopkeeper":
+        return jsonify({'success': False, 'message': 'Forbidden'}), 403
+
+    # Fetch items
+    print(f"📌 Fetching items for shop_id={shop_id} by user {user.get('username')}")
     items = firebase_db.get_items_by_shop(shop_id)
     if not items:
-        return jsonify({"error": f"No items found for shop_id={shop_id}"}), 404
+        return jsonify({'success': False, 'message': f'No items found for shop_id={shop_id}'}), 404
+
     return jsonify(items), 200
+
 
 
 # @app.route('/add_items', methods=['POST'])
