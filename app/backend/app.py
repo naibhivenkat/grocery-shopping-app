@@ -392,6 +392,7 @@ def get_items(shop_id):
 def add_item():
     # 1. Verify token
     auth_header = request.headers.get('Authorization', '')
+    print("AUTH HEADER:", request.headers.get("Authorization"))
     if not auth_header.startswith("Bearer "):
         return jsonify({'success': False, 'message': 'Missing or invalid auth header'}), 401
 
@@ -712,6 +713,8 @@ def require_authentication():
             return None
 
     auth_header = request.headers.get("Authorization")
+    print("AUTH HEADER:", request.headers.get("Authorization"))
+
     if not auth_header or not auth_header.startswith("Bearer "):
         return jsonify(
             {"message": "authentication not found in headers", "code": "unauthorized"}), 401
