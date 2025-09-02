@@ -10,6 +10,7 @@ import androidx.appcompat.app.AppCompatActivity
 import androidx.recyclerview.widget.LinearLayoutManager
 import androidx.recyclerview.widget.RecyclerView
 import com.example.groceryshoppingapp.adapters.ItemAdapter
+import com.example.groceryshoppingapp.models.GetItemsResponse
 import com.example.groceryshoppingapp.models.Item
 import com.example.groceryshoppingapp.utils.SessionManager
 import com.example.groceryshoppingapp.network.RetrofitClient
@@ -82,32 +83,26 @@ class ManageItemsActivity : AppCompatActivity() {
         val authHeader = "Bearer $token"
         Log.d("ManageItemsActivity", "Fetching items for shopId: $shopId with token: $token")
 
-        api.getItems(authHeader, shopId).enqueue(object : Callback<List<Item>> {
-            override fun onResponse(call: Call<List<Item>>, response: Response<List<Item>>) {
+        api.getItems(authHeader, shopId).enqueue(object : Callback<GetItemsResponse> {
+            override fun onResponse(call: Call<GetItemsResponse>, response: Response<GetItemsResponse>) {
                 if (response.isSuccessful) {
-                    val items = response.body() ?: emptyList()
+                    val body = response.body()
+                    val items = body?.items ?: emptyList()
                     itemList.clear()
                     itemList.addAll(items)
                     itemAdapter.notifyDataSetChanged()
-
-                    if (items.isEmpty()) {
-                        Toast.makeText(this@ManageItemsActivity, "No items found for your shop.", Toast.LENGTH_SHORT).show()
-                    }
-                } else if (response.code() == 401) {
-                    Toast.makeText(this@ManageItemsActivity, "Unauthorized. Please login again.", Toast.LENGTH_SHORT).show()
                 } else {
                     Toast.makeText(this@ManageItemsActivity, "Failed to load items: ${response.code()}", Toast.LENGTH_SHORT).show()
                 }
             }
 
-            override fun onFailure(call: Call<List<Item>>, t: Throwable) {
-                Toast.makeText(this@ManageItemsActivity, "Error fetching items: ${t.message}", Toast.LENGTH_SHORT).show()
-                Log.e("ManageItemsActivity", "fetchItems error", t)
+            override fun onFailure(call: Call<GetItemsResponse>, t: Throwable) {
+                Toast.makeText(this@ManageItemsActivity, "Error: ${t.message}", Toast.LENGTH_SHORT).show()
             }
         })
+
     }
-
-
+    
     override fun onResume() {
         super.onResume()
         fetchItems()

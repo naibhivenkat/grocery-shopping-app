@@ -101,7 +101,7 @@ interface ApiService {
     fun getItems(
         @Header("Authorization") auth: String,
         @Path("shop_id") shopId: String
-    ): Call<List<Item>>
+    ): Call<GetItemsResponse>
 
     //@POST("/add_items")
 //    fun addItems(@Body body: Map<String, Any>): Call<Map<String, Boolean>>
