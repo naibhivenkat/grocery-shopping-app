@@ -344,26 +344,26 @@ def create_shop():
 
 from flask import g, jsonify
 
-@app.route("/api/shops/<shop_id>/items", methods=["GET"])
-def get_items(shop_id):
-    # Check if user is logged in
-    user = getattr(g, "current_user", None)
-    if not user:
-        return jsonify({'success': False, 'message': 'Unauthorized'}), 401
-
-    # Optional: check role
-    role = user.get('role')
-    print(f"roll :  {role}")
-    if role not in ["shopkeeper", "shopowner", "customer"]:
-        return jsonify({'success': False, 'message': 'Forbidden'}), 403
-
-    # Fetch items
-    print(f"📌 Fetching items for shop_id={shop_id} by user {user.get('username')}")
-    items = firebase_db.get_items_by_shop(shop_id)
-    if not items:
-        return jsonify({'success': False, 'message': f'No items found for shop_id={shop_id}'}), 404
-
-    return jsonify(items), 200
+# @app.route("/api/shops/<shop_id>/items", methods=["GET"])
+# def get_items(shop_id):
+#     # Check if user is logged in
+#     user = getattr(g, "current_user", None)
+#     if not user:
+#         return jsonify({'success': False, 'message': 'Unauthorized'}), 401
+#
+#     # Optional: check role
+#     role = user.get('role')
+#     print(f"roll :  {role}")
+#     if role not in ["shopkeeper", "shopowner", "customer"]:
+#         return jsonify({'success': False, 'message': 'Forbidden'}), 403
+#
+#     # Fetch items
+#     print(f"📌 Fetching items for shop_id={shop_id} by user {user.get('username')}")
+#     items = firebase_db.get_items_by_shop(shop_id)
+#     if not items:
+#         return jsonify({'success': False, 'message': f'No items found for shop_id={shop_id}'}), 404
+#
+#     return jsonify(items), 200
 
 
 
@@ -480,6 +480,40 @@ def get_items(shop_id):
 #         'message': 'Items added successfully',
 #         'items': saved_items
 #     }), 201
+
+@app.route("/api/shops/<shop_id>/items", methods=["GET"])
+def get_items(shop_id):
+    # Check if user is logged in
+    user = getattr(g, "current_user", None)
+    if not user:
+        return jsonify({'success': False, 'message': 'Unauthorized'}), 401
+
+    # Optional: check role
+    role = user.get('role')
+    print(f"role : {role}")
+    if role not in ["shopkeeper", "shopowner", "customer"]:
+        return jsonify({'success': False, 'message': 'Forbidden'}), 403
+
+    # Fetch shop document from Firestore
+    shop_docs = db.collection("shops").where("shop_id", "==", int(shop_id)).stream()
+    shop_doc_ids = [doc.id for doc in shop_docs]
+    print(f"Firestore doc IDs for shop_id={shop_id}: {shop_doc_ids}")
+
+    # Fetch items
+    items = firebase_db.get_items_by_shop(shop_id)
+    if not items:
+        return jsonify({
+            'success': False,
+            'message': f'No items found for shop_id={shop_id}',
+            'shopDocIds': shop_doc_ids  # ✅ Return doc IDs for testing
+        }), 404
+
+    return jsonify({
+        'success': True,
+        'items': items,
+        'shopDocIds': shop_doc_ids  # ✅ Include Firestore doc IDs in response
+    }), 200
+
 
 
 @app.route("/update_item/<item_id>", methods=["PUT"])
