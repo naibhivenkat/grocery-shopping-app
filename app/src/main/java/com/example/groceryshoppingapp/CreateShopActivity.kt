@@ -83,7 +83,7 @@ class CreateShopActivity : AppCompatActivity() {
                 // ✅ Preserve auth token (important for AddItemsActivity)
                 val token = SessionManager.getAuthToken(this)
                 if (!token.isNullOrEmpty()) {
-                    SessionManager.saveAuthToken(this, token) // refresh same token
+                    SessionManager.setAuthToken(this, token) // refresh same token
                 }
 
                 // ✅ Update user's shopExists in Firestore

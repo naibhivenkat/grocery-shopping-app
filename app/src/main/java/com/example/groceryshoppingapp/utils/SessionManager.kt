@@ -2,6 +2,7 @@ package com.example.groceryshoppingapp.utils
 
 import android.content.Context
 import android.content.SharedPreferences
+import android.util.Log
 import androidx.core.content.edit
 
 object SessionManager {
@@ -11,17 +12,12 @@ object SessionManager {
     private const val KEY_ROLE = "role"
     private const val KEY_CUSTOMER_ID = "customer_id"
     private const val KEY_SHOPKEEPER_ID = "shopkeeper_id"
-    private const val KEY_SHOP_ID = "shop_id"            // single shop UUID
+    private const val KEY_SHOP_ID = "shop_id"
     private const val KEY_SHOP_NAME = "shop_name"
     private const val KEY_PHOTO_BASE64 = "photo_base64"
-    private const val KEY_SHOP_ITEMS = "shop_items"
-    private const val KEY_HAS_ITEMS = "has_items_added"  // unified flag
-    private const val KEY_SHOP_IDS = "shop_ids"          // multiple shop UUIDs
-
-    // --- 🔑 AUTH TOKEN ---
+    private const val KEY_HAS_ITEMS = "has_items_added"
     private const val KEY_AUTH_TOKEN = "auth_token"
 
-    // --- Language preferences ---
     private const val KEY_LANGUAGE_SELECTED = "language_selected"
     private const val KEY_LANGUAGE_CODE = "language_code"
 
@@ -30,30 +26,31 @@ object SessionManager {
 
     // --- LOGIN & ROLE ---
     fun saveLogin(context: Context, username: String, role: String) {
+        Log.d("SESSION_DEBUG", "Saving login: username=$username, role=$role")
         prefs(context).edit {
             putString(KEY_USERNAME, username)
             putString(KEY_ROLE, role)
         }
     }
 
+    // ✅ Unified auth token save/get
+    fun setAuthToken(context: Context, token: String) {
+        prefs(context).edit { putString(KEY_AUTH_TOKEN, token) }
+    }
+    fun getAuthToken(context: Context): String? = prefs(context).getString(KEY_AUTH_TOKEN, null)
+
     fun getUsername(context: Context): String? = prefs(context).getString(KEY_USERNAME, null)
     fun getRole(context: Context): String? = prefs(context).getString(KEY_ROLE, null)
 
     // --- CUSTOMER & SHOPKEEPER IDs ---
-    fun setCustomerId(context: Context, id: String) {
-        prefs(context).edit { putString(KEY_CUSTOMER_ID, id) }
-    }
+    fun setCustomerId(context: Context, id: String) = prefs(context).edit { putString(KEY_CUSTOMER_ID, id) }
     fun getCustomerId(context: Context): String? = prefs(context).getString(KEY_CUSTOMER_ID, null)
 
-    fun setShopkeeperId(context: Context, id: String) {
-        prefs(context).edit { putString(KEY_SHOPKEEPER_ID, id) }
-    }
+    fun setShopkeeperId(context: Context, id: String) = prefs(context).edit { putString(KEY_SHOPKEEPER_ID, id) }
     fun getShopkeeperId(context: Context): String? = prefs(context).getString(KEY_SHOPKEEPER_ID, null)
 
-    // --- SINGLE SHOP UUID ---
-    fun setShopId(context: Context, shopId: String) {
-        prefs(context).edit { putString(KEY_SHOP_ID, shopId) }
-    }
+    // --- SHOP ---
+    fun setShopId(context: Context, shopId: String) = prefs(context).edit { putString(KEY_SHOP_ID, shopId) }
     fun getShopId(context: Context): String? = prefs(context).getString(KEY_SHOP_ID, null)
 
     fun setShopInfo(context: Context, id: String?, name: String) {
@@ -64,15 +61,22 @@ object SessionManager {
     }
     fun getShopName(context: Context): String? = prefs(context).getString(KEY_SHOP_NAME, null)
 
+
     // --- MULTIPLE SHOP UUIDs for SHOPKEEPER ---
     fun setShopIds(context: Context, shopIds: List<String>) {
         val joined = shopIds.joinToString(",")
-        prefs(context).edit { putString(KEY_SHOP_IDS, joined) }
+        prefs(context).edit { putString("shop_ids", joined) }
     }
+
     fun getShopIds(context: Context): List<String> {
-        val saved = prefs(context).getString(KEY_SHOP_IDS, "") ?: ""
+        val saved = prefs(context).getString("shop_ids", "") ?: ""
         return if (saved.isEmpty()) emptyList() else saved.split(",")
     }
+
+
+    // --- ITEMS ---
+    fun setHasItemsAdded(context: Context, added: Boolean) = prefs(context).edit { putBoolean(KEY_HAS_ITEMS, added) }
+    fun hasItemsAdded(context: Context): Boolean = prefs(context).getBoolean(KEY_HAS_ITEMS, false)
 
     // --- PROFILE ---
     fun saveUserProfile(
@@ -93,38 +97,8 @@ object SessionManager {
             putString(KEY_PHOTO_BASE64, photoBase64)
         }
     }
-
     fun getPhotoBase64(context: Context): String? =
         prefs(context).getString(KEY_PHOTO_BASE64, null)?.takeIf { it.isNotBlank() && it != "null" }
-
-    fun setPhotoBase64(context: Context, photoBase64: String) {
-        prefs(context).edit { putString(KEY_PHOTO_BASE64, photoBase64) }
-    }
-
-    fun getFullName(context: Context): String? = prefs(context).getString("full_name", "")
-    fun getAddress(context: Context): String? = prefs(context).getString("address", "")
-    fun getPhone(context: Context): String? = prefs(context).getString("phone", "")
-    fun getEmail(context: Context): String? = prefs(context).getString("email", "")
-    fun getLocation(context: Context): String? = prefs(context).getString("location", "")
-
-    // --- SHOP ITEMS ---
-    fun setShopItems(context: Context, items: List<String>) {
-        prefs(context).edit { putString(KEY_SHOP_ITEMS, items.joinToString("|")) }
-        setHasItemsAdded(context, items.isNotEmpty())
-    }
-    fun getShopItems(context: Context): List<String> =
-        prefs(context).getString(KEY_SHOP_ITEMS, null)?.split("|")?.filter { it.isNotBlank() } ?: emptyList()
-
-    fun setHasItemsAdded(context: Context, added: Boolean) {
-        prefs(context).edit { putBoolean(KEY_HAS_ITEMS, added) }
-    }
-    fun hasItemsAdded(context: Context): Boolean = prefs(context).getBoolean(KEY_HAS_ITEMS, false)
-
-    // --- 🔑 AUTH TOKEN ---
-    fun saveAuthToken(context: Context, token: String) {
-        prefs(context).edit { putString(KEY_AUTH_TOKEN, token) }
-    }
-    fun getAuthToken(context: Context): String? = prefs(context).getString(KEY_AUTH_TOKEN, null)
 
     // --- LOGOUT ---
     fun logout(context: Context) {
@@ -133,27 +107,32 @@ object SessionManager {
 
         prefs(context).edit().clear().apply()
 
-        // Restore language
+        // Restore language only
         setLanguageSelected(context, langSelected)
         setLanguageCode(context, langCode ?: "en")
     }
 
     // --- LANGUAGE ---
-    fun isLanguageSelected(context: Context): Boolean =
-        prefs(context).getBoolean(KEY_LANGUAGE_SELECTED, false)
-    fun setLanguageSelected(context: Context, selected: Boolean) {
-        prefs(context).edit { putBoolean(KEY_LANGUAGE_SELECTED, selected) }
-    }
-    fun getLanguageCode(context: Context): String? =
-        prefs(context).getString(KEY_LANGUAGE_CODE, "en")
-    fun setLanguageCode(context: Context, code: String) {
-        prefs(context).edit { putString(KEY_LANGUAGE_CODE, code) }
-    }
+    fun isLanguageSelected(context: Context): Boolean = prefs(context).getBoolean(KEY_LANGUAGE_SELECTED, false)
+    fun setLanguageSelected(context: Context, selected: Boolean) { prefs(context).edit { putBoolean(KEY_LANGUAGE_SELECTED, selected) } }
+    fun getLanguageCode(context: Context): String? = prefs(context).getString(KEY_LANGUAGE_CODE, "en")
+    fun setLanguageCode(context: Context, code: String) { prefs(context).edit { putString(KEY_LANGUAGE_CODE, code) } }
 
     // --- LOGIN CHECK ---
     fun isLoggedIn(context: Context): Boolean {
         val username = getUsername(context)
         val role = getRole(context)
+        Log.d("SESSION_DEBUG", "Checking login: username=$username, role=$role")
         return !username.isNullOrEmpty() && !role.isNullOrEmpty()
+
     }
+
+
+    // --- PROFILE GETTERS ---
+    fun getFullName(context: Context): String? = prefs(context).getString("full_name", "")
+    fun getAddress(context: Context): String? = prefs(context).getString("address", "")
+    fun getPhone(context: Context): String? = prefs(context).getString("phone", "")
+    fun getEmail(context: Context): String? = prefs(context).getString("email", "")
+    fun getLocation(context: Context): String? = prefs(context).getString("location", "")
+
 }

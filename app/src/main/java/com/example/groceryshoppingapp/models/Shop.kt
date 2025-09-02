@@ -7,3 +7,9 @@ data class Shop(
     val contact: String,
     val shopkeeper_id: Int
 )
+
+
+//data class ShopResponse(
+//    val success: Boolean,
+//    val shop: Shop?
+//)

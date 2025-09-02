@@ -160,7 +160,8 @@ def login():
     return jsonify({
         "success": True,
         "message": "Login successful",
-        "user": response_user
+        "user": response_user,
+        "token": str(uuid.uuid4())
     }), 200
 
 
@@ -871,6 +872,21 @@ def add_item():
         'items': saved_items
     }), 201
 
+@app.route('/get_shop_by_owner', methods=['GET'])
+def get_shop_by_owner():
+    user = getattr(g, "current_user", None)
+    if not user:
+        return jsonify({'success': False, 'message': 'Unauthorized'}), 401
+
+    shopkeeper_id = user.get("username")   # or user.get("id") depending on your schema
+    if not shopkeeper_id:
+        return jsonify({'success': False, 'shop': None, 'message': 'Missing shopkeeperId'}), 400
+
+    shop = firebase_db.get_shop_by_owner(shopkeeper_id)
+    if shop:
+        return jsonify({'success': True, 'shop': shop})
+    else:
+        return jsonify({'success': False, 'shop': None})
 
 
 if __name__ == "__main__":

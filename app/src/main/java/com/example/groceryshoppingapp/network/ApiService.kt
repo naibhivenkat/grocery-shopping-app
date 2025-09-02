@@ -149,4 +149,18 @@ interface ApiService {
     @POST("register_after_otp")
     fun registerAfterOtp(@Body body: Map<String, String>): Call<RegisterResponse>
 
+
+//    @GET("shop")
+//    fun getShopByShopkeeperId(
+//        @Header("Authorization") authHeader: String,
+//        @Query("shopkeeperId") shopkeeperId: String
+//    ): Call<ShopResponse>
+
+
+    @GET("/get_shop_by_owner")
+    fun getShopByOwner(
+        @Header("Authorization") authHeader: String,
+        @Query("shopkeeperId") shopkeeperId: String
+    ): Call<GetShopResponse>
+
 }

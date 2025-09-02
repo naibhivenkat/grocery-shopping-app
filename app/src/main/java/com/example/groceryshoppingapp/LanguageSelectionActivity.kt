@@ -9,7 +9,6 @@ import com.example.groceryshoppingapp.utils.SessionManager
 class LanguageSelectionActivity : AppCompatActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
-        // apply whatever is currently saved (default en) so UI looks consistent
         LanguageManager.applySavedLanguage(this)
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_language_selection)
@@ -23,30 +22,31 @@ class LanguageSelectionActivity : AppCompatActivity() {
     }
 
     private fun select(code: String) {
-        // persist
+        // Save selected language
         SessionManager.setLanguageCode(this, code)
         SessionManager.setLanguageSelected(this, true)
 
-        // apply immediately
+        // ✅ Re-save login session (because app may restart after applyLanguage)
+        val role = intent.getStringExtra("pendingRole")?.lowercase()
+        val shopkeeperId = intent.getStringExtra("shopkeeperId")
+        val customerId = intent.getStringExtra("customerId")
+
+        role?.let {
+            SessionManager.saveLogin(this, SessionManager.getUsername(this) ?: "", it)
+        }
+        customerId?.let { SessionManager.setCustomerId(this, it) }
+        shopkeeperId?.let { SessionManager.setShopkeeperId(this, it) }
+
+        // Apply immediately (may restart activity)
         baseContext.applyLanguage(code)
 
-        // Go back to the main screen based on role
-        val role = intent.getStringExtra("pendingRole")?.lowercase()
+        // Redirect based on role
         when (role) {
-            "customer" -> {
-                startActivity(Intent(this, CustomerHomeActivity::class.java))
-            }
-
-            "shopowner" -> {
-                startActivity(Intent(this, ShopOwnerDashboardActivity::class.java))
-            }
-
-            else -> {
-                // Fallback to previous screen
-                onBackPressedDispatcher.onBackPressed()
-                return
-            }
+            "customer" -> startActivity(Intent(this, CustomerHomeActivity::class.java))
+            "shopowner" -> startActivity(Intent(this, ShopOwnerDashboardActivity::class.java))
+            else -> onBackPressedDispatcher.onBackPressed()
         }
         finish()
     }
+
 }

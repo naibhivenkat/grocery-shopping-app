@@ -3,6 +3,7 @@ package com.example.groceryshoppingapp
 import android.annotation.SuppressLint
 import android.content.Intent
 import android.os.Bundle
+import android.util.Log
 import android.view.View
 import android.widget.*
 import androidx.appcompat.app.AppCompatActivity
@@ -27,7 +28,7 @@ class LoginActivity : AppCompatActivity() {
     private val appRole by lazy { BuildConfig.APP_ROLE.lowercase() }
 
     override fun onCreate(savedInstanceState: Bundle?) {
-        LanguageManager.applySavedLanguage(this)
+        LanguageManager.applySavedLanguage(this) // apply saved language
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_login)
 
@@ -47,7 +48,6 @@ class LoginActivity : AppCompatActivity() {
         loginButton.setOnClickListener {
             val username = usernameEdit.text.toString().trim()
             val password = passwordEdit.text.toString().trim()
-
             errorText.visibility = View.GONE
 
             if (username.isEmpty() || password.isEmpty()) {
@@ -75,18 +75,19 @@ class LoginActivity : AppCompatActivity() {
                     val user = loginResponse.user
                     val loginRole = user?.role?.lowercase()?.trim()
 
-                    // Block login if role does not match build flavor
+                    // ✅ Save auth token immediately
+                   // loginResponse.token?.let { SessionManager.setAuthToken(this@LoginActivity, it)
+                        //Log.d("LOGIN_DEBUG", "username=${user?.username}, role=${user?.role}, token=${loginResponse?.token}")
+                    //}
+
+                    // Block login if role mismatch
                     if (loginRole != appRole) {
-                        errorText.text = getString(
-                            R.string.role_mismatch,
-                            appRole.replaceFirstChar { it.uppercase() }
-                        )
+                        errorText.text = getString(R.string.role_mismatch, appRole.replaceFirstChar { it.uppercase() })
                         errorText.visibility = View.VISIBLE
                         return
                     }
-                    loginResponse.token?.let { SessionManager.saveAuthToken(this@LoginActivity, it) }
 
-                    // Save login + profile
+                    // ✅ Save login + profile + IDs before language selection
                     SessionManager.saveLogin(this@LoginActivity, user?.username ?: "", loginRole ?: "")
                     SessionManager.saveUserProfile(
                         context = this@LoginActivity,
@@ -97,18 +98,21 @@ class LoginActivity : AppCompatActivity() {
                         location = user?.location ?: "",
                         photoBase64 = user?.photoBase64 ?: ""
                     )
+                    user?.customerId?.let { SessionManager.setCustomerId(this@LoginActivity, it) }
+                    user?.shopkeeperId?.let { SessionManager.setShopkeeperId(this@LoginActivity, it) }
 
-                    // First-time language selection
-                    if (!SessionManager.isLanguageSelected(this@LoginActivity)) {
-                        val langIntent = Intent(this@LoginActivity, LanguageSelectionActivity::class.java)
-                        langIntent.putExtra("pendingRole", loginRole)
-                        langIntent.putExtra("shopkeeperId", user?.shopkeeperId ?: "")
-                        langIntent.putExtra("customerId", user?.customerId ?: "")
-                        startActivity(langIntent)
-                        finish()
-                        return
-                    }
+//                    // --- FIRST-TIME LANGUAGE SELECTION ---
+//                    if (!SessionManager.isLanguageSelected(this@LoginActivity)) {
+//                        val langIntent = Intent(this@LoginActivity, LanguageSelectionActivity::class.java)
+//                        langIntent.putExtra("pendingRole", loginRole)
+//                        langIntent.putExtra("shopkeeperId", user?.shopkeeperId ?: "")
+//                        langIntent.putExtra("customerId", user?.customerId ?: "")
+//                        startActivity(langIntent)
+//                        finish()
+//                        return
+//                    }
 
+                    // Normal flow after login
                     when (loginRole) {
                         "customer" -> {
                             user?.customerId?.let { customerId ->
@@ -117,33 +121,30 @@ class LoginActivity : AppCompatActivity() {
                                 finish()
                             }
                         }
-
                         "shopowner" -> {
                             user?.shopkeeperId?.let { shopkeeperId ->
                                 SessionManager.setShopkeeperId(this@LoginActivity, shopkeeperId)
 
-                                // ✅ Treat null shopExists as first-time
                                 val hasShop = user.shopExists == true && user.shop != null
-
                                 if (hasShop) {
                                     val shop = user.shop!!
-                                    val shopIdStr = shop.id.toString() // always store as String
+                                    val shopIdStr = shop.id.toString()
                                     SessionManager.setShopId(this@LoginActivity, shopIdStr)
                                     SessionManager.setShopInfo(this@LoginActivity, shopIdStr, shop.name)
+                                    SessionManager.setHasItemsAdded(this@LoginActivity, true)
                                     startActivity(Intent(this@LoginActivity, ShopOwnerDashboardActivity::class.java))
                                     finish()
-                                
-
-                            } else {
-                                    // First-time → redirect to CreateShopActivity
-                                    val intent = Intent(this@LoginActivity, CreateShopActivity::class.java)
+                                } else {
+                                    // 🔄 Fallback: fetch shops from backend by shopkeeperId
+                                    val intent = Intent(this@LoginActivity, ShopOwnerDashboardActivity::class.java)
                                     intent.putExtra("shopkeeperId", shopkeeperId)
                                     startActivity(intent)
                                     finish()
                                 }
-                            }
-                        }
 
+
+                    }
+                        }
                         else -> {
                             errorText.text = getString(R.string.unknown_user_role)
                             errorText.visibility = View.VISIBLE

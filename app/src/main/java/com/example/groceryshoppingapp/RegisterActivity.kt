@@ -324,7 +324,7 @@ class RegisterActivity : AppCompatActivity() {
 
                         // ✅ Save auth token if backend provides
                         if (!user.token.isNullOrEmpty()) { // <-- CHANGE: Now always saves token if present
-                            SessionManager.saveAuthToken(this@RegisterActivity, user.token)
+                            SessionManager.setAuthToken(this@RegisterActivity, user.token)
                         }
 
                         // ✅ Save userId depending on role
