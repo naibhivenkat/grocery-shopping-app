@@ -495,7 +495,7 @@ def get_items(shop_id):
         return jsonify({'success': False, 'message': 'Forbidden'}), 403
 
     # Fetch shop document from Firestore
-    shop_docs = db.collection("shops").where("shop_id", "==", int(shop_id)).stream()
+    shop_docs = firebase_db.db.collection("shops").where("shop_id", "==", int(shop_id)).stream()
     shop_doc_ids = [doc.id for doc in shop_docs]
     print(f"Firestore doc IDs for shop_id={shop_id}: {shop_doc_ids}")
 
