@@ -483,37 +483,36 @@ from flask import g, jsonify
 
 @app.route("/api/shops/<shop_id>/items", methods=["GET"])
 def get_items(shop_id):
-    # Check if user is logged in
     user = getattr(g, "current_user", None)
     if not user:
         return jsonify({'success': False, 'message': 'Unauthorized'}), 401
 
-    # Optional: check role
     role = user.get('role')
     print(f"role : {role}")
     if role not in ["shopkeeper", "shopowner", "customer"]:
         return jsonify({'success': False, 'message': 'Forbidden'}), 403
 
-    # Fetch shop document from Firestore
-    shop_docs = firebase_db.db.collection("shops").where("shop_id", "==", str(shop_id)).stream()
-    shop_doc_ids = [doc.id for doc in shop_docs]
-    print(f"Firestore doc IDs for shop_id={shop_id}: {shop_doc_ids}")
+    # Fetch shop doc by Firestore doc ID
+    shop_doc = firebase_db.db.collection("shops").document(shop_id).get()
+    if not shop_doc.exists:
+        return jsonify({'success': False, 'message': f'Shop doc not found for {shop_id}'}), 404
 
-    # Fetch items
-    items = firebase_db.get_items_by_shop(shop_id)
-    if not items:
-        return jsonify({
-            'success': False,
-            'message': f'No items found for shop_id={shop_id}',
-            'shopDocIds': shop_doc_ids  # ✅ Return doc IDs for testing
-        }), 404
+    shop_data = shop_doc.to_dict()
+    print(f"📌 Shop data: {shop_data}")
+
+    # Fetch items by shop_id field (numeric/field value)
+    shop_numeric_id = str(shop_data["shop_id"])  # convert to string if needed
+    items = firebase_db.db.collection("items").where("shopId", "==", shop_numeric_id).stream()
+    items_list = [doc.to_dict() for doc in items]
+
+    if not items_list:
+        return jsonify({'success': False, 'message': f'No items found for shop_id={shop_id}'}), 404
 
     return jsonify({
         'success': True,
-        'items': items,
-        'shopDocIds': shop_doc_ids  # ✅ Include Firestore doc IDs in response
+        'shopDocId': shop_id,
+        'items': items_list
     }), 200
-
 
 
 @app.route("/update_item/<item_id>", methods=["PUT"])
