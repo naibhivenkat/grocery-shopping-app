@@ -78,14 +78,17 @@ interface ApiService {
 
     @GET("api/orders/customer/{customer_id}")
     fun getCustomerOrders(@Path("customer_id") customerId: Int): Call<List<Order>>
+//
+//    @POST("/change_password")
+//    @FormUrlEncoded
+//    fun changePassword(
+//        @Field("username") username: String,
+//        @Field("old_password") oldPassword: String,
+//        @Field("new_password") newPassword: String
+//    ): Call<Map<String, Any>>
 
     @POST("/change_password")
-    @FormUrlEncoded
-    fun changePassword(
-        @Field("username") username: String,
-        @Field("old_password") oldPassword: String,
-        @Field("new_password") newPassword: String
-    ): Call<Map<String, Any>>
+    fun changePassword(@Body body: Map<String, String>): Call<Map<String, Any>>
 
 
     @POST("/update_profile")

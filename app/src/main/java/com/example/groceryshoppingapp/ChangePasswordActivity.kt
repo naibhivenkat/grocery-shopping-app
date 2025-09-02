@@ -27,7 +27,7 @@ class ChangePasswordActivity : AppCompatActivity() {
         etConfirmPassword = findViewById(R.id.et_confirm_password)
         btnChangePassword = findViewById(R.id.btn_change_password)
         btnBack = findViewById(R.id.btn_back)
-        btnChangePassword.setOnClickListener {
+        btnChangePassword.setOnClickListener {btnChangePassword.setOnClickListener {
             val oldPass = etOldPassword.text.toString().trim()
             val newPass = etNewPassword.text.toString().trim()
             val confirmPass = etConfirmPassword.text.toString().trim()
@@ -37,18 +37,21 @@ class ChangePasswordActivity : AppCompatActivity() {
                 return@setOnClickListener
             }
 
-            btnBack.setOnClickListener {
-                finish()
-            }
             val username = SessionManager.getUsername(this)!!
+            val body = mapOf(
+                "username" to username,
+                "old_password" to oldPass,
+                "new_password" to newPass
+            )
+
             val api = RetrofitClient.instance.create(ApiService::class.java)
-            api.changePassword(username, oldPass, newPass).enqueue(object : Callback<Map<String, Any>> {
+            api.changePassword(body).enqueue(object : Callback<Map<String, Any>> {
                 override fun onResponse(call: Call<Map<String, Any>>, response: Response<Map<String, Any>>) {
                     if (response.isSuccessful && response.body()?.get("success") == true) {
                         Toast.makeText(this@ChangePasswordActivity, "Password changed", Toast.LENGTH_SHORT).show()
                         finish()
                     } else {
-                        Toast.makeText(this@ChangePasswordActivity, "Incorrect old password", Toast.LENGTH_SHORT).show()
+                        Toast.makeText(this@ChangePasswordActivity, response.body()?.get("message")?.toString() ?: "Error", Toast.LENGTH_SHORT).show()
                     }
                 }
 
@@ -56,6 +59,4 @@ class ChangePasswordActivity : AppCompatActivity() {
                     Toast.makeText(this@ChangePasswordActivity, "Error: ${t.message}", Toast.LENGTH_SHORT).show()
                 }
             })
-        }
-    }
-}
+}}}}

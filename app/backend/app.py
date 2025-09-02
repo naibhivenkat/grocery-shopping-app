@@ -222,20 +222,42 @@ def register():
     }), 201
 
 
+# @app.route('/change_password', methods=['POST'])
+# def change_password():
+#     data = request.get_json() if request.is_json else request.form
+#     username = data.get('username').strip()
+#     old_password = data.get('old_password').strip()
+#     new_password = data.get('new_password').strip()
+#     user = firebase_db.get_user_by_credentials(username, old_password)
+#     if not user:
+#         return jsonify({"success": False, "message": "Invalid credentials"}), 401
+#     user_id = user.get('id')
+#     firebase_db.db.collection("users").document(user_id).update({"password": new_password})
+#     return jsonify({"success": True, "message": "Password updated"}), 200
+
 @app.route('/change_password', methods=['POST'])
 def change_password():
-    data = request.get_json() if request.is_json else request.form
-    username = data.get('username').strip()
-    old_password = data.get('old_password').strip()
-    new_password = data.get('new_password').strip()
-    user = firebase_db.get_user_by_credentials(username, old_password)
-    if not user:
-        return jsonify({"success": False, "message": "Invalid credentials"}), 401
-    user_id = user.get('id')
-    firebase_db.db.collection("users").document(user_id).update({"password": new_password})
-    return jsonify({"success": True, "message": "Password updated"}), 200
+    try:
+        data = request.get_json(force=True)  # Force JSON parsing
+        username = data.get('username', '').strip()
+        old_password = data.get('old_password', '').strip()
+        new_password = data.get('new_password', '').strip()
 
+        # Debug print
+        print(f"Received: username={username}, old_password={old_password}, new_password={new_password}")
 
+        user = firebase_db.get_user_by_credentials(username, old_password)
+        if not user:
+            return jsonify({"success": False, "message": "Incorrect old password"}), 401
+
+        user_id = user.get('id')
+        firebase_db.db.collection("users").document(user_id).update({"password": new_password})
+
+        return jsonify({"success": True, "message": "Password updated"}), 200
+
+    except Exception as e:
+        return jsonify({"success": False, "message": str(e)}), 500
+    
 @app.route('/update_profile', methods=['POST'])
 def update_profile():
     data = request.get_json()
