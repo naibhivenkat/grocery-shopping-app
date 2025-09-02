@@ -730,7 +730,7 @@ def send_welcome_email(email, name):
 def require_authentication():
     public_paths = [
         "/healthz", "/send_otp", "/verify_otp", "/register", "/login",
-        "/register_after_otp"
+        "/register_after_otp", "/check_update"
     ]
 
     # Allow if matches public paths
