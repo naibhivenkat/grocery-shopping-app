@@ -788,7 +788,7 @@ def add_item():
             "quantity": int(it.get("stockQuantity") or 0),
             "description": it.get("description") or "",
             "shopId": it.get("shopid") or shop_id,
-            "createdAt": datetime.utcnow().isoformat(),
+            "createdAt": datetime.datetime.utcnow().isoformat(),
             "createdBy": username   # ✅ trace which user added it
         }
         item = firebase_db.append_item(item_dict)
