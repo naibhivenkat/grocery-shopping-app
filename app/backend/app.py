@@ -492,25 +492,27 @@ def get_items(shop_id):
     if role not in ["shopkeeper", "shopowner", "customer"]:
         return jsonify({'success': False, 'message': 'Forbidden'}), 403
 
-    # 🔑 Fetch shop by `shop_id` field instead of Firestore doc id
+    # 🔹 Find by shop_id field (not Firestore doc id)
     shop_query = firebase_db.db.collection("shops").where("shop_id", "==", int(shop_id)).limit(1).stream()
     shop_doc = next(shop_query, None)
-
     if not shop_doc:
         return jsonify({'success': False, 'message': f'Shop not found for shop_id={shop_id}'}), 404
 
     shop_data = shop_doc.to_dict()
-    print(f"📌 Shop data: {shop_data}")
 
-    # Fetch items by shopId
+    # 🔹 Items must match shopId stored as string
     items = firebase_db.db.collection("items").where("shopId", "==", str(shop_id)).stream()
     items_list = [doc.to_dict() for doc in items]
 
+    if not items_list:
+        return jsonify({'success': False, 'message': f'No items found for shop_id={shop_id}'}), 404
+
     return jsonify({
         'success': True,
-        'shop_id': shop_id,
+        'shop': shop_data,
         'items': items_list
     }), 200
+
 
 
 @app.route("/update_item/<item_id>", methods=["PUT"])
@@ -856,7 +858,7 @@ def add_item():
             "price": float(it.get("price") or 0),
             "quantity": int(it.get("stockQuantity") or 0),
             "description": it.get("description") or "",
-            "shopId": it.get("shopid") or shop_id,
+            "shopId": str(shop_id),
             "createdAt": datetime.datetime.utcnow().isoformat(),
             "createdBy": username   # ✅ trace which user added it
         }
