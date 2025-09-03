@@ -5,23 +5,9 @@ import com.google.gson.annotations.SerializedName
 data class LoginResponse(
     val success: Boolean,
     val user: UserData?,
-    val token: String?
+    @SerializedName("token") val token: String? // root-level token from backend
 )
 
-//data class UserData(
-//    val username: String,
-//    val role: String,
-//    @SerializedName("shopkeeperId") val shopkeeperId: String?,
-//    @SerializedName("customerId") val customerId: String?,
-//    @SerializedName("fullName") val fullName: String?,
-//    val address: String?,
-//    val phone: String?,
-//    val email: String?,
-//    val location: String?,
-//    @SerializedName("photoBase64") val photoBase64: String?,
-//    @SerializedName("shopExists") val shopExists: Boolean? = null,
-//    val shop: Shops? = null // include shop object if provided
-//)
 data class UserData(
     val username: String = "",
     val role: String = "",
@@ -33,12 +19,13 @@ data class UserData(
     val email: String? = null,
     val location: String? = null,
     @SerializedName("photoBase64") val photoBase64: String? = null,
+
     @SerializedName("shopExists") val shopExists: Boolean? = null,
     val shop: Shops? = null,
-    val token: String? = null
+
+    @SerializedName("hasItems") val hasItems: Boolean? = null
 )
 
-// Matches your backend shop structure
 data class Shops(
     val id: String,
     val name: String,

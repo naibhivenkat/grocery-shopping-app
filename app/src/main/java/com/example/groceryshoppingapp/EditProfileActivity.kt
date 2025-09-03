@@ -98,7 +98,8 @@ class EditProfileActivity : AppCompatActivity() {
                     SessionManager.saveUserProfile(this, name, address, phone, email, location, selectedImageBase64)
 
                     // Prepare API call
-                    val apiService: ApiService = ApiClient.apiService
+                    val apiService: ApiService = ApiClient.getApiService(this)
+
                     val profileData = HashMap<String, String>()
                     profileData["username"] = username ?: ""
                     profileData["role"] = role ?: ""

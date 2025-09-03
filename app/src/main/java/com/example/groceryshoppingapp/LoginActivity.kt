@@ -28,7 +28,7 @@ class LoginActivity : AppCompatActivity() {
     private val appRole by lazy { BuildConfig.APP_ROLE.lowercase() }
 
     override fun onCreate(savedInstanceState: Bundle?) {
-        LanguageManager.applySavedLanguage(this) // apply saved language
+        LanguageManager.applySavedLanguage(this)
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_login)
 
@@ -65,20 +65,23 @@ class LoginActivity : AppCompatActivity() {
     }
 
     private fun doLogin(username: String, password: String) {
-        val api = RetrofitClient.instance.create(ApiService::class.java)
+        val api = RetrofitClient.getInstance(this).create(ApiService::class.java)
+
         api.login(LoginRequest(username, password)).enqueue(object : Callback<LoginResponse> {
             @SuppressLint("StringFormatInvalid")
             override fun onResponse(call: Call<LoginResponse>, response: Response<LoginResponse>) {
-                val loginResponse = response.body()
+                Log.d("LoginDebug", "Raw response: ${response.body()} error=${response.errorBody()?.string()}")
 
+                val loginResponse = response.body()
                 if (response.isSuccessful && loginResponse?.success == true) {
                     val user = loginResponse.user
                     val loginRole = user?.role?.lowercase()?.trim()
 
                     // ✅ Save auth token immediately
-                   // loginResponse.token?.let { SessionManager.setAuthToken(this@LoginActivity, it)
-                        //Log.d("LOGIN_DEBUG", "username=${user?.username}, role=${user?.role}, token=${loginResponse?.token}")
-                    //}
+                    loginResponse.token?.let { token ->
+                        SessionManager.setAuthToken(this@LoginActivity, token)
+                        Log.d("LoginDebug", "✅ Saved token=$token")
+                    }
 
                     // Block login if role mismatch
                     if (loginRole != appRole) {
@@ -87,69 +90,45 @@ class LoginActivity : AppCompatActivity() {
                         return
                     }
 
-                    // ✅ Save login + profile + IDs before language selection
+                    // Save profile/session
                     SessionManager.saveLogin(this@LoginActivity, user?.username ?: "", loginRole ?: "")
                     SessionManager.saveUserProfile(
-                        context = this@LoginActivity,
-                        fullName = user?.fullName ?: "",
-                        address = user?.address ?: "",
-                        phone = user?.phone ?: "",
-                        email = user?.email ?: "",
-                        location = user?.location ?: "",
-                        photoBase64 = user?.photoBase64 ?: ""
+                        this@LoginActivity,
+                        user?.fullName ?: "",
+                        user?.address ?: "",
+                        user?.phone ?: "",
+                        user?.email ?: "",
+                        user?.location ?: "",
+                        user?.photoBase64 ?: ""
                     )
                     user?.customerId?.let { SessionManager.setCustomerId(this@LoginActivity, it) }
                     user?.shopkeeperId?.let { SessionManager.setShopkeeperId(this@LoginActivity, it) }
 
-//                    // --- FIRST-TIME LANGUAGE SELECTION ---
-//                    if (!SessionManager.isLanguageSelected(this@LoginActivity)) {
-//                        val langIntent = Intent(this@LoginActivity, LanguageSelectionActivity::class.java)
-//                        langIntent.putExtra("pendingRole", loginRole)
-//                        langIntent.putExtra("shopkeeperId", user?.shopkeeperId ?: "")
-//                        langIntent.putExtra("customerId", user?.customerId ?: "")
-//                        startActivity(langIntent)
-//                        finish()
-//                        return
-//                    }
-
-                    // Normal flow after login
-                    when (loginRole) {
-                        "customer" -> {
-                            user?.customerId?.let { customerId ->
-                                SessionManager.setCustomerId(this@LoginActivity, customerId)
-                                startActivity(Intent(this@LoginActivity, CustomerHomeActivity::class.java))
-                                finish()
-                            }
-                        }
-                        "shopowner" -> {
-                            user?.shopkeeperId?.let { shopkeeperId ->
-                                SessionManager.setShopkeeperId(this@LoginActivity, shopkeeperId)
-
-                                val hasShop = user.shopExists == true && user.shop != null
-                                if (hasShop) {
-                                    val shop = user.shop!!
-                                    val shopIdStr = shop.id.toString()
-                                    SessionManager.setShopId(this@LoginActivity, shopIdStr)
-                                    SessionManager.setShopInfo(this@LoginActivity, shopIdStr, shop.name)
-                                    SessionManager.setHasItemsAdded(this@LoginActivity, true)
-                                    startActivity(Intent(this@LoginActivity, ShopOwnerDashboardActivity::class.java))
-                                    finish()
-                                } else {
-                                    // 🔄 Fallback: fetch shops from backend by shopkeeperId
-                                    val intent = Intent(this@LoginActivity, ShopOwnerDashboardActivity::class.java)
-                                    intent.putExtra("shopkeeperId", shopkeeperId)
-                                    startActivity(intent)
-                                    finish()
-                                }
-
-
+                    // ✅ Save shop info if exists
+                    if (user?.shop != null) {
+                        val shop = user.shop
+                        SessionManager.setShopId(this@LoginActivity, shop!!.id)
+                        SessionManager.setShopInfo(this@LoginActivity, shop.id, shop.name)
+                        SessionManager.setHasItemsAdded(this@LoginActivity, user.hasItems == true)
                     }
+
+                    // Redirect based on role and shop/items
+                    when (loginRole) {
+                        "customer" -> startActivity(Intent(this@LoginActivity, CustomerHomeActivity::class.java))
+                        "shopowner" -> {
+                            if (SessionManager.hasShopWithItems(this@LoginActivity)) {
+                                startActivity(Intent(this@LoginActivity, ShopOwnerDashboardActivity::class.java))
+                            } else {
+                                startActivity(Intent(this@LoginActivity, AddItemsActivity::class.java))
+                            }
                         }
                         else -> {
                             errorText.text = getString(R.string.unknown_user_role)
                             errorText.visibility = View.VISIBLE
+                            return
                         }
                     }
+                    finish()
                 } else {
                     errorText.text = getString(R.string.invalid_username_password)
                     errorText.visibility = View.VISIBLE
@@ -157,7 +136,7 @@ class LoginActivity : AppCompatActivity() {
             }
 
             override fun onFailure(call: Call<LoginResponse>, t: Throwable) {
-                errorText.text = "Login failed: ${t.localizedMessage ?: t.message ?: "Unknown error"}"
+                errorText.text = "Login failed: ${t.localizedMessage ?: "Unknown error"}"
                 errorText.visibility = View.VISIBLE
             }
         })

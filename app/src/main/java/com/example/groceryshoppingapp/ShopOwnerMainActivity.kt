@@ -87,8 +87,7 @@ class ShopOwnerMainActivity : AppCompatActivity() {
             return
         }
 
-        RetrofitClient.instance
-            .create(ApiService::class.java)
+        RetrofitClient.getInstance(this).create(ApiService::class.java)
             .getShopOrdersMulti(shopIds)
             .enqueue(object : Callback<List<Order>> {
                 override fun onResponse(call: Call<List<Order>>, response: Response<List<Order>>) {

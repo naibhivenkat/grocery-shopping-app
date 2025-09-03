@@ -69,7 +69,7 @@ class OrderDetailActivity : AppCompatActivity() {
                 updateMap["cancel_message"] = cancelMsg
             }
 
-            RetrofitClient.instance.create(ApiService::class.java)
+            RetrofitClient.getInstance(this).create(ApiService::class.java)
                 .updateOrder(order.orderUuid, updateMap)
                 .enqueue(object : Callback<Map<String, Any>> {
                     override fun onResponse(call: Call<Map<String, Any>>, response: Response<Map<String, Any>>) {
@@ -123,7 +123,7 @@ class OrderDetailActivity : AppCompatActivity() {
     }
 
     private fun refreshOrder() {
-        RetrofitClient.instance.create(ApiService::class.java)
+        RetrofitClient.getInstance(this).create(ApiService::class.java)
             .getOrderById(order.orderUuid)
             .enqueue(object : Callback<Order> {
                 override fun onResponse(call: Call<Order>, response: Response<Order>) {

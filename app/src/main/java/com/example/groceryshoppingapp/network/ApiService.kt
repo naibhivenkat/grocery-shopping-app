@@ -103,7 +103,7 @@ interface ApiService {
         @Path("shop_id") shopId: String
     ): Call<GetItemsResponse>
 
-    //@POST("/add_items")
+    //@POST("shop/add_items")
 //    fun addItems(@Body body: Map<String, Any>): Call<Map<String, Boolean>>
 
     //@POST("/add_items")
@@ -112,11 +112,9 @@ interface ApiService {
 //        @Body body: Map<String, Any>
 //    ): Call<ApiResponse>
 
-    @POST("shop/add_items")
-    fun addItems(
-        @Header("Authorization") token: String,
-        @Body request: AddItemsRequest
-    ): Call<ApiResponse>
+    @POST("/shop/add_items")
+    fun addItems(@Body request: AddItemsRequest): Call<ApiResponse>
+
 
 //    @POST("add_items")
 //    fun addItems(

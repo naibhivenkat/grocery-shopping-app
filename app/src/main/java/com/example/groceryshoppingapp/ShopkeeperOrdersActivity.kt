@@ -46,7 +46,7 @@ class ShopkeeperOrdersActivity : AppCompatActivity() {
     }
 
     private fun fetchOrders() {
-        val api = RetrofitClient.instance.create(ApiService::class.java)
+        val api = RetrofitClient.getInstance(this).create(ApiService::class.java)
         api.getShopOrders(shopkeeperId!!).enqueue(object : Callback<List<Order>> {
             override fun onResponse(call: Call<List<Order>>, response: Response<List<Order>>) {
                 if (response.isSuccessful && response.body() != null) {
@@ -66,7 +66,7 @@ class ShopkeeperOrdersActivity : AppCompatActivity() {
     }
 
     private fun updateOrderStatus(orderId: String, status: String) {
-        val api = RetrofitClient.instance.create(ApiService::class.java)
+        val api = RetrofitClient.getInstance(this).create(ApiService::class.java)
         api.updateOrderStatus(orderId, status).enqueue(object : Callback<ApiResponse> {
             override fun onResponse(call: Call<ApiResponse>, response: Response<ApiResponse>) {
                 val apiResponse = response.body()

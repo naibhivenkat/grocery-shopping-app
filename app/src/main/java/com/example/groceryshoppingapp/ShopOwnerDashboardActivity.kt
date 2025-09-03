@@ -15,17 +15,17 @@ import com.example.groceryshoppingapp.network.ApiService
 import com.example.groceryshoppingapp.models.GetItemsResponse
 import com.example.groceryshoppingapp.models.GetShopResponse
 import com.example.groceryshoppingapp.utils.SessionManager
+import com.google.android.material.navigation.NavigationView
 import retrofit2.Call
 import retrofit2.Callback
 import retrofit2.Response
-import com.google.android.material.navigation.NavigationView
 
 class ShopOwnerDashboardActivity : AppCompatActivity() {
 
     private lateinit var drawerLayout: DrawerLayout
     private lateinit var navView: NavigationView
     private lateinit var btnOrders: Button
-    private val api: ApiService by lazy { ApiClient.apiService }
+    private val api: ApiService by lazy { ApiClient.getApiService(this) }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -48,7 +48,6 @@ class ShopOwnerDashboardActivity : AppCompatActivity() {
         drawerLayout.addDrawerListener(toggle)
         toggle.syncState()
 
-        // Open right drawer when hamburger clicked
         toolbar.setNavigationOnClickListener {
             drawerLayout.openDrawer(GravityCompat.END)
         }
@@ -56,7 +55,7 @@ class ShopOwnerDashboardActivity : AppCompatActivity() {
         supportActionBar?.setDisplayHomeAsUpEnabled(true)
         supportActionBar?.setHomeAsUpIndicator(R.drawable.ic_menu)
 
-        // --- BUTTONS ---
+        // --- BUTTON ---
         btnOrders.setOnClickListener {
             startActivity(Intent(this, ShopOwnerMainActivity::class.java))
         }
@@ -69,9 +68,9 @@ class ShopOwnerDashboardActivity : AppCompatActivity() {
                 R.id.nav_manage_items -> startActivity(Intent(this, ManageItemsActivity::class.java))
                 R.id.nav_logout -> {
                     SessionManager.logout(this)
-                    val intent = Intent(this, LoginActivity::class.java)
-                    intent.flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK
-                    startActivity(intent)
+                    startActivity(Intent(this, LoginActivity::class.java).apply {
+                        flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK
+                    })
                     finish()
                 }
             }
@@ -93,102 +92,58 @@ class ShopOwnerDashboardActivity : AppCompatActivity() {
         val shopId = SessionManager.getShopId(this)
         val hasShop = !shopId.isNullOrEmpty()
 
-        Log.d("DashboardDebug", "shopId = $shopId, hasShop = $hasShop")
-
         if (!hasShop) {
-            // 🔄 NEW: Try fetching shop from backend using shopkeeperId
+            // Try fetching shop from backend
             val shopkeeperId = SessionManager.getShopkeeperId(this)
             if (!shopkeeperId.isNullOrEmpty()) {
                 fetchShopFromBackend(shopkeeperId)
             } else {
-                // If no shopkeeperId → force login
+                // No shop & no shopkeeperId → force login
                 startActivity(Intent(this, LoginActivity::class.java))
                 finish()
             }
             return
         }
 
-        // ✅ If we already have shopId, check items normally
-        checkShopItems(shopId!!)
-    }
-
-    // --- NEW: Fetch items from backend to determine if AddItemsActivity is needed ---
-    private fun checkShopItems(shopId: String) {
-        val token = SessionManager.getAuthToken(this)
-
-        // ✅ Minimal fix: redirect to login if token missing
-        if (token.isNullOrEmpty()) {
-            Log.d("DashboardDebug", "Auth token missing, redirecting to LoginActivity")
-            startActivity(Intent(this, LoginActivity::class.java))
+        // Check if items added; if not, go to AddItemsActivity
+        if (!SessionManager.hasItemsAdded(this)) {
+            startActivity(Intent(this, AddItemsActivity::class.java))
             finish()
-            return
         }
-
-        val authHeader = "Bearer $token"
-        api.getItems(authHeader, shopId).enqueue(object : Callback<GetItemsResponse> {
-            override fun onResponse(call: Call<GetItemsResponse>, response: Response<GetItemsResponse>) {
-                if (response.isSuccessful) {
-                    val itemsExist = response.body()?.items?.isNotEmpty() == true
-                    Log.d("DashboardDebug", "Items exist? $itemsExist")
-
-                    if (!itemsExist) {
-                        // No items → redirect to AddItemsActivity
-                        startActivity(Intent(this@ShopOwnerDashboardActivity, AddItemsActivity::class.java))
-                        finish()
-                    }
-                    // Else: stay on dashboard
-                } else {
-                    // Failed to fetch → fallback to AddItemsActivity
-                    startActivity(Intent(this@ShopOwnerDashboardActivity, AddItemsActivity::class.java))
-                    finish()
-                }
-            }
-
-            override fun onFailure(call: Call<GetItemsResponse>, t: Throwable) {
-                // Network error → fallback
-                startActivity(Intent(this@ShopOwnerDashboardActivity, AddItemsActivity::class.java))
-                finish()
-            }
-        })
     }
 
-    // --- NEW: Fetch shop from backend using shopkeeperId ---
+    // --- FETCH SHOP ---
     private fun fetchShopFromBackend(shopkeeperId: String) {
         val token = SessionManager.getAuthToken(this)
         if (token.isNullOrEmpty()) {
-            Log.d("DashboardDebug", "Auth token missing, redirecting to LoginActivity")
-            startActivity(Intent(this, LoginActivity::class.java))
-            finish()
+            forceLogout()
             return
         }
-
         val authHeader = "Bearer $token"
 
         api.getShopByOwner(authHeader, shopkeeperId).enqueue(object : Callback<GetShopResponse> {
             override fun onResponse(call: Call<GetShopResponse>, response: Response<GetShopResponse>) {
                 if (response.isSuccessful && response.body()?.shop != null) {
                     val shop = response.body()!!.shop
-                    // ✅ Save shopId to SessionManager
                     if (shop != null) {
                         SessionManager.setShopId(this@ShopOwnerDashboardActivity, shop.id)
                     }
                     if (shop != null) {
-                        Log.d("DashboardDebug", "Fetched shop: ${shop.id}, ${shop.name}")
+                        SessionManager.setShopInfo(this@ShopOwnerDashboardActivity, shop.id, shop.name)
                     }
 
-                    // Continue with item check
+                    // Check items
                     if (shop != null) {
                         checkShopItems(shop.id)
                     }
                 } else {
-                    Log.d("DashboardDebug", "No shop found for this owner → redirect to CreateShopActivity")
+                    // No shop found → create shop
                     startActivity(Intent(this@ShopOwnerDashboardActivity, CreateShopActivity::class.java))
                     finish()
                 }
             }
 
             override fun onFailure(call: Call<GetShopResponse>, t: Throwable) {
-                Log.e("DashboardDebug", "Failed to fetch shop: ${t.message}")
                 Toast.makeText(this@ShopOwnerDashboardActivity, "Error fetching shop", Toast.LENGTH_SHORT).show()
                 startActivity(Intent(this@ShopOwnerDashboardActivity, CreateShopActivity::class.java))
                 finish()
@@ -196,6 +151,53 @@ class ShopOwnerDashboardActivity : AppCompatActivity() {
         })
     }
 
+    // --- CHECK ITEMS ---
+    private fun checkShopItems(shopId: String) {
+        val token = SessionManager.getAuthToken(this)
+        if (token.isNullOrEmpty()) {
+            forceLogout()
+            return
+        }
+
+        val authHeader = "Bearer $token"
+        api.getItems(authHeader, shopId).enqueue(object : Callback<GetItemsResponse> {
+            override fun onResponse(call: Call<GetItemsResponse>, response: Response<GetItemsResponse>) {
+                when {
+                    response.isSuccessful -> {
+                        val itemsExist = response.body()?.items?.isNotEmpty() == true
+                        Log.d("DashboardDebug", "Items exist? $itemsExist")
+
+                        if (!itemsExist) {
+                            // No items → redirect to AddItemsActivity
+                            startActivity(Intent(this@ShopOwnerDashboardActivity, AddItemsActivity::class.java))
+                            finish()
+                        }
+                        // else: stay on dashboard
+                    }
+                    response.code() == 401 -> forceLogout()
+                    else -> {
+                        Toast.makeText(this@ShopOwnerDashboardActivity, "Failed to fetch items", Toast.LENGTH_SHORT).show()
+                        startActivity(Intent(this@ShopOwnerDashboardActivity, AddItemsActivity::class.java))
+                        finish()
+                    }
+                }
+            }
+
+            override fun onFailure(call: Call<GetItemsResponse>, t: Throwable) {
+                Toast.makeText(this@ShopOwnerDashboardActivity, "Network error fetching items", Toast.LENGTH_SHORT).show()
+                startActivity(Intent(this@ShopOwnerDashboardActivity, AddItemsActivity::class.java))
+                finish()
+            }
+        })
+    }
+
+    private fun forceLogout() {
+        SessionManager.logout(this)
+        startActivity(Intent(this, LoginActivity::class.java).apply {
+            flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK
+        })
+        finish()
+    }
 
     override fun onOptionsItemSelected(item: MenuItem): Boolean {
         if (item.itemId == android.R.id.home) {

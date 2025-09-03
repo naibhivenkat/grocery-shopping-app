@@ -489,29 +489,26 @@ def get_items(shop_id):
         return jsonify({'success': False, 'message': 'Unauthorized'}), 401
 
     role = user.get('role')
-    print(f"role : {role}")
     if role not in ["shopkeeper", "shopowner", "customer"]:
         return jsonify({'success': False, 'message': 'Forbidden'}), 403
 
-    # Fetch shop doc by Firestore doc ID
-    shop_doc = firebase_db.db.collection("shops").document(shop_id).get()
-    if not shop_doc.exists:
-        return jsonify({'success': False, 'message': f'Shop doc not found for {shop_id}'}), 404
+    # 🔑 Fetch shop by `shop_id` field instead of Firestore doc id
+    shop_query = firebase_db.db.collection("shops").where("shop_id", "==", int(shop_id)).limit(1).stream()
+    shop_doc = next(shop_query, None)
+
+    if not shop_doc:
+        return jsonify({'success': False, 'message': f'Shop not found for shop_id={shop_id}'}), 404
 
     shop_data = shop_doc.to_dict()
     print(f"📌 Shop data: {shop_data}")
 
-    # Fetch items by shop_id field (numeric/field value)
-    shop_numeric_id = str(shop_data["shop_id"])  # convert to string if needed
-    items = firebase_db.db.collection("items").where("shopId", "==", shop_numeric_id).stream()
+    # Fetch items by shopId
+    items = firebase_db.db.collection("items").where("shopId", "==", str(shop_id)).stream()
     items_list = [doc.to_dict() for doc in items]
-
-    if not items_list:
-        return jsonify({'success': False, 'message': f'No items found for shop_id={shop_id}'}), 404
 
     return jsonify({
         'success': True,
-        'shopDocId': shop_id,
+        'shop_id': shop_id,
         'items': items_list
     }), 200
 

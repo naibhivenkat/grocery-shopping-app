@@ -2,11 +2,10 @@ package com.example.groceryshoppingapp
 
 import android.content.Intent
 import android.os.Bundle
-import android.util.Log
 import android.widget.*
 import androidx.appcompat.app.AppCompatActivity
-import com.example.groceryshoppingapp.models.Item
 import com.example.groceryshoppingapp.models.AddItemsRequest
+import com.example.groceryshoppingapp.models.Item
 import com.example.groceryshoppingapp.network.ApiClient
 import com.example.groceryshoppingapp.network.ApiResponse
 import com.example.groceryshoppingapp.utils.SessionManager
@@ -72,14 +71,11 @@ class AddItemsActivity : AppCompatActivity() {
         )
 
         itemDataList.add(item)
-
-        // Update ListView
         val displayList = itemDataList.map {
             "Name: ${it.name} | Price: ₹${it.price} | Stock: ${it.stockQuantity} | Desc: ${it.description}"
         }
         listViewItems.adapter = ArrayAdapter(this, android.R.layout.simple_list_item_1, displayList)
 
-        // Clear input fields
         etItemName.text.clear()
         etItemPrice.text.clear()
         etItemQuantity.text.clear()
@@ -92,35 +88,32 @@ class AddItemsActivity : AppCompatActivity() {
             return
         }
 
-        val token = SessionManager.getAuthToken(this)
         val shopId = SessionManager.getShopId(this)
-
-        if (token.isNullOrEmpty() || shopId.isNullOrEmpty()) {
-            Toast.makeText(this, "❌ Missing auth token or shop ID. Please login again.", Toast.LENGTH_SHORT).show()
+        if (shopId.isNullOrEmpty()) {
+            Toast.makeText(this, "Shop ID missing. Please login again.", Toast.LENGTH_SHORT).show()
             startActivity(Intent(this, LoginActivity::class.java))
             finish()
             return
         }
 
         val request = AddItemsRequest(shopId, itemDataList)
-        //ApiClient.apiService.addItems("Bearer $token", request)
-        val authHeader = "Bearer $token"
-        ApiClient.apiService.addItems(authHeader, request)
-            .enqueue(object : Callback<ApiResponse> {
-                override fun onResponse(call: Call<ApiResponse>, response: Response<ApiResponse>) {
-                    if (response.isSuccessful && response.body()?.success == true) {
-                        Toast.makeText(this@AddItemsActivity, "✅ Items added successfully!", Toast.LENGTH_SHORT).show()
-                        SessionManager.setHasItemsAdded(this@AddItemsActivity, true)
-                        startActivity(Intent(this@AddItemsActivity, ShopOwnerMainActivity::class.java))
-                        finish()
-                    } else {
-                        Toast.makeText(this@AddItemsActivity, "❌ Failed: ${response.body()?.message ?: "Unknown error"}", Toast.LENGTH_SHORT).show()
-                    }
-                }
 
-                override fun onFailure(call: Call<ApiResponse>, t: Throwable) {
-                    Toast.makeText(this@AddItemsActivity, "⚠️ Error: ${t.message ?: "Unknown error"}", Toast.LENGTH_SHORT).show()
+        val apiService = ApiClient.getApiService(this)
+        apiService.addItems(request).enqueue(object : Callback<ApiResponse> {
+            override fun onResponse(call: Call<ApiResponse>, response: Response<ApiResponse>) {
+                if (response.isSuccessful && response.body()?.success == true) {
+                    Toast.makeText(this@AddItemsActivity, "✅ Items added successfully!", Toast.LENGTH_SHORT).show()
+                    SessionManager.setHasItemsAdded(this@AddItemsActivity, true)
+                    startActivity(Intent(this@AddItemsActivity, ShopOwnerDashboardActivity::class.java))
+                    finish()
+                } else {
+                    Toast.makeText(this@AddItemsActivity, "❌ Failed: ${response.body()?.message ?: "Unknown error"}", Toast.LENGTH_SHORT).show()
                 }
-            })
+            }
+
+            override fun onFailure(call: Call<ApiResponse>, t: Throwable) {
+                Toast.makeText(this@AddItemsActivity, "⚠️ Error: ${t.message ?: "Unknown error"}", Toast.LENGTH_SHORT).show()
+            }
+        })
     }
 }

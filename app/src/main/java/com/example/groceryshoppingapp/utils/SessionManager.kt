@@ -135,4 +135,9 @@ object SessionManager {
     fun getEmail(context: Context): String? = prefs(context).getString("email", "")
     fun getLocation(context: Context): String? = prefs(context).getString("location", "")
 
+    // --- SHOP CHECKS ---
+    fun hasShop(context: Context): Boolean = !getShopId(context).isNullOrEmpty()
+    fun hasShopWithItems(context: Context): Boolean = hasShop(context) && hasItemsAdded(context)
+
+
 }

@@ -45,7 +45,8 @@ class ChangePasswordActivity : AppCompatActivity() {
             )
             val token = SessionManager.getAuthToken(this)
             val authHeader = "Bearer $token"
-            val api = RetrofitClient.instance.create(ApiService::class.java)
+            val api = RetrofitClient.getInstance(this).create(ApiService::class.java)
+
             api.changePassword(authHeader, body).enqueue(object : Callback<Map<String, Any>> {
                 override fun onResponse(call: Call<Map<String, Any>>, response: Response<Map<String, Any>>) {
                     if (response.isSuccessful && response.body()?.get("success") == true) {

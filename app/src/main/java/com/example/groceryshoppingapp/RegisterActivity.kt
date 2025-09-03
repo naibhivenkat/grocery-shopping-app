@@ -323,11 +323,17 @@ class RegisterActivity : AppCompatActivity() {
                         )
 
                         // ✅ Save auth token if backend provides
-                        if (!user.token.isNullOrEmpty()) { // <-- CHANGE: Now always saves token if present
-                            SessionManager.setAuthToken(this@RegisterActivity, user.token)
+                        // ✅ Save auth token if backend provides (root-level token)
+                        val token = response.body()?.token
+                        if (!token.isNullOrEmpty()) {
+                            SessionManager.setAuthToken(this@RegisterActivity, token)
+                            Log.d("REGISTER_API", "✅ Saved token=$token for ${user.username}")
                         }
 
+                    }
+
                         // ✅ Save userId depending on role
+                    if (user != null) {
                         if (user.role.lowercase() in listOf("shopowner", "shopkeeper")) {
                             SessionManager.setShopkeeperId(
                                 this@RegisterActivity,
@@ -339,8 +345,10 @@ class RegisterActivity : AppCompatActivity() {
                                 user.customerId ?: ""
                             )
                         }
+                    }
 
                         // ✅ Save profile info
+                    if (user != null) {
                         SessionManager.saveUserProfile(
                             this@RegisterActivity,
                             user.fullName ?: "",
@@ -350,31 +358,37 @@ class RegisterActivity : AppCompatActivity() {
                             user.location ?: "",
                             user.photoBase64 ?: ""
                         )
+                    }
 
                         // ✅ Save shopId if shop exists
+                    if (user != null) {
                         if (user.shop != null) {
                             SessionManager.setShopId(this@RegisterActivity, user.shop.id)
                         }
+                    }
 
                         // --- NAVIGATION FIX STARTS HERE ---
+                    if (user != null) {
                         if (user.role.lowercase() in listOf("shopowner", "shopkeeper")) {
-                            if (user.shopExists == true && user.shop != null) {
-                                // Shopowner with shop → Dashboard
-                                startActivity(
-                                    Intent(
-                                        this@RegisterActivity,
-                                        ShopOwnerDashboardActivity::class.java
+
+                                if (user.shopExists == true && user.shop != null) {
+                                    // Shopowner with shop → Dashboard
+                                    startActivity(
+                                        Intent(
+                                            this@RegisterActivity,
+                                            ShopOwnerDashboardActivity::class.java
+                                        )
                                     )
-                                )
-                            } else {
-                                // Shopowner no shop → CreateShop flow
-                                startActivity(
-                                    Intent(
-                                        this@RegisterActivity,
-                                        CreateShopActivity::class.java
+                                } else {
+                                    // Shopowner no shop → CreateShop flow
+                                    startActivity(
+                                        Intent(
+                                            this@RegisterActivity,
+                                            CreateShopActivity::class.java
+                                        )
                                     )
-                                )
-                            }
+                                }
+
                         } else {
                             // Only for "customer" users
                             startActivity(
@@ -384,10 +398,12 @@ class RegisterActivity : AppCompatActivity() {
                                 )
                             )
                         }
+                    }
                         finish()
                         // --- END NAVIGATION FIX ---
                     }
-                } else {
+
+            else {
                     Toast.makeText(
                         this@RegisterActivity,
                         "❌ Registration failed",

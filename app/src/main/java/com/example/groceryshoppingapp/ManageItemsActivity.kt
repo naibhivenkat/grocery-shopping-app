@@ -28,7 +28,7 @@ class ManageItemsActivity : AppCompatActivity() {
     private lateinit var btnBack: ImageButton
     private lateinit var btnRefresh: ImageButton
 
-    private val api = RetrofitClient.instance.create(ApiService::class.java)
+    private val api = RetrofitClient.getInstance(this).create(ApiService::class.java)
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)

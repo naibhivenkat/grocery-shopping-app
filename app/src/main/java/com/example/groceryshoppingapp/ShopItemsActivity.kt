@@ -97,7 +97,7 @@ class ShopItemsActivity : AppCompatActivity() {
             return
         }
         val authHeader = "Bearer $token"
-        val api = RetrofitClient.instance.create(ApiService::class.java)
+        val api = RetrofitClient.getInstance(this).create(ApiService::class.java)
         api.getItemsForShop(authHeader, shopId).enqueue(object : Callback<List<Item>> {
             override fun onResponse(call: Call<List<Item>>, response: Response<List<Item>>) {
                 if (response.isSuccessful) {
