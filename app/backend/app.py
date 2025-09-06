@@ -571,22 +571,28 @@ from flask import g, jsonify
 
 @app.route("/api/shops/<shop_id>/items", methods=["GET"])
 def get_items(shop_id):
-    ...
-    shop_query = firebase_db.db.collection("shops").where("id", "==", shop_id).limit(1).stream()
-    shop_doc = next(shop_query, None)
-    if not shop_doc:
-        return jsonify({'success': False, 'message': f'Shop not found for id={shop_id}'}), 404
+    try:
+        shop_query = firebase_db.db.collection("shops").where("id", "==", shop_id).limit(1).stream()
+        shop_doc = next(iter(shop_query), None)
 
-    shop_data = shop_doc.to_dict()
+        if not shop_doc:
+            return jsonify({'success': False, 'message': f'Shop not found for id={shop_id}'}), 404
 
-    items = firebase_db.db.collection("items").where("shopId", "==", shop_id).stream()
-    items_list = [doc.to_dict() for doc in items]
+        shop_data = shop_doc.to_dict()
 
-    return jsonify({
-        'success': True,
-        'shop': shop_data,
-        'items': items_list
-    }), 200
+        items = firebase_db.db.collection("items").where("shopId", "==", shop_id).stream()
+
+        items_list = [doc.to_dict() for doc in items]
+
+        return jsonify({
+            'success': True,
+            'shop': shop_data,
+            'items': items_list
+        }), 200
+
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 500
+
 
 
 
@@ -970,6 +976,28 @@ def get_shop_by_owner():
         return jsonify({'success': True, 'shop': shop})
     else:
         return jsonify({'success': False, 'shop': None})
+
+
+
+def debug_print_shops():
+    print("\n--- DEBUG: Shops ---")
+    shops = db.collection("shops").stream()
+    for doc in shops:
+        data = doc.to_dict()
+        print(f"DocID={doc.id}, id={data.get('id')}, shop_id={data.get('shop_id')}, name={data.get('name')}")
+
+def debug_print_items():
+    print("\n--- DEBUG: Items ---")
+    items = db.collection("items").stream()
+    for doc in items:
+        data = doc.to_dict()
+        print(f"DocID={doc.id}, id={data.get('id')}, shopId={data.get('shopId')}, name={data.get('name')}")
+
+@app.route("/api/debug/print", methods=["GET"])
+def debug_print():
+    debug_print_shops()
+    debug_print_items()
+    return jsonify({"success": True, "message": "Printed to backend logs"}), 200
 
 
 if __name__ == "__main__":
