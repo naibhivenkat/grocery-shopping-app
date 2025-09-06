@@ -8,6 +8,7 @@ import android.widget.Toast
 import androidx.appcompat.app.AppCompatActivity
 import com.example.groceryshoppingapp.utils.SessionManager
 import com.google.firebase.firestore.FirebaseFirestore
+import java.util.UUID
 
 class CreateShopActivity : AppCompatActivity() {
 
@@ -29,30 +30,12 @@ class CreateShopActivity : AppCompatActivity() {
             if (shopName.isEmpty()) {
                 Toast.makeText(this, "Enter shop name", Toast.LENGTH_SHORT).show()
             } else {
-                generateShopIdAndCreate(shopName)
+                createShop(shopName)
             }
         }
     }
 
-    private fun generateShopIdAndCreate(shopName: String) {
-        db.collection("shops")
-            .get()
-            .addOnSuccessListener { result ->
-                var maxId = 0
-                for (doc in result) {
-                    val shopId = doc.getLong("shop_id")?.toInt() ?: 0
-                    if (shopId > maxId) maxId = shopId
-                }
-
-                val newShopId = maxId + 1
-                saveShopToFirebase(newShopId, shopName)
-            }
-            .addOnFailureListener {
-                Toast.makeText(this, "Error generating shop ID", Toast.LENGTH_SHORT).show()
-            }
-    }
-
-    private fun saveShopToFirebase(shopId: Int, shopName: String) {
+    private fun createShop(shopName: String) {
         val shopkeeperId = SessionManager.getShopkeeperId(this)
         if (shopkeeperId.isNullOrEmpty()) {
             Toast.makeText(this, "Error: Shopkeeper ID missing. Please login again.", Toast.LENGTH_SHORT).show()
@@ -61,10 +44,11 @@ class CreateShopActivity : AppCompatActivity() {
             return
         }
 
-        val shopIdStr = shopId.toString()
+        // 🔑 Generate UUID instead of incremental IDs
+        val newShopId = UUID.randomUUID().toString()
 
         val shopData = hashMapOf(
-            "shop_id" to shopIdStr,           // ✅ save as STRING
+            "id" to newShopId,          // ✅ backend expects "id"
             "name" to shopName,
             "shopkeeper_id" to shopkeeperId
         )
@@ -73,14 +57,17 @@ class CreateShopActivity : AppCompatActivity() {
             .add(shopData)
             .addOnSuccessListener { _ ->
 
-                SessionManager.setShopId(this, shopIdStr)
-                SessionManager.setShopInfo(this, shopIdStr, shopName)
+                // Save locally in SessionManager
+                SessionManager.setShopId(this, newShopId)
+                SessionManager.setShopInfo(this, newShopId, shopName)
 
+                // Preserve token if available
                 val token = SessionManager.getAuthToken(this)
                 if (!token.isNullOrEmpty()) {
                     SessionManager.setAuthToken(this, token)
                 }
 
+                // Update user document → attach shop
                 db.collection("users")
                     .whereEqualTo("shopkeeperId", shopkeeperId)
                     .get()
@@ -90,7 +77,7 @@ class CreateShopActivity : AppCompatActivity() {
                             db.collection("users").document(userDoc.id)
                                 .update(
                                     "shopExists", true,
-                                    "shop", mapOf("id" to shopIdStr, "name" to shopName)
+                                    "shop", mapOf("id" to newShopId, "name" to shopName)
                                 )
                         }
                     }
@@ -103,5 +90,4 @@ class CreateShopActivity : AppCompatActivity() {
                 Toast.makeText(this, "Error saving shop", Toast.LENGTH_SHORT).show()
             }
     }
-
 }
