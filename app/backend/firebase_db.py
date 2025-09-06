@@ -67,16 +67,21 @@ def append_item(item_dict):
 def append_order(order_dict):
     order_id = str(uuid.uuid4())
     order_dict["order_uuid"] = order_id
+    # ✅ ensure shopId is string
+    if "shopId" in order_dict:
+        order_dict["shopId"] = str(order_dict["shopId"])
     db.collection("orders").document(order_id).set(order_dict)
     return order_dict
+
 
 def get_orders_by_customer(customer_id):
     docs = db.collection("orders").where("customer.id", "==", customer_id).stream()
     return [doc.to_dict() for doc in docs]
 
 def get_orders_by_shop(shop_id):
-    docs = db.collection("orders").where("shop_id", "==", shop_id).stream()
+    docs = db.collection("orders").where("shopId", "==", shop_id).stream()
     return [doc.to_dict() for doc in docs]
+
 
 def update_order_status(order_uuid, new_status):
     ref = db.collection("orders").document(order_uuid)

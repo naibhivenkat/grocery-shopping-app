@@ -107,7 +107,7 @@ class LoginActivity : AppCompatActivity() {
                     // ✅ Save shop info if exists
                     if (user?.shop != null) {
                         val shop = user.shop
-                        SessionManager.setShopId(this@LoginActivity, shop!!.id)
+                        SessionManager.setShopId(this@LoginActivity, shop!!.id)   // ✅ keep UUID
                         SessionManager.setShopInfo(this@LoginActivity, shop.id, shop.name)
                         SessionManager.setHasItemsAdded(this@LoginActivity, user.hasItems == true)
                     }

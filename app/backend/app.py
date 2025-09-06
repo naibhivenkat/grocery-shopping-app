@@ -538,30 +538,49 @@ from flask import g, jsonify
 #         'items': saved_items
 #     }), 201
 
+# @app.route("/api/shops/<shop_id>/items", methods=["GET"])
+# def get_items(shop_id):
+#     user = getattr(g, "current_user", None)
+#     if not user:
+#         return jsonify({'success': False, 'message': 'Unauthorized'}), 401
+#
+#     role = user.get('role')
+#     if role not in ["shopkeeper", "shopowner", "customer"]:
+#         return jsonify({'success': False, 'message': 'Forbidden'}), 403
+#
+#     # 🔹 Find by shop_id field (not Firestore doc id)
+#     shop_query = firebase_db.db.collection("shops").where("shop_id", "==", int(shop_id)).limit(1).stream()
+#     shop_doc = next(shop_query, None)
+#     if not shop_doc:
+#         return jsonify({'success': False, 'message': f'Shop not found for shop_id={shop_id}'}), 404
+#
+#     shop_data = shop_doc.to_dict()
+#
+#     # 🔹 Items must match shopId stored as string
+#     items = firebase_db.db.collection("items").where("shopId", "==", str(shop_id)).stream()
+#     items_list = [doc.to_dict() for doc in items]
+#
+#     if not items_list:
+#         return jsonify({'success': False, 'message': f'No items found for shop_id={shop_id}'}), 404
+#
+#     return jsonify({
+#         'success': True,
+#         'shop': shop_data,
+#         'items': items_list
+#     }), 200
+
 @app.route("/api/shops/<shop_id>/items", methods=["GET"])
 def get_items(shop_id):
-    user = getattr(g, "current_user", None)
-    if not user:
-        return jsonify({'success': False, 'message': 'Unauthorized'}), 401
-
-    role = user.get('role')
-    if role not in ["shopkeeper", "shopowner", "customer"]:
-        return jsonify({'success': False, 'message': 'Forbidden'}), 403
-
-    # 🔹 Find by shop_id field (not Firestore doc id)
-    shop_query = firebase_db.db.collection("shops").where("shop_id", "==", int(shop_id)).limit(1).stream()
+    ...
+    shop_query = firebase_db.db.collection("shops").where("id", "==", shop_id).limit(1).stream()
     shop_doc = next(shop_query, None)
     if not shop_doc:
-        return jsonify({'success': False, 'message': f'Shop not found for shop_id={shop_id}'}), 404
+        return jsonify({'success': False, 'message': f'Shop not found for id={shop_id}'}), 404
 
     shop_data = shop_doc.to_dict()
 
-    # 🔹 Items must match shopId stored as string
-    items = firebase_db.db.collection("items").where("shopId", "==", str(shop_id)).stream()
+    items = firebase_db.db.collection("items").where("shopId", "==", shop_id).stream()
     items_list = [doc.to_dict() for doc in items]
-
-    if not items_list:
-        return jsonify({'success': False, 'message': f'No items found for shop_id={shop_id}'}), 404
 
     return jsonify({
         'success': True,
@@ -620,14 +639,23 @@ def create_order():
                 {"item_id": item_id, "name": item.get("name", ""), "price": item_price,
                  "quantity": quantity})
 
+    user = getattr(g, "current_user", None)
+
     order_dict = {
-        "shop_id": data["shop_id"],
-        "customer": data.get("customerName", "test"),
+        "shopId": data["shopId"],
+        "customer": {
+            "id": user.get("customerId"),
+            "username": user.get("username"),
+            "fullName": user.get("fullName"),
+            "email": user.get("email"),
+            "phone": user.get("phone"),
+        },
         "items": detailed_items,
         "total": total,
         "status": "Pending",
         "created_at": datetime.datetime.utcnow().isoformat()
     }
+
     new_order = firebase_db.append_order(order_dict)
     return jsonify({"success": True, "order_id": new_order["order_uuid"]})
 
