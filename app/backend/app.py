@@ -55,7 +55,7 @@ def healthz():
         service_ok = True  # replace with actual check, e.g., DB ping, cache, etc.
 
         if service_ok:
-            logging.info("✅ Health check ping received")
+           # logging.info("✅ Health check ping received")
             return jsonify(status="Up and Running"), 200
         else:
             logging.error("❌ Health check failed!")
@@ -112,6 +112,60 @@ def healthz():
 #
 #     return jsonify({'success': True, 'user': response_user})
 
+
+# @app.route("/login", methods=["POST"])
+# def login():
+#     data = request.get_json()
+#     username = data.get("username")
+#     password = data.get("password")
+#
+#     user = firebase_db.get_user_by_username(username)
+#     if not user:
+#         return jsonify({"success": False, "message": "User not found"}), 404
+#
+#     if user.get("password") != password:
+#         return jsonify({"success": False, "message": "Invalid password"}), 401
+#
+#     # Default
+#     shop_info = None
+#
+#     # 🔎 If shopkeeper/shopowner → fetch shop
+#     if user.get("role") in ["shopkeeper", "shopowner"]:
+#         shop = firebase_db.db.collection("shops").where(
+#             "shopkeeper_id", "==", user.get("shopkeeperId")
+#         ).stream()
+#         for doc in shop:
+#             shop_data = doc.to_dict()
+#             shop_data["id"] = doc.id
+#             shop_info = shop_data
+#             break
+#
+#     response_user = {
+#         "id": user.get("id"),
+#         "username": user.get("username"),
+#         "fullName": user.get("fullName") or user.get("name", ""),
+#         "email": user.get("email", ""),
+#         "phone": user.get("phone", ""),
+#         "role": user.get("role", ""),
+#         "customerId": user.get("customerId") or user.get("customer_id"),
+#         "shopkeeperId": user.get("shopkeeperId") or user.get("shopkeeper_id"),
+#         "address": user.get("address", ""),
+#         "location": user.get("location", ""),
+#         "photoUrl": user.get("photoUrl") or user.get("photo_url", ""),
+#         "photoBase64": user.get("photoBase64") or user.get("photo_base64", ""),
+#         # 🔑 Always include shop info if exists
+#         "shop": shop_info,
+#         "shopExists": shop_info is not None
+#     }
+#
+#     return jsonify({
+#         "success": True,
+#         "message": "Login successful",
+#         "user": response_user,
+#         "token": str(uuid.uuid4())
+#     }), 200
+
+
 @app.route("/login", methods=["POST"])
 def login():
     data = request.get_json()
@@ -152,16 +206,18 @@ def login():
         "location": user.get("location", ""),
         "photoUrl": user.get("photoUrl") or user.get("photo_url", ""),
         "photoBase64": user.get("photoBase64") or user.get("photo_base64", ""),
-        # 🔑 Always include shop info if exists
         "shop": shop_info,
         "shopExists": shop_info is not None
     }
+
+    # ✅ Generate JWT token instead of UUID
+    token = generate_token(user)
 
     return jsonify({
         "success": True,
         "message": "Login successful",
         "user": response_user,
-        "token": str(uuid.uuid4())
+        "token": token
     }), 200
 
 

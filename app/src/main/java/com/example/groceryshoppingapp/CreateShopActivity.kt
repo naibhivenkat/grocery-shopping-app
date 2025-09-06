@@ -55,18 +55,16 @@ class CreateShopActivity : AppCompatActivity() {
     private fun saveShopToFirebase(shopId: Int, shopName: String) {
         val shopkeeperId = SessionManager.getShopkeeperId(this)
         if (shopkeeperId.isNullOrEmpty()) {
-            Toast.makeText(
-                this,
-                "Error: Shopkeeper ID missing. Please login again.",
-                Toast.LENGTH_SHORT
-            ).show()
+            Toast.makeText(this, "Error: Shopkeeper ID missing. Please login again.", Toast.LENGTH_SHORT).show()
             startActivity(Intent(this, LoginActivity::class.java))
             finish()
             return
         }
 
+        val shopIdStr = shopId.toString()
+
         val shopData = hashMapOf(
-            "shop_id" to shopId,
+            "shop_id" to shopIdStr,           // ✅ save as STRING
             "name" to shopName,
             "shopkeeper_id" to shopkeeperId
         )
@@ -75,18 +73,14 @@ class CreateShopActivity : AppCompatActivity() {
             .add(shopData)
             .addOnSuccessListener { _ ->
 
-                // ✅ Save shop_id in SessionManager
-                val shopIdStr = shopId.toString()
                 SessionManager.setShopId(this, shopIdStr)
                 SessionManager.setShopInfo(this, shopIdStr, shopName)
 
-                // ✅ Preserve auth token (important for AddItemsActivity)
                 val token = SessionManager.getAuthToken(this)
                 if (!token.isNullOrEmpty()) {
-                    SessionManager.setAuthToken(this, token) // refresh same token
+                    SessionManager.setAuthToken(this, token)
                 }
 
-                // ✅ Update user's shopExists in Firestore
                 db.collection("users")
                     .whereEqualTo("shopkeeperId", shopkeeperId)
                     .get()
@@ -102,8 +96,6 @@ class CreateShopActivity : AppCompatActivity() {
                     }
 
                 Toast.makeText(this, "Shop created!", Toast.LENGTH_SHORT).show()
-
-                // ✅ Go to AddItemsActivity
                 startActivity(Intent(this, AddItemsActivity::class.java))
                 finish()
             }
@@ -111,4 +103,5 @@ class CreateShopActivity : AppCompatActivity() {
                 Toast.makeText(this, "Error saving shop", Toast.LENGTH_SHORT).show()
             }
     }
+
 }
