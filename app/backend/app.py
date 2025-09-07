@@ -572,16 +572,16 @@ from flask import g, jsonify
 @app.route("/api/shops/<shop_id>/items", methods=["GET"])
 def get_items(shop_id):
     try:
-        shop_query = firebase_db.db.collection("shops").where("id", "==", shop_id).limit(1).stream()
-        shop_doc = next(iter(shop_query), None)
+        # 🔹 Fetch document by ID directly
+        shop_doc = firebase_db.db.collection("shops").document(shop_id).get()
 
-        if not shop_doc:
+        if not shop_doc.exists:
             return jsonify({'success': False, 'message': f'Shop not found for id={shop_id}'}), 404
 
         shop_data = shop_doc.to_dict()
 
+        # 🔹 Items reference shop by "shopId" (which should be doc.id)
         items = firebase_db.db.collection("items").where("shopId", "==", shop_id).stream()
-
         items_list = [doc.to_dict() for doc in items]
 
         return jsonify({

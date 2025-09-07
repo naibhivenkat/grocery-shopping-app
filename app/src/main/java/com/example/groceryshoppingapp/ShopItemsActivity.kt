@@ -9,6 +9,7 @@ import androidx.appcompat.app.AppCompatActivity
 import androidx.recyclerview.widget.LinearLayoutManager
 import androidx.recyclerview.widget.RecyclerView
 import com.example.groceryshoppingapp.adapters.ItemAdapter
+import com.example.groceryshoppingapp.models.GetItemsResponse
 import com.example.groceryshoppingapp.network.ApiService
 import com.example.groceryshoppingapp.models.Item
 import com.example.groceryshoppingapp.network.RetrofitClient
@@ -90,30 +91,32 @@ class ShopItemsActivity : AppCompatActivity() {
     }
 
     private fun fetchItemsFromBackend(shopId: String) {
-
         val token = SessionManager.getAuthToken(this)
         if (token.isNullOrEmpty()) {
             Toast.makeText(this, "Auth token missing. Please login again.", Toast.LENGTH_SHORT).show()
             return
         }
+
         val authHeader = "Bearer $token"
         val api = RetrofitClient.getInstance(this).create(ApiService::class.java)
-        api.getItemsForShop(authHeader, shopId).enqueue(object : Callback<List<Item>> {
-            override fun onResponse(call: Call<List<Item>>, response: Response<List<Item>>) {
+
+        api.getItemsForShop(authHeader, shopId).enqueue(object : Callback<GetItemsResponse> {
+            override fun onResponse(call: Call<GetItemsResponse>, response: Response<GetItemsResponse>) {
                 if (response.isSuccessful) {
-                    val fetchedItems = response.body() ?: emptyList()
+                    val fetchedItems = response.body()?.items ?: emptyList()
                     items.clear()
                     items.addAll(fetchedItems)
                     adapter.notifyDataSetChanged()
                 } else {
-                    Toast.makeText(this@ShopItemsActivity, "Failed to load items.", Toast.LENGTH_SHORT).show()
+                    Toast.makeText(this@ShopItemsActivity, "Failed to load items: ${response.code()}", Toast.LENGTH_SHORT).show()
                 }
             }
 
-            override fun onFailure(call: Call<List<Item>>, t: Throwable) {
+            override fun onFailure(call: Call<GetItemsResponse>, t: Throwable) {
                 Toast.makeText(this@ShopItemsActivity, "Error: ${t.message}", Toast.LENGTH_LONG).show()
             }
         })
     }
+
 
 }

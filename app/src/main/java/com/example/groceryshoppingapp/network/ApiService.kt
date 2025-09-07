@@ -31,8 +31,8 @@ interface ApiService {
     @GET("shops")
     fun getAllShops(): Call<List<Shop>>
 
-    @GET("shops/{shop_id}/items")
-    fun getShopItems(@Path("shop_id") shopId: Int): Call<List<Item>>
+//    @GET("shops/{shop_id}/items")
+//    fun getShopItems(@Path("shop_id") shopId: Int): Call<List<Item>>
 
     @POST("cart/add")
     @FormUrlEncoded
@@ -134,9 +134,12 @@ interface ApiService {
     @DELETE("/delete_item/{item_id}")
     fun deleteItem(@Path("item_id") itemId: String): Call<Map<String, Boolean>>
 
-    @GET("api/shops/{shop_id}/items")
+    @GET("/api/shops/{shop_id}/items")
     fun getItemsForShop(
-        @Header("Authorization") token: String,@Path("shop_id") shopId: String): Call<List<Item>>
+        @Header("Authorization") token: String,
+        @Path("shop_id") shopId: String
+    ): Call<GetItemsResponse>
+
 
     @POST("send_otp")
     fun sendOtp(@Body body: Map<String, String>): Call<Map<String, String>>
