@@ -29,7 +29,7 @@ object SampleData {
                 name = shopNames.getOrNull(index - 1) ?: "Shop $index",
                 address = addresses.getOrNull(index - 1) ?: "Address $index",
                 contact = phoneNumbers.getOrNull(index - 1) ?: "999999999$index",
-                shopkeeper_id = 200 + (index % 3)
+                shopkeeper_id = ""
 
             )
         }

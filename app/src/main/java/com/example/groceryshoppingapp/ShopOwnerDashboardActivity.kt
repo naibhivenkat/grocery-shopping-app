@@ -159,8 +159,8 @@ class ShopOwnerDashboardActivity : AppCompatActivity() {
             return
         }
 
-        val authHeader = "Bearer $token"
-        api.getItems(authHeader, shopId).enqueue(object : Callback<GetItemsResponse> {
+
+        api.getItems(shopId).enqueue(object : Callback<GetItemsResponse> {
             override fun onResponse(call: Call<GetItemsResponse>, response: Response<GetItemsResponse>) {
                 when {
                     response.isSuccessful -> {

@@ -80,22 +80,20 @@ class ManageItemsActivity : AppCompatActivity() {
             return
         }
 
-        val authHeader = "Bearer $token"
         Log.d("ManageItemsActivity", "Fetching items for shopId: $shopId with token: $token")
         Log.d("Shop IDS", "Raw shopId='$shopId'")
         Log.d("DEBUG", "Calling: https://grocery-shopping-app-yyqx.onrender.com/api/shops/$shopId/items")
 
-        api.getItems(authHeader, shopId).enqueue(object : Callback<GetItemsResponse> {
-
+        api.getItems(shopId).enqueue(object : Callback<GetItemsResponse> {
             override fun onResponse(call: Call<GetItemsResponse>, response: Response<GetItemsResponse>) {
                 if (response.isSuccessful) {
-                    val body = response.body()
-                    val items = body?.items ?: emptyList()
+                    val items = response.body()?.items ?: emptyList()
                     itemList.clear()
                     itemList.addAll(items)
                     itemAdapter.notifyDataSetChanged()
                 } else {
                     Toast.makeText(this@ManageItemsActivity, "Failed to load items: ${response.code()}", Toast.LENGTH_SHORT).show()
+                    Log.e("ManageItemsActivity", "Error body: ${response.errorBody()?.string()}")
                 }
             }
 

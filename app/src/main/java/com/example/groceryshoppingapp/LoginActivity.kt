@@ -104,12 +104,21 @@ class LoginActivity : AppCompatActivity() {
                     user?.customerId?.let { SessionManager.setCustomerId(this@LoginActivity, it) }
                     user?.shopkeeperId?.let { SessionManager.setShopkeeperId(this@LoginActivity, it) }
 
-                    // ✅ Save shop info if exists
+                    // ✅ Save shop info if existsg
                     if (user?.shop != null) {
-                        val shop = user.shop
-                        SessionManager.setShopId(this@LoginActivity, shop!!.id)   // ✅ keep UUID
-                        SessionManager.setShopInfo(this@LoginActivity, shop.id, shop.name)
-                        SessionManager.setHasItemsAdded(this@LoginActivity, user.hasItems == true)
+                        //SessionManager.setShopId(this@LoginActivity, shop!!.id)   // ✅ keep UUID
+                        //SessionManager.setShopInfo(this@LoginActivity, shop.id, shop.name)
+                        // Make sure to store Firestore docId, not UUID
+                        val shopDocId = user.shop?.id   // now guaranteed to be Firestore docId
+                        if (!shopDocId.isNullOrEmpty()) {
+                            SessionManager.setShopId(this@LoginActivity, shopDocId)
+                            SessionManager.setShopInfo(this@LoginActivity, shopDocId, user.shop?.name ?: "")
+                        }
+
+
+                        // If backend did not send hasItems, but shop exists → assume true
+                        val hasItems = user.hasItems ?: true
+                        SessionManager.setHasItemsAdded(this@LoginActivity, hasItems)
                     }
 
                     // Redirect based on role and shop/items

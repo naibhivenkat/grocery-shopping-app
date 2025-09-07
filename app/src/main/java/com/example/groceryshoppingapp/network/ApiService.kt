@@ -89,13 +89,17 @@ interface ApiService {
     @POST("/update_profile")
     fun updateProfile(@Body profileData: Map<String, String>): Call<ResponseBody>
 
+//    @GET("api/shops/{shop_id}/items")
+//    fun getItems(
+//        @Header("Authorization") token: String,
+//        @Path("shop_id") shopId: String
+//    ): Call<GetItemsResponse>
+//
+
     @GET("api/shops/{shop_id}/items")
     fun getItems(
-        @Header("Authorization") token: String,
         @Path("shop_id") shopId: String
     ): Call<GetItemsResponse>
-
-
     @POST("/shop/add_items")
     fun addItems(@Body request: AddItemsRequest): Call<ApiResponse>
 
@@ -109,11 +113,11 @@ interface ApiService {
     @DELETE("/delete_item/{item_id}")
     fun deleteItem(@Path("item_id") itemId: String): Call<Map<String, Boolean>>
 
-    @GET("api/shops/{shop_id}/items")
-    fun getItemsForShop(
-        @Header("Authorization") token: String,
-        @Path(value = "shop_id", encoded = true) shopId: String
-    ): Call<GetItemsResponse>
+//    @GET("api/shops/{shop_id}/items")
+//    fun getItemsForShop(
+//        @Header("Authorization") token: String,
+//        @Path(value = "shop_id", encoded = true) shopId: String
+//    ): Call<GetItemsResponse>
 
     @POST("send_otp")
     fun sendOtp(@Body body: Map<String, String>): Call<Map<String, String>>

@@ -1,7 +1,8 @@
+
 package com.example.groceryshoppingapp.models
 
 data class GetItemsResponse(
     val success: Boolean,
-    val shopDocId: String,
+    val shop: Shop?,            // same Shop model reused
     val items: List<Item>
 )

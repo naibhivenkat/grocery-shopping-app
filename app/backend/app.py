@@ -184,13 +184,19 @@ def login():
 
     # 🔎 If shopkeeper/shopowner → fetch shop
     if user.get("role") in ["shopkeeper", "shopowner"]:
-        shop = firebase_db.db.collection("shops").where(
+        shop_query = firebase_db.db.collection("shops").where(
             "shopkeeper_id", "==", user.get("shopkeeperId")
         ).stream()
-        for doc in shop:
+        for doc in shop_query:
             shop_data = doc.to_dict()
-            shop_data["id"] = doc.id
-            shop_info = shop_data
+            shop_info = {
+                "id": doc.id,  # ✅ Firestore docId (not UUID)
+                "name": shop_data.get("name"),
+                "address": shop_data.get("address"),
+                "location": shop_data.get("location"),
+                "contact": shop_data.get("contact"),
+                "shopkeeper_id": shop_data.get("shopkeeper_id"),
+            }
             break
 
     response_user = {
@@ -210,7 +216,7 @@ def login():
         "shopExists": shop_info is not None
     }
 
-    # ✅ Generate JWT token instead of UUID
+    # ✅ Generate JWT token
     token = generate_token(user)
 
     return jsonify({
