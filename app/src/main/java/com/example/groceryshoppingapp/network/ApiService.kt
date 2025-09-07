@@ -31,8 +31,6 @@ interface ApiService {
     @GET("shops")
     fun getAllShops(): Call<List<Shop>>
 
-//    @GET("shops/{shop_id}/items")
-//    fun getShopItems(@Path("shop_id") shopId: Int): Call<List<Item>>
 
     @POST("cart/add")
     @FormUrlEncoded
@@ -78,14 +76,6 @@ interface ApiService {
 
     @GET("api/orders/customer/{customer_id}")
     fun getCustomerOrders(@Path("customer_id") customerId: Int): Call<List<Order>>
-//
-//    @POST("/change_password")
-//    @FormUrlEncoded
-//    fun changePassword(
-//        @Field("username") username: String,
-//        @Field("old_password") oldPassword: String,
-//        @Field("new_password") newPassword: String
-//    ): Call<Map<String, Any>>
 
     @POST("/change_password")
     fun changePassword(
@@ -97,32 +87,15 @@ interface ApiService {
     @POST("/update_profile")
     fun updateProfile(@Body profileData: Map<String, String>): Call<ResponseBody>
 
-    @GET("/api/shops/{shop_id}/items")
+    @GET("api/shops/{shop_id}/items")
     fun getItems(
-        @Header("Authorization") auth: String,
-        @Path("shop_id") shopId: String
+        @Header("Authorization") token: String,
+        @Path(value = "shop_id", encoded = true) shopId: String
     ): Call<GetItemsResponse>
 
-    //@POST("shop/add_items")
-//    fun addItems(@Body body: Map<String, Any>): Call<Map<String, Boolean>>
-
-    //@POST("/add_items")
-//    fun addItems(
-//        @Header("Authorization") token: String,
-//        @Body body: Map<String, Any>
-//    ): Call<ApiResponse>
 
     @POST("/shop/add_items")
     fun addItems(@Body request: AddItemsRequest): Call<ApiResponse>
-
-
-//    @POST("add_items")
-//    fun addItems(
-//        @Header("Authorization") token: String,
-//        @Query("shop_id") shopId: String,
-//        @Body items: List<Item>
-//    ): Call<ApiResponse>
-
 
 
     @PUT("/update_item/{item_id}")
@@ -149,14 +122,6 @@ interface ApiService {
 
     @POST("register_after_otp")
     fun registerAfterOtp(@Body body: Map<String, String>): Call<RegisterResponse>
-
-
-//    @GET("shop")
-//    fun getShopByShopkeeperId(
-//        @Header("Authorization") authHeader: String,
-//        @Query("shopkeeperId") shopkeeperId: String
-//    ): Call<ShopResponse>
-
 
     @GET("/get_shop_by_owner")
     fun getShopByOwner(

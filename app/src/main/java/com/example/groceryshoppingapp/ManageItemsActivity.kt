@@ -82,8 +82,11 @@ class ManageItemsActivity : AppCompatActivity() {
 
         val authHeader = "Bearer $token"
         Log.d("ManageItemsActivity", "Fetching items for shopId: $shopId with token: $token")
+        Log.d("Shop IDS", "Raw shopId='$shopId'")
+        Log.d("DEBUG", "Calling: https://grocery-shopping-app-yyqx.onrender.com/api/shops/$shopId/items")
 
         api.getItems(authHeader, shopId).enqueue(object : Callback<GetItemsResponse> {
+
             override fun onResponse(call: Call<GetItemsResponse>, response: Response<GetItemsResponse>) {
                 if (response.isSuccessful) {
                     val body = response.body()
