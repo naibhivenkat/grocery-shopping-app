@@ -33,22 +33,6 @@ class ShopOwnerMainActivity : AppCompatActivity() {
         recyclerView = findViewById(R.id.recycler_orders)
         recyclerView.layoutManager = LinearLayoutManager(this)
 
-//        ordersAdapter = OrdersAdapter(orders) { order ->
-//            val intent = Intent(this, OrderDetailActivity::class.java)
-//            intent.putExtra("order", order)
-//            startActivity(intent)
-//        }
-
-//        ordersAdapter = OrdersAdapter(orders,
-//            onStatusClick = { selectedOrder ->
-//                val intent = Intent(this, OrderDetailActivity::class.java)
-//                intent.putExtra("order", selectedOrder)
-//                startActivity(intent)
-//            },
-//            onRefreshRequested = {
-//                fetchOrders() // or whatever method you use to reload orders
-//            }
-//        )
 
         val refreshBtn = findViewById<Button>(R.id.btn_refresh_orders)
         val backBtn = findViewById<Button>(R.id.btn_back)
@@ -81,20 +65,20 @@ class ShopOwnerMainActivity : AppCompatActivity() {
     }
 
     private fun fetchOrders() {
-        val shopIds = SessionManager.getShopIds(this)
-        if (shopIds.isEmpty()) {
-            Toast.makeText(this, "No shops assigned.", Toast.LENGTH_LONG).show()
+        val shopId = SessionManager.getShopId(this)
+        if (shopId.isNullOrEmpty()) {
+            Toast.makeText(this, "No shop assigned.", Toast.LENGTH_LONG).show()
             return
         }
 
         RetrofitClient.getInstance(this).create(ApiService::class.java)
-            .getShopOrdersMulti(shopIds)
+            .getShopOrders(shopId)
             .enqueue(object : Callback<List<Order>> {
                 override fun onResponse(call: Call<List<Order>>, response: Response<List<Order>>) {
                     if (response.isSuccessful) {
                         val list = response.body().orEmpty()
                         if (list.isEmpty()) {
-                            Toast.makeText(this@ShopOwnerMainActivity, "No orders assigned to your shop(s).", Toast.LENGTH_SHORT).show()
+                            Toast.makeText(this@ShopOwnerMainActivity, "No orders assigned to your shop.", Toast.LENGTH_SHORT).show()
                         }
                         orders.clear()
                         orders.addAll(list)
@@ -109,6 +93,7 @@ class ShopOwnerMainActivity : AppCompatActivity() {
                 }
             })
     }
+
 
     private fun showToast(msg: String) {
         Toast.makeText(this, msg, Toast.LENGTH_SHORT).show()

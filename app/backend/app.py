@@ -572,7 +572,6 @@ from flask import g, jsonify
 @app.route("/api/shops/<shop_id>/items", methods=["GET"])
 def get_items(shop_id):
     try:
-        # 🔹 Fetch document by ID directly
         shop_doc = firebase_db.db.collection("shops").document(shop_id).get()
         print(f"shop doc {shop_doc.to_dict()}")
 
@@ -581,23 +580,22 @@ def get_items(shop_id):
 
         shop_data = shop_doc.to_dict()
 
-        # 🔹 Items reference shop by "shopId" (which should be doc.id)
         items = firebase_db.db.collection("items").where("shopId", "==", shop_id).stream()
         items_list = [doc.to_dict() for doc in items]
-        final_shop = jsonify({
+
+        # ✅ build dict first
+        final_shop = {
             'success': True,
             'shop': shop_data,
             'items': items_list
-        })
-        print (f"final shop {final_shop}")
-        return jsonify({
-            'success': True,
-            'shop': shop_data,
-            'items': items_list
-        }), 200
+        }
+        print("final shop", final_shop)  # <-- now you’ll see actual JSON in logs
+
+        return jsonify(final_shop), 200
 
     except Exception as e:
         return jsonify({'success': False, 'error': str(e)}), 500
+
 
 
 

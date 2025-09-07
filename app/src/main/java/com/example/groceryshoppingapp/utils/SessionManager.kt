@@ -63,15 +63,15 @@ object SessionManager {
 
 
     // --- MULTIPLE SHOP UUIDs for SHOPKEEPER ---
-    fun setShopIds(context: Context, shopIds: List<String>) {
-        val joined = shopIds.joinToString(",")
-        prefs(context).edit { putString("shop_ids", joined) }
-    }
+//    fun setShopIds(context: Context, shopIds: List<String>) {
+//        val joined = shopIds.joinToString(",")
+//        prefs(context).edit { putString("shop_ids", joined) }
+//    }
 
-    fun getShopIds(context: Context): List<String> {
-        val saved = prefs(context).getString("shop_ids", "") ?: ""
-        return if (saved.isEmpty()) emptyList() else saved.split(",")
-    }
+//    fun getShopIds(context: Context): List<String> {
+//        val saved = prefs(context).getString("shop_ids", "") ?: ""
+//        return if (saved.isEmpty()) emptyList() else saved.split(",")
+//    }
 
 
     // --- ITEMS ---

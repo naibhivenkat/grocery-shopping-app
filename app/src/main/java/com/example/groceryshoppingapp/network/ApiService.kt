@@ -52,11 +52,13 @@ interface ApiService {
 
     // Original per‑shop endpoint (can still be used)
     @GET("api/orders/shopkeeper/{shop_id}")
-    fun getShopOrders(@Path("shop_id") shopId: String): Call<List<Order>>
+    fun getShopOrders(
+        @Path("shop_id") shopId: String
+    ): Call<List<Order>>
 
     // New multi‑shop endpoint using query params
-    @GET("api/orders/shopkeeper")
-    fun getShopOrdersMulti(@Query("shop_id") shopIds: List<String>): Call<List<Order>>
+//    @GET("api/orders/shopkeeper")
+//    fun getShopOrdersMulti(@Query("shop_id") shopIds: List<String>): Call<List<Order>>
 
 
     @POST("order/{order_id}/status")
@@ -90,7 +92,7 @@ interface ApiService {
     @GET("api/shops/{shop_id}/items")
     fun getItems(
         @Header("Authorization") token: String,
-        @Path(value = "shop_id", encoded = true) shopId: String
+        @Path("shop_id") shopId: String
     ): Call<GetItemsResponse>
 
 
@@ -107,12 +109,11 @@ interface ApiService {
     @DELETE("/delete_item/{item_id}")
     fun deleteItem(@Path("item_id") itemId: String): Call<Map<String, Boolean>>
 
-    @GET("/api/shops/{shop_id}/items")
+    @GET("api/shops/{shop_id}/items")
     fun getItemsForShop(
         @Header("Authorization") token: String,
-        @Path("shop_id") shopId: String
+        @Path(value = "shop_id", encoded = true) shopId: String
     ): Call<GetItemsResponse>
-
 
     @POST("send_otp")
     fun sendOtp(@Body body: Map<String, String>): Call<Map<String, String>>
