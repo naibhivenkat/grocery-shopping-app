@@ -924,7 +924,6 @@ def update_item(item_id):
         "price": float(data.get("price", doc.get("price"))),
         "quantity": int(data.get("quantity", doc.get("quantity"))),
         "description": data.get("description", doc.get("description")),
-        "imageurl": data.get("imageurl", doc.get("imageurl")),
     })
     return jsonify({"success": True})
 
