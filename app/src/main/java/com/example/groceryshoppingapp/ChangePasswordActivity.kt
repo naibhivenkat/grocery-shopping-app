@@ -43,11 +43,9 @@ class ChangePasswordActivity : AppCompatActivity() {
                 "old_password" to oldPass,
                 "new_password" to newPass
             )
-            val token = SessionManager.getAuthToken(this)
-            val authHeader = "Bearer $token"
             val api = RetrofitClient.getInstance(this).create(ApiService::class.java)
 
-            api.changePassword(authHeader, body).enqueue(object : Callback<Map<String, Any>> {
+            api.changePassword(body).enqueue(object : Callback<Map<String, Any>> {
                 override fun onResponse(call: Call<Map<String, Any>>, response: Response<Map<String, Any>>) {
                     if (response.isSuccessful && response.body()?.get("success") == true) {
                         Toast.makeText(this@ChangePasswordActivity, "Password changed", Toast.LENGTH_SHORT).show()

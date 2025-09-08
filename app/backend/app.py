@@ -502,13 +502,11 @@ def register_after_otp():
 @app.route('/change_password', methods=['POST'])
 def change_password():
     try:
-        data = request.get_json(force=True)  # Force JSON parsing
+        data = request.get_json(force=True)
+        print(f"Request JSON: {data}")  # debug
         username = data.get('username', '').strip()
         old_password = data.get('old_password', '').strip()
         new_password = data.get('new_password', '').strip()
-
-        # Debug print
-        print(f"Received: username={username}, old_password={old_password}, new_password={new_password}")
 
         user = firebase_db.get_user_by_credentials(username, old_password)
         if not user:
@@ -521,6 +519,7 @@ def change_password():
 
     except Exception as e:
         return jsonify({"success": False, "message": str(e)}), 500
+
 
 @app.route('/update_profile', methods=['POST'])
 def update_profile():
@@ -1291,28 +1290,6 @@ def get_shop_by_owner():
         return jsonify({'success': True, 'shop': shop})
     else:
         return jsonify({'success': False, 'shop': None})
-
-
-
-def debug_print_shops():
-    print("\n--- DEBUG: Shops ---")
-    shops = db.collection("shops").stream()
-    for doc in shops:
-        data = doc.to_dict()
-        print(f"DocID={doc.id}, id={data.get('id')}, shop_id={data.get('shop_id')}, name={data.get('name')}")
-
-def debug_print_items():
-    print("\n--- DEBUG: Items ---")
-    items = db.collection("items").stream()
-    for doc in items:
-        data = doc.to_dict()
-        print(f"DocID={doc.id}, id={data.get('id')}, shopId={data.get('shopId')}, name={data.get('name')}")
-
-@app.route("/api/debug/print", methods=["GET"])
-def debug_print():
-    debug_print_shops()
-    debug_print_items()
-    return jsonify({"success": True, "message": "Printed to backend logs"}), 200
 
 
 if __name__ == "__main__":
