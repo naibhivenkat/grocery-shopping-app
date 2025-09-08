@@ -606,9 +606,44 @@ def get_shops_for_shopkeeper(shopkeeper_id):
 
 # ----------- ITEMS -----------
 
+# @app.route('/create_shop', methods=['POST'])
+# def create_shop():
+#     data = request.get_json() or request.form
+#     name = data.get('name')
+#     address = data.get('address')
+#     contact = data.get('contact')
+#     shopkeeper_id = data.get('shopkeeper_id')
+#
+#     if not all([name, address, contact, shopkeeper_id]):
+#         return jsonify({'success': False, 'message': 'Missing fields'}), 400
+#
+#     # 🚫 DO NOT set "id" here
+#     shop_dict = {
+#         "name": name,
+#         "address": address,
+#         "contact": contact,
+#         "shopkeeper_id": shopkeeper_id,
+#         "createdAt": datetime.utcnow().isoformat()
+#     }
+#
+#     shop = firebase_db.append_shop(shop_dict)
+#
+#     # ✅ Update shopkeeper with Firestore doc.id
+#     user_ref = firebase_db.db.collection("users").where("shopkeeperId", "==", shopkeeper_id).stream()
+#     for doc in user_ref:
+#         firebase_db.db.collection("users").document(doc.id).update({"shopId": shop["id"]})
+#         break
+#
+#     return jsonify({
+#         'success': True,
+#         'message': 'Shop created successfully',
+#         'shop': shop
+#     }), 200
+
+# ----------- CREATE SHOP -----------
 @app.route('/create_shop', methods=['POST'])
 def create_shop():
-    data = request.get_json() or request.form
+    data = request.form if request.form else request.get_json()
     name = data.get('name')
     address = data.get('address')
     contact = data.get('contact')
@@ -617,7 +652,7 @@ def create_shop():
     if not all([name, address, contact, shopkeeper_id]):
         return jsonify({'success': False, 'message': 'Missing fields'}), 400
 
-    # 🚫 DO NOT set "id" here
+    # ✅ Create shop entry (doc.id is Firestore’s ID now)
     shop_dict = {
         "name": name,
         "address": address,
@@ -625,21 +660,32 @@ def create_shop():
         "shopkeeper_id": shopkeeper_id,
         "createdAt": datetime.utcnow().isoformat()
     }
+    shop = firebase_db.append_shop(shop_dict)  # returns with correct "id" field
 
-    shop = firebase_db.append_shop(shop_dict)
-
-    # ✅ Update shopkeeper with Firestore doc.id
+    # ✅ Update user record with shopId + embed shop object
     user_ref = firebase_db.db.collection("users").where("shopkeeperId", "==", shopkeeper_id).stream()
     for doc in user_ref:
-        firebase_db.db.collection("users").document(doc.id).update({"shopId": shop["id"]})
+        firebase_db.db.collection("users").document(doc.id).update({
+            "shopId": shop["id"],
+            "shop": {   # ✅ embed minimal shop info so client sees it immediately
+                "id": shop["id"],
+                "name": shop["name"],
+                "shopkeeper_id": shop["shopkeeper_id"]
+            }
+        })
         break
 
+    # ✅ Return shop info immediately
     return jsonify({
         'success': True,
         'message': 'Shop created successfully',
-        'shop': shop
+        'shop': {
+            'id': shop['id'],
+            'name': shop['name'],
+            'address': shop['address'],
+            'contact': shop['contact']
+        }
     }), 200
-
 
 from flask import g, jsonify
 
@@ -811,33 +857,57 @@ from flask import g, jsonify
 #         'items': items_list
 #     }), 200
 
-@app.route("/api/shops/<shop_id>/items", methods=["GET"])
-def get_items(shop_id):
-    try:
-        shop_doc = firebase_db.db.collection("shops").document(shop_id).get()
-        print(f"shop doc {shop_doc.to_dict()}")
+# @app.route("/api/shops/<shop_id>/items", methods=["GET"])
+# def get_items(shop_id):
+#     try:
+#         shop_doc = firebase_db.db.collection("shops").document(shop_id).get()
+#         print(f"shop doc {shop_doc.to_dict()}")
+#
+#         if not shop_doc.exists:
+#             return jsonify({'success': False, 'message': f'Shop not found for id={shop_id}'}), 404
+#
+#         shop_data = shop_doc.to_dict()
+#
+#         items = firebase_db.db.collection("items").where("shopId", "==", shop_id).stream()
+#         items_list = [doc.to_dict() for doc in items]
+#
+#         # ✅ build dict first
+#         final_shop = {
+#             'success': True,
+#             'shop': shop_data,
+#             'items': items_list
+#         }
+#         print("final shop", final_shop)  # <-- now you’ll see actual JSON in logs
+#
+#         return jsonify(final_shop), 200
+#
+#     except Exception as e:
+#         return jsonify({'success': False, 'error': str(e)}), 500
 
-        if not shop_doc.exists:
-            return jsonify({'success': False, 'message': f'Shop not found for id={shop_id}'}), 404
+@app.route('/api/shops/<shop_id>/items', methods=['GET'])
+def get_shop_items(shop_id):
+    # First try direct doc.id
+    ref = firebase_db.db.collection("shops").document(shop_id).get()
+    doc = ref if ref.exists else None
 
-        shop_data = shop_doc.to_dict()
+    # Fallback: legacy UUID stored in the 'id' field
+    if not doc:
+        q = firebase_db.db.collection("shops").where("id", "==", shop_id).limit(1).stream()
+        for d in q:
+            doc = d
+            break
 
-        items = firebase_db.db.collection("items").where("shopId", "==", shop_id).stream()
-        items_list = [doc.to_dict() for doc in items]
+    if not doc:
+        return jsonify({"success": False, "message": f"Shop not found for id={shop_id}"}), 404
 
-        # ✅ build dict first
-        final_shop = {
-            'success': True,
-            'shop': shop_data,
-            'items': items_list
-        }
-        print("final shop", final_shop)  # <-- now you’ll see actual JSON in logs
+    shop_doc_id = doc.id  # canonical
+    shop = doc.to_dict()
 
-        return jsonify(final_shop), 200
+    # Load items by canonical doc.id
+    items_snap = firebase_db.db.collection("items").where("shopId", "==", shop_doc_id).stream()
+    items = [i.to_dict() for i in items_snap]
 
-    except Exception as e:
-        return jsonify({'success': False, 'error': str(e)}), 500
-
+    return jsonify({"success": True, "shop": shop, "items": items}), 200
 
 
 
@@ -1114,46 +1184,97 @@ def require_authentication():
 
 @app.route('/shop/add_items', methods=['POST'])
 def add_item():
-    # ✅ User info already decoded in @app.before_request
     user = getattr(g, "current_user", None)
     if not user:
         return jsonify({'success': False, 'message': 'Unauthorized'}), 401
-
-    role = user.get('role')
-    username = user.get('username')
-
-    if role not in ['shopowner', 'shopkeeper']:
+    if user.get('role') not in ['shopowner', 'shopkeeper']:
         return jsonify({'success': False, 'message': 'Unauthorized role'}), 403
 
-    # ✅ Parse request body
     data = request.get_json(silent=True) or {}
-    print("Incoming body:", data)
-
-    shop_id = data.get("shop_id")
+    raw_shop_id = (data.get("shop_id") or "").strip()
     items = data.get("items", [])
 
-    if not shop_id or not items:
+    if not raw_shop_id or not items:
         return jsonify({'success': False, 'message': 'Missing shop_id or items'}), 400
 
+    # 🔁 Normalize shop_id: prefer doc.id; fall back to field match
+    shop_ref = firebase_db.db.collection("shops").document(raw_shop_id).get()
+    if shop_ref.exists:
+        canonical_shop_id = shop_ref.id
+        shop_doc = shop_ref.to_dict()
+    else:
+        # legacy path: client sent the old UUID stored inside the 'id' field
+        q = firebase_db.db.collection("shops").where("id", "==", raw_shop_id).limit(1).stream()
+        shop_doc = None
+        canonical_shop_id = None
+        for d in q:
+            shop_doc = d.to_dict()
+            canonical_shop_id = d.id     # ✅ translate to doc.id
+            print (f"canonical_shop_id : {canonical_shop_id}")
+            break
+
+    if not canonical_shop_id:
+        return jsonify({'success': False, 'message': f'Shop not found for id={raw_shop_id}'}), 404
+
     saved_items = []
+    username = user.get('username')
     for it in items:
         item_dict = {
             "name": it.get("name"),
             "price": float(it.get("price") or 0),
             "quantity": int(it.get("stockQuantity") or 0),
             "description": it.get("description") or "",
-            "shopId": str(shop_id),
+            "shopId": canonical_shop_id,             # ✅ always store doc.id
             "createdAt": datetime.datetime.utcnow().isoformat(),
-            "createdBy": username   # ✅ trace which user added it
+            "createdBy": username
         }
-        item = firebase_db.append_item(item_dict)
-        saved_items.append(item)
+        saved_items.append(firebase_db.append_item(item_dict))
 
-    return jsonify({
-        'success': True,
-        'message': 'Items added successfully',
-        'items': saved_items
-    }), 201
+    return jsonify({'success': True, 'message': 'Items added successfully', 'items': saved_items}), 201
+
+
+# @app.route('/shop/add_items', methods=['POST'])
+# def add_item():
+#     # ✅ User info already decoded in @app.before_request
+#     user = getattr(g, "current_user", None)
+#     if not user:
+#         return jsonify({'success': False, 'message': 'Unauthorized'}), 401
+#
+#     role = user.get('role')
+#     username = user.get('username')
+#
+#     if role not in ['shopowner', 'shopkeeper']:
+#         return jsonify({'success': False, 'message': 'Unauthorized role'}), 403
+#
+#     # ✅ Parse request body
+#     data = request.get_json(silent=True) or {}
+#     print("Incoming body:", data)
+#
+#     shop_id = data.get("shop_id")
+#     items = data.get("items", [])
+#
+#     if not shop_id or not items:
+#         return jsonify({'success': False, 'message': 'Missing shop_id or items'}), 400
+#
+#     saved_items = []
+#     for it in items:
+#         item_dict = {
+#             "name": it.get("name"),
+#             "price": float(it.get("price") or 0),
+#             "quantity": int(it.get("stockQuantity") or 0),
+#             "description": it.get("description") or "",
+#             "shopId": str(shop_id),
+#             "createdAt": datetime.datetime.utcnow().isoformat(),
+#             "createdBy": username   # ✅ trace which user added it
+#         }
+#         item = firebase_db.append_item(item_dict)
+#         saved_items.append(item)
+#
+#     return jsonify({
+#         'success': True,
+#         'message': 'Items added successfully',
+#         'items': saved_items
+#     }), 201
 
 @app.route('/get_shop_by_owner', methods=['GET'])
 def get_shop_by_owner():
