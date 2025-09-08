@@ -360,14 +360,18 @@ class RegisterActivity : AppCompatActivity() {
                         )
                     }
 
-                        // ✅ Save shopId if shop exists
-                    if (user != null) {
-                        if (user.shop != null) {
-                            SessionManager.setShopId(this@RegisterActivity, user.shop.id)
+
+                    // ✅ Save shopId if shop exists
+                    if (user != null && user.shop != null) {
+                        val shopDocId = user.shop?.id   // should be Firestore docId
+                        if (!shopDocId.isNullOrEmpty()) {
+                            SessionManager.setShopId(this@RegisterActivity, shopDocId)
+                            SessionManager.setShopInfo(this@RegisterActivity, shopDocId, user.shop?.name ?: "")
                         }
                     }
 
-                        // --- NAVIGATION FIX STARTS HERE ---
+
+                    // --- NAVIGATION FIX STARTS HERE ---
                     if (user != null) {
                         if (user.role.lowercase() in listOf("shopowner", "shopkeeper")) {
 

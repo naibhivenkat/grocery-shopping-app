@@ -227,6 +227,66 @@ def login():
     }), 200
 
 
+# @app.route('/register', methods=['POST'])
+# def register():
+#     data = request.get_json()
+#
+#     name = data.get("name") or data.get("full_name")
+#     username = data.get('username')
+#     password = data.get('password')
+#     email = data.get('email')
+#     role = data.get('role', '').lower()
+#     phone = data.get('phone', '')
+#
+#     if role not in ['customer', 'shopowner', 'shopkeeper']:
+#         return jsonify({'success': False, 'message': 'Invalid role'})
+#
+#     # Duplicate check
+#     if firebase_db.get_user_by_username(username):
+#         return jsonify({'success': False, 'message': 'Username already exists'})
+#     if firebase_db.get_user_by_email(email):
+#         return jsonify({'success': False, 'message': 'Email already exists'})
+#
+#     # Build user dict
+#     user_dict = {
+#         "username": username,
+#         "password": password,
+#         "role": role,
+#         "fullName": name,
+#         "address": data.get("address", ""),
+#         "phone": phone,
+#         "email": email,
+#         "location": data.get("location", ""),
+#         "photoBase64": data.get("photo_base64", ""),
+#         "photoUrl": "",
+#         # IDs
+#         "customerId": str(uuid.uuid4()) if role == "customer" else None,
+#         "shopkeeperId": str(uuid.uuid4()) if role in ["shopowner", "shopkeeper"] else None
+#     }
+#
+#     # Generate JWT token and add to user_dict
+#     token = generate_token(user_dict)
+#     print("token in register:", token)
+#     user_dict["token"] = token
+#
+#     # Handle profile photo
+#     if data.get("photo_base64"):
+#         photo_url = firebase_db.upload_base64_image(data["photo_base64"], folder="profile_photos")
+#         user_dict["photoUrl"] = photo_url
+#
+#     # Save user
+#     firebase_db.append_user(user_dict)
+#
+#     return jsonify({
+#         "success": True,
+#         "message": "Registered successfully",
+#         "user": user_dict,
+#         "token": token   # ✅ add this line
+#     }), 201
+
+
+## ---------------- 3️⃣ Register After OTP ----------------
+
 @app.route('/register', methods=['POST'])
 def register():
     data = request.get_json()
@@ -239,13 +299,13 @@ def register():
     phone = data.get('phone', '')
 
     if role not in ['customer', 'shopowner', 'shopkeeper']:
-        return jsonify({'success': False, 'message': 'Invalid role'})
+        return jsonify({'success': False, 'message': 'Invalid role'}), 400
 
     # Duplicate check
     if firebase_db.get_user_by_username(username):
-        return jsonify({'success': False, 'message': 'Username already exists'})
+        return jsonify({'success': False, 'message': 'Username already exists'}), 400
     if firebase_db.get_user_by_email(email):
-        return jsonify({'success': False, 'message': 'Email already exists'})
+        return jsonify({'success': False, 'message': 'Email already exists'}), 400
 
     # Build user dict
     user_dict = {
@@ -264,9 +324,8 @@ def register():
         "shopkeeperId": str(uuid.uuid4()) if role in ["shopowner", "shopkeeper"] else None
     }
 
-    # Generate JWT token and add to user_dict
+    # Generate JWT token
     token = generate_token(user_dict)
-    print("token in register:", token)
     user_dict["token"] = token
 
     # Handle profile photo
@@ -277,13 +336,155 @@ def register():
     # Save user
     firebase_db.append_user(user_dict)
 
+    # ⬇️ Consistent response (same shape as /login)
+    response_user = {
+        "id": user_dict.get("id"),
+        "username": user_dict.get("username"),
+        "fullName": user_dict.get("fullName"),
+        "email": user_dict.get("email"),
+        "phone": user_dict.get("phone"),
+        "role": user_dict.get("role"),
+        "customerId": user_dict.get("customerId"),
+        "shopkeeperId": user_dict.get("shopkeeperId"),
+        "address": user_dict.get("address"),
+        "location": user_dict.get("location"),
+        "photoUrl": user_dict.get("photoUrl"),
+        "photoBase64": user_dict.get("photoBase64"),
+        "shop": None,          # no shop yet
+        "shopExists": False    # must create after login
+    }
+
     return jsonify({
         "success": True,
         "message": "Registered successfully",
-        "user": user_dict,
-        "token": token   # ✅ add this line
+        "user": response_user,
+        "token": token
     }), 201
 
+
+@app.route("/register_after_otp", methods=["POST"])
+def register_after_otp():
+    data = request.get_json()
+
+    name = data.get("name") or data.get("full_name")
+    email = data.get("email")
+    phone = data.get("phone")
+    username = data.get("username")
+    role = data.get("role", "customer").lower()
+    password = data.get("password")
+
+    if not all([name, email, username, password]):
+        return jsonify({"success": False, "message": "Missing fields"}), 400
+
+    # Check if user already exists by email
+    existing = firebase_db.db.collection("users").where("email", "==", email).stream()
+    for doc in existing:
+        return jsonify({"success": False, "message": "User already exists"}), 400
+
+    # Build user dict
+    user_dict = {
+        "username": username,
+        "role": role,
+        "password": password,
+        "fullName": name,
+        "address": "",
+        "phone": phone,
+        "email": email,
+        "location": "",
+        "photoBase64": "",
+        "photoUrl": "",
+        # IDs
+        "customerId": str(uuid.uuid4()) if role == "customer" else None,
+        "shopkeeperId": str(uuid.uuid4()) if role in ["shopowner", "shopkeeper"] else None
+    }
+
+    # Generate JWT token
+    token = generate_token(user_dict)
+    user_dict["token"] = token
+
+    # Save user
+    firebase_db.append_user(user_dict)
+
+    # Send welcome email
+    send_welcome_email(email, name)
+
+    # ⬇️ Consistent response (same shape as /login)
+    response_user = {
+        "id": user_dict.get("id"),
+        "username": user_dict.get("username"),
+        "fullName": user_dict.get("fullName"),
+        "email": user_dict.get("email"),
+        "phone": user_dict.get("phone"),
+        "role": user_dict.get("role"),
+        "customerId": user_dict.get("customerId"),
+        "shopkeeperId": user_dict.get("shopkeeperId"),
+        "address": user_dict.get("address"),
+        "location": user_dict.get("location"),
+        "photoUrl": user_dict.get("photoUrl"),
+        "photoBase64": user_dict.get("photoBase64"),
+        "shop": None,          # no shop yet
+        "shopExists": False    # must create after login
+    }
+
+    return jsonify({
+        "success": True,
+        "message": "Registered successfully",
+        "user": response_user,
+        "token": token
+    }), 201
+
+# @app.route("/register_after_otp", methods=["POST"])
+# def register_after_otp():
+#     data = request.get_json()
+#
+#     name = data.get("name") or data.get("full_name")
+#     email = data.get("email")
+#     phone = data.get("phone")
+#     username = data.get("username")
+#     role = data.get("role", "customer").lower()
+#     password = data.get("password")
+#
+#     if not all([name, email, username, password]):
+#         return jsonify({"success": False, "message": "Missing fields"}), 400
+#
+#     # Check if user already exists by email
+#     existing = firebase_db.db.collection("users").where("email", "==", email).stream()
+#     for doc in existing:
+#         return jsonify({"success": False, "message": "User already exists"}), 400
+#
+#     # Build user dict
+#     user_dict = {
+#         "username": username,
+#         "role": role,
+#         "password": password,
+#         "fullName": name,
+#         "address": "",
+#         "phone": phone,
+#         "email": email,
+#         "location": "",
+#         "photoBase64": "",
+#         "photoUrl": "",
+#         # IDs
+#         "customerId": str(uuid.uuid4()) if role == "customer" else None,
+#         "shopkeeperId": str(uuid.uuid4()) if role in ["shopowner", "shopkeeper"] else None
+#     }
+#
+#     # Generate JWT token and add to user_dict
+#     token = generate_token(user_dict)
+#     user_dict["token"] = token
+#
+#     # Save user
+#     firebase_db.append_user(user_dict)
+#
+#     # Send welcome email
+#     send_welcome_email(email, name)
+#
+#     return jsonify({
+#         "success": True,
+#         "message": "Registered successfully",
+#         "user": user_dict,
+#         "token": token   # ✅ add this line
+#     }), 201
 
 # @app.route('/change_password', methods=['POST'])
 # def change_password():
@@ -821,59 +1022,7 @@ def verify_otp():
     return jsonify({"status": "error", "message": "Invalid OTP"}), 400
 
 
-## ---------------- 3️⃣ Register After OTP ----------------
-@app.route("/register_after_otp", methods=["POST"])
-def register_after_otp():
-    data = request.get_json()
 
-    name = data.get("name") or data.get("full_name")
-    email = data.get("email")
-    phone = data.get("phone")
-    username = data.get("username")
-    role = data.get("role", "customer").lower()
-    password = data.get("password")
-
-    if not all([name, email, username, password]):
-        return jsonify({"success": False, "message": "Missing fields"}), 400
-
-    # Check if user already exists by email
-    existing = firebase_db.db.collection("users").where("email", "==", email).stream()
-    for doc in existing:
-        return jsonify({"success": False, "message": "User already exists"}), 400
-
-    # Build user dict
-    user_dict = {
-        "username": username,
-        "role": role,
-        "password": password,
-        "fullName": name,
-        "address": "",
-        "phone": phone,
-        "email": email,
-        "location": "",
-        "photoBase64": "",
-        "photoUrl": "",
-        # IDs
-        "customerId": str(uuid.uuid4()) if role == "customer" else None,
-        "shopkeeperId": str(uuid.uuid4()) if role in ["shopowner", "shopkeeper"] else None
-    }
-
-    # Generate JWT token and add to user_dict
-    token = generate_token(user_dict)
-    user_dict["token"] = token
-
-    # Save user
-    firebase_db.append_user(user_dict)
-
-    # Send welcome email
-    send_welcome_email(email, name)
-
-    return jsonify({
-        "success": True,
-        "message": "Registered successfully",
-        "user": user_dict,
-        "token": token   # ✅ add this line
-    }), 201
 
 def send_welcome_email(email, name):
     url = "https://api.sendinblue.com/v3/smtp/email"
