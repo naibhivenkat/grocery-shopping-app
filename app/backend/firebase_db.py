@@ -49,16 +49,16 @@ def get_all_shops():
 #     db.collection("shops").document(shop_id).set(shop_dict)
 #     return shop_dict
 
-def append_shop(shop_dict):
-    # ✅ Let Firestore generate doc.id
-    doc_ref = db.collection("shops").add(shop_dict)
-    shop_id = doc_ref[1].id   # Firestore doc.id
-    shop_dict["id"] = shop_id
-
-    # ✅ Update the document with its ID field
-    db.collection("shops").document(shop_id).update({"id": shop_id})
-
-    return shop_dict
+# def append_shop(shop_dict):
+#     # ✅ Let Firestore generate doc.id
+#     doc_ref = db.collection("shops").add(shop_dict)
+#     shop_id = doc_ref[1].id   # Firestore doc.id
+#     shop_dict["id"] = shop_id
+#
+#     # ✅ Update the document with its ID field
+#     db.collection("shops").document(shop_id).update({"id": shop_id})
+#
+#     return shop_dict
 
 
 # ---------------- ITEMS ----------------
@@ -169,3 +169,14 @@ def get_user_by_email(email: str):
         print(f"[ERROR] get_user_by_email failed: {e}")
         return None
 
+def append_shop(shop_dict):
+    # Firestore generates doc.id
+    doc_ref = db.collection("shops").add(shop_dict)
+    shop_id = doc_ref[1].id
+    print(f"shop-doc-id {shop_id}")
+
+    # Add this id back into the document
+    db.collection("shops").document(shop_id).update({"id": shop_id})
+
+    shop_dict["id"] = shop_id
+    return shop_dict
