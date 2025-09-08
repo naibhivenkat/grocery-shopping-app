@@ -918,15 +918,16 @@ def update_item(item_id):
     doc = ref.get()
     if not doc.exists:
         return jsonify({"error": "Item not found"}), 404
-    data = request.get_json()
+    data = request.get_json() or {}
     ref.update({
         "name": data.get("name", doc.get("name")),
-        "price": data.get("price", doc.get("price")),
-        "stock_quantity": data.get("stock_quantity", doc.get("stock_quantity")),
+        "price": float(data.get("price", doc.get("price"))),
+        "quantity": int(data.get("quantity", doc.get("quantity"))),
         "description": data.get("description", doc.get("description")),
         "imageurl": data.get("imageurl", doc.get("imageurl")),
     })
     return jsonify({"success": True})
+
 
 
 @app.route('/delete_item/<item_id>', methods=['POST'])

@@ -76,7 +76,7 @@ class UpdateItemActivity : AppCompatActivity() {
         val data = mapOf(
             "name" to name,
             "price" to price,
-            "stock_quantity" to quantity,
+            "quantity" to quantity,
             "description" to description
         )
 
