@@ -7,6 +7,7 @@ import android.util.Base64
 import android.widget.*
 import androidx.appcompat.app.AppCompatActivity
 import com.example.groceryshoppingapp.utils.SessionManager
+import com.google.android.material.appbar.MaterialToolbar
 
 class ProfileActivity : AppCompatActivity() {
 
@@ -17,11 +18,21 @@ class ProfileActivity : AppCompatActivity() {
     private lateinit var tvAddress: TextView
     private lateinit var tvLocation: TextView
     private lateinit var btnEdit: Button
+    private lateinit var toolbar: MaterialToolbar
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_profile)
 
+        // Initialize Toolbar
+        toolbar = findViewById(R.id.toolbar_profile)
+        setSupportActionBar(toolbar)
+        supportActionBar?.title = "Profile" // optional, already set in XML
+        toolbar.setNavigationOnClickListener {
+            finish() // back arrow pressed
+        }
+
+        // Initialize views
         imgProfile = findViewById(R.id.img_profile)
         tvName = findViewById(R.id.tv_name)
         tvEmail = findViewById(R.id.tv_email)
@@ -30,13 +41,14 @@ class ProfileActivity : AppCompatActivity() {
         tvLocation = findViewById(R.id.tv_location)
         btnEdit = findViewById(R.id.btn_edit)
 
+        // Load profile data from SessionManager
         tvName.text = SessionManager.getFullName(this)
         tvEmail.text = SessionManager.getEmail(this)
         tvPhone.text = SessionManager.getPhone(this)
         tvAddress.text = SessionManager.getAddress(this)
         tvLocation.text = SessionManager.getLocation(this)
 
-        // Show profile image from base64
+        // Show profile image from Base64
         val base64Image = SessionManager.getPhotoBase64(this)
         if (!base64Image.isNullOrBlank()) {
             try {
@@ -49,7 +61,7 @@ class ProfileActivity : AppCompatActivity() {
             }
         }
 
-
+        // Edit button click
         btnEdit.setOnClickListener {
             startActivity(Intent(this, EditProfileActivity::class.java))
         }
