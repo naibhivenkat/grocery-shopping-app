@@ -43,11 +43,23 @@ def append_user(user_dict):
 def get_all_shops():
     return [doc.to_dict() for doc in db.collection("shops").stream()]
 
+# def append_shop(shop_dict):
+#     shop_id = str(uuid.uuid4())
+#     shop_dict["id"] = shop_id
+#     db.collection("shops").document(shop_id).set(shop_dict)
+#     return shop_dict
+
 def append_shop(shop_dict):
-    shop_id = str(uuid.uuid4())
+    # ✅ Let Firestore generate doc.id
+    doc_ref = db.collection("shops").add(shop_dict)
+    shop_id = doc_ref[1].id   # Firestore doc.id
     shop_dict["id"] = shop_id
-    db.collection("shops").document(shop_id).set(shop_dict)
+
+    # ✅ Update the document with its ID field
+    db.collection("shops").document(shop_id).update({"id": shop_id})
+
     return shop_dict
+
 
 # ---------------- ITEMS ----------------
 

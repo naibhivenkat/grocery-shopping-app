@@ -563,6 +563,49 @@ def get_shops_for_shopkeeper(shopkeeper_id):
 
 
 # ----------- CREATE SHOP -----------
+# @app.route('/create_shop', methods=['POST'])
+# def create_shop():
+#     data = request.form if request.form else request.get_json()
+#     name = data.get('name')
+#     address = data.get('address')
+#     contact = data.get('contact')
+#     shopkeeper_id = data.get('shopkeeper_id')
+#
+#     if not all([name, address, contact, shopkeeper_id]):
+#         return jsonify({'success': False, 'message': 'Missing fields'}), 400
+#
+#     # ✅ Create shop entry
+#     shop_dict = {
+#         "name": name,
+#         "address": address,
+#         "contact": contact,
+#         "shopkeeper_id": shopkeeper_id,
+#         "createdAt": datetime.utcnow().isoformat()
+#     }
+#     shop = firebase_db.append_shop(shop_dict)
+#
+#     # ✅ Update shopkeeper record with this shopId
+#     user_ref = firebase_db.db.collection("users").where("shopkeeperId", "==",
+#                                                         shopkeeper_id).stream()
+#     for doc in user_ref:
+#         firebase_db.db.collection("users").document(doc.id).update({"shopId": shop["id"]})
+#         break
+#
+#     # ✅ Return shop info immediately
+#     return jsonify({
+#         'success': True,
+#         'message': 'Shop created successfully',
+#         'shop': {
+#             'id': shop['id'],
+#             'name': shop['name'],
+#             'address': shop['address'],
+#             'contact': shop['contact']
+#         }
+#     }), 200
+
+
+# ----------- ITEMS -----------
+
 @app.route('/create_shop', methods=['POST'])
 def create_shop():
     data = request.form if request.form else request.get_json()
@@ -574,7 +617,6 @@ def create_shop():
     if not all([name, address, contact, shopkeeper_id]):
         return jsonify({'success': False, 'message': 'Missing fields'}), 400
 
-    # ✅ Create shop entry
     shop_dict = {
         "name": name,
         "address": address,
@@ -582,29 +624,22 @@ def create_shop():
         "shopkeeper_id": shopkeeper_id,
         "createdAt": datetime.utcnow().isoformat()
     }
+
     shop = firebase_db.append_shop(shop_dict)
 
-    # ✅ Update shopkeeper record with this shopId
-    user_ref = firebase_db.db.collection("users").where("shopkeeperId", "==",
-                                                        shopkeeper_id).stream()
+    # ✅ Update shopkeeper record with this Firestore shop.id
+    user_ref = firebase_db.db.collection("users").where(
+        "shopkeeperId", "==", shopkeeper_id
+    ).stream()
     for doc in user_ref:
         firebase_db.db.collection("users").document(doc.id).update({"shopId": shop["id"]})
         break
 
-    # ✅ Return shop info immediately
     return jsonify({
         'success': True,
         'message': 'Shop created successfully',
-        'shop': {
-            'id': shop['id'],
-            'name': shop['name'],
-            'address': shop['address'],
-            'contact': shop['contact']
-        }
+        'shop': shop
     }), 200
-
-
-# ----------- ITEMS -----------
 
 from flask import g, jsonify
 
