@@ -8,12 +8,13 @@ import android.view.Gravity
 import android.widget.LinearLayout
 import android.widget.TextView
 import androidx.appcompat.app.AppCompatActivity
+import com.example.groceryshoppingapp.utils.SessionManager
 
 class SplashActivity : AppCompatActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
 
-        // 👇 Create a LinearLayout that centers its content
+        // Layout setup
         val layout = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
             gravity = Gravity.CENTER
@@ -23,7 +24,6 @@ class SplashActivity : AppCompatActivity() {
             )
         }
 
-        // 👇 Create the welcome text
         val welcomeText = TextView(this).apply {
             textSize = 22f
             text = when (BuildConfig.APP_ROLE) {
@@ -37,9 +37,17 @@ class SplashActivity : AppCompatActivity() {
         layout.addView(welcomeText)
         setContentView(layout)
 
-        // ⏳ Delay before navigating to Login
         Handler(Looper.getMainLooper()).postDelayed({
-            startActivity(Intent(this, LoginActivity::class.java))
+            if (SessionManager.isLoggedIn(this)) {
+                val role = SessionManager.getRole(this)
+                when (role) {
+                    "customer" -> startActivity(Intent(this, CustomerHomeActivity::class.java))
+                    "shopowner" -> startActivity(Intent(this, ShopOwnerDashboardActivity::class.java))
+                    else -> startActivity(Intent(this, LoginActivity::class.java))
+                }
+            } else {
+                startActivity(Intent(this, LoginActivity::class.java))
+            }
             finish()
         }, 2000)
     }
