@@ -1155,7 +1155,7 @@ def send_welcome_email(email, name):
 def require_authentication():
     public_paths = [
         "/healthz", "/send_otp", "/verify_otp", "/register", "/login",
-        "/register_after_otp", "/check_update"
+        "/register_after_otp", "/check_update", "/update_password", "/verify_password_reset_otp", "/send_password_reset_otp",
     ]
 
     # Allow if matches public paths
@@ -1164,7 +1164,7 @@ def require_authentication():
             return None
 
     auth_header = request.headers.get("Authorization")
-    print("AUTH HEADER:", auth_header)
+
 
     if not auth_header or not auth_header.startswith("Bearer "):
         return jsonify(

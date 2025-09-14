@@ -52,34 +52,38 @@
         </activity>
 
         <!-- Other Activities -->
-        <activity android:name="com.example.groceryshoppingapp.LoginActivity" />
-        <activity android:name="com.example.groceryshoppingapp.RegisterActivity" />
-        <activity android:name="com.example.groceryshoppingapp.OrderPlacedActivity" />
-        <activity android:name="com.example.groceryshoppingapp.OrderConfirmActivity" />
-        <activity android:name="com.example.groceryshoppingapp.CartActivity" />
-        <activity android:name="com.example.groceryshoppingapp.CustomerHomeActivity" />
-        <activity android:name="com.example.groceryshoppingapp.ShopItemsActivity" />
-        <activity android:name="com.example.groceryshoppingapp.MainActivity" />
-        <activity android:name="com.example.groceryshoppingapp.CustomerActivity" />
-        <activity android:name="com.example.groceryshoppingapp.ShopkeeperOrdersActivity" />
-        <activity android:name="com.example.groceryshoppingapp.ShopSelectionActivity" />
-        <activity android:name="com.example.groceryshoppingapp.CustomerOrdersActivity" />
-        <activity android:name="com.example.groceryshoppingapp.OrderSummaryActivity" />
-        <activity android:name="com.example.groceryshoppingapp.ThankYouActivity" />
-        <activity android:name="com.example.groceryshoppingapp.CartShopListActivity" />
-        <activity android:name="com.example.groceryshoppingapp.OrderDetailActivity" />
-        <activity android:name="com.example.groceryshoppingapp.ShopOwnerMainActivity" />
-        <activity android:name="com.example.groceryshoppingapp.ShopOwnerDashboardActivity" />
-        <activity android:name="com.example.groceryshoppingapp.SettingsActivity" />
-        <activity android:name="com.example.groceryshoppingapp.ChangePasswordActivity" />
-        <activity android:name="com.example.groceryshoppingapp.EditProfileActivity" />
-        <activity android:name="com.example.groceryshoppingapp.ProfileActivity"/>
         <activity android:name="com.example.groceryshoppingapp.AddItemsActivity"/>
+        <activity android:name="com.example.groceryshoppingapp.CartActivity" />
+        <activity android:name="com.example.groceryshoppingapp.CartShopListActivity" />
+        <activity android:name="com.example.groceryshoppingapp.ChangePasswordActivity" />
         <activity android:name="com.example.groceryshoppingapp.CreateShopActivity"
-                    android:exported="false" />
-        <activity android:name="com.example.groceryshoppingapp.ManageItemsActivity"/>
-        <activity android:name="com.example.groceryshoppingapp.UpdateItemActivity"/>
+            android:exported="false" />
+        <activity android:name="com.example.groceryshoppingapp.CustomerActivity" />
+        <activity android:name="com.example.groceryshoppingapp.CustomerHomeActivity" />
+        <activity android:name="com.example.groceryshoppingapp.CustomerItemsActivity" />
+        <activity android:name="com.example.groceryshoppingapp.CustomerOrdersActivity" />
+        <activity android:name="com.example.groceryshoppingapp.EditProfileActivity" />
+        <activity android:name="com.example.groceryshoppingapp.ForgotPasswordActivity"/>
+        <activity android:name="com.example.groceryshoppingapp.HelpActivity"/>
         <activity android:name="com.example.groceryshoppingapp.LanguageSelectionActivity"/>
+        <activity android:name="com.example.groceryshoppingapp.LoginActivity" />
+        <activity android:name="com.example.groceryshoppingapp.MainActivity" />
+        <activity android:name="com.example.groceryshoppingapp.ManageItemsActivity"/>
+        <activity android:name="com.example.groceryshoppingapp.OrderConfirmActivity" />
+        <activity android:name="com.example.groceryshoppingapp.OrderDetailActivity" />
+        <activity android:name="com.example.groceryshoppingapp.OrderPlacedActivity" />
+        <activity android:name="com.example.groceryshoppingapp.OrderSummaryActivity" />
+        <activity android:name="com.example.groceryshoppingapp.ProfileActivity"/>
+        <activity android:name="com.example.groceryshoppingapp.RegisterActivity" />
+        <activity android:name="com.example.groceryshoppingapp.SettingsActivity" />
+        <activity android:name="com.example.groceryshoppingapp.ShopItemsActivity" />
+        <activity android:name="com.example.groceryshoppingapp.ShopkeeperOrdersActivity" />
+        <activity android:name="com.example.groceryshoppingapp.ShopOwnerDashboardActivity" />
+        <activity android:name="com.example.groceryshoppingapp.ShopOwnerMainActivity" />
+        <activity android:name="com.example.groceryshoppingapp.ShopSelectionActivity" />
+        <activity android:name="com.example.groceryshoppingapp.ThankYouActivity" />
+        <activity android:name="com.example.groceryshoppingapp.UpdateItemActivity"/>
+
 
     </application>
 </manifest>
