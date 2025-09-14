@@ -19,9 +19,8 @@
             android:layout_width="match_parent"
             android:layout_height="?attr/actionBarSize"
             android:background="?attr/colorPrimary"
-            android:theme="@style/ThemeOverlay.AppCompat.Dark.ActionBar"
             app:title="Shop Owner Dashboard"
-            app:titleTextColor="@android:color/white" />
+            app:titleTextColor= "?android:textColorPrimaryInverse" />
 
         <!-- Buttons/content -->
         <LinearLayout
@@ -30,7 +29,7 @@
             android:orientation="vertical"
             android:padding="24dp"
             android:gravity="center"
-            android:background="@android:color/white">
+            android:background="?android:attr/colorBackground">
 
             <TextView
                 android:id="@+id/tv_dashboard_title"
@@ -39,7 +38,8 @@
                 android:text="@string/ui_shop_owner_dashboard"
                 android:textSize="22sp"
                 android:textStyle="bold"
-                android:layout_marginBottom="32dp" />
+                android:layout_marginBottom="32dp"
+                android:textColor="?android:attr/textColorPrimary" />
 
             <Button
                 android:id="@+id/btn_view_orders"
@@ -56,7 +56,10 @@
         android:layout_height="match_parent"
         android:layout_gravity="end"
         android:fitsSystemWindows="true"
-        android:background="@android:color/white"
-        app:menu="@drawable/shopowner_drawer_menu" />
+        android:background="?attr/colorSurface"
+        app:menu="@drawable/shopowner_drawer_menu"
+        app:itemTextColor="?attr/colorOnSurface"
+        app:itemIconTint="?attr/colorOnSurface" />
+
 
 </androidx.drawerlayout.widget.DrawerLayout>

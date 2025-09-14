@@ -1,13 +1,18 @@
 <resources xmlns:tools="http://schemas.android.com/tools">
     <style name="Theme.GroceryShoppingApp" parent="Theme.MaterialComponents.DayNight.NoActionBar">
-    <!-- Disable default action bar so we can use Toolbar -->
+        <!-- Disable default action bar so we can use Toolbar -->
         <item name="windowActionBar">false</item>
         <item name="windowNoTitle">true</item>
 
-        <!-- Customize your theme here -->
+        <!-- Brand colors -->
         <item name="colorPrimary">@color/purple_500</item>
         <item name="colorPrimaryVariant">@color/purple_700</item>
         <item name="colorOnPrimary">@color/white</item>
         <item name="colorSecondary">@color/teal_200</item>
+
+        <!-- Background / surface colors for light mode -->
+        <item name="android:colorBackground">@color/light_background</item>
+        <item name="colorSurface">@color/light_surface</item>
+        <item name="colorOnSurface">@android:color/black</item>
     </style>
 </resources>
