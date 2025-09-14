@@ -7,6 +7,7 @@ import androidx.appcompat.app.AppCompatActivity
 import com.example.groceryshoppingapp.models.GenericResponse
 import com.example.groceryshoppingapp.network.ApiService
 import com.example.groceryshoppingapp.network.RetrofitClient
+import org.json.JSONObject
 import retrofit2.Call
 import retrofit2.Callback
 import retrofit2.Response
@@ -44,6 +45,21 @@ class ForgotPasswordActivity : AppCompatActivity() {
         }
     }
 
+    /** 🔧 Helper to always extract backend message */
+    private fun getBackendMessage(response: Response<GenericResponse>, defaultMsg: String): String {
+        return if (response.isSuccessful) {
+            response.body()?.message ?: defaultMsg
+        } else {
+            try {
+                val errorJson = response.errorBody()?.string()
+                val jsonObj = JSONObject(errorJson ?: "")
+                jsonObj.optString("message", defaultMsg)
+            } catch (e: Exception) {
+                defaultMsg
+            }
+        }
+    }
+
     private fun sendOtp() {
         val email = emailEdit.text.toString().trim()
         if (email.isEmpty()) {
@@ -54,13 +70,14 @@ class ForgotPasswordActivity : AppCompatActivity() {
         val api = RetrofitClient.getInstance(this).create(ApiService::class.java)
         api.sendPasswordResetOtp(mapOf("email" to email)).enqueue(object : Callback<GenericResponse> {
             override fun onResponse(call: Call<GenericResponse>, response: Response<GenericResponse>) {
+                val message = getBackendMessage(response, "Failed to send OTP")
                 if (response.isSuccessful && response.body()?.success == true) {
-                    infoText.text = "OTP sent to $email"
+                    infoText.text = message
                     step = 2
                     otpEdit.visibility = View.VISIBLE
                     actionButton.text = "Verify OTP"
                 } else {
-                    infoText.text = response.body()?.message ?: "Failed to send OTP"
+                    infoText.text = message
                 }
             }
 
@@ -81,13 +98,14 @@ class ForgotPasswordActivity : AppCompatActivity() {
         val api = RetrofitClient.getInstance(this).create(ApiService::class.java)
         api.verifyPasswordResetOtp(mapOf("email" to email, "otp" to otp)).enqueue(object : Callback<GenericResponse> {
             override fun onResponse(call: Call<GenericResponse>, response: Response<GenericResponse>) {
+                val message = getBackendMessage(response, "Invalid OTP")
                 if (response.isSuccessful && response.body()?.success == true) {
-                    infoText.text = "OTP verified! Enter new password"
+                    infoText.text = message
                     step = 3
                     passwordEdit.visibility = View.VISIBLE
                     actionButton.text = "Update Password"
                 } else {
-                    infoText.text = response.body()?.message ?: "Invalid OTP"
+                    infoText.text = message
                 }
             }
 
@@ -108,11 +126,11 @@ class ForgotPasswordActivity : AppCompatActivity() {
         val api = RetrofitClient.getInstance(this).create(ApiService::class.java)
         api.updatePassword(mapOf("email" to email, "password" to newPassword)).enqueue(object : Callback<GenericResponse> {
             override fun onResponse(call: Call<GenericResponse>, response: Response<GenericResponse>) {
+                val message = getBackendMessage(response, "Failed to update password")
                 if (response.isSuccessful && response.body()?.success == true) {
-                    Toast.makeText(this@ForgotPasswordActivity, "Password updated successfully", Toast.LENGTH_LONG).show()
-                    finish() // Back to login
+                    showSuccessDialog(message)
                 } else {
-                    infoText.text = response.body()?.message ?: "Failed to update password"
+                    infoText.text = message
                 }
             }
 
@@ -120,5 +138,18 @@ class ForgotPasswordActivity : AppCompatActivity() {
                 infoText.text = "Error: ${t.localizedMessage}"
             }
         })
+    }
+
+    /** ✅ Success popup when password is updated */
+    private fun showSuccessDialog(message: String) {
+        android.app.AlertDialog.Builder(this)
+            .setTitle("Success 🎉")
+            .setMessage(message)
+            .setCancelable(false)
+            .setPositiveButton("OK") { dialog, _ ->
+                dialog.dismiss()
+                finish() // Back to login screen
+            }
+            .show()
     }
 }
