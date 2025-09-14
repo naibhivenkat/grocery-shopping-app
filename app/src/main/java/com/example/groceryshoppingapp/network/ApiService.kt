@@ -133,4 +133,18 @@ interface ApiService {
         @Query("shopkeeperId") shopkeeperId: String
     ): Call<GetShopResponse>
 
+    @POST("send_password_reset")
+    fun sendPasswordReset(@Body email: String): Call<GenericResponse>
+
+    @POST("send_password_reset_otp")
+    fun sendPasswordResetOtp(@Body email: Map<String, String>): Call<GenericResponse>
+
+    @POST("verify_password_reset_otp")
+    fun verifyPasswordResetOtp(@Body data: Map<String, String>): Call<GenericResponse>
+
+    @POST("update_password")
+    fun updatePassword(@Body data: Map<String, String>): Call<GenericResponse>
+
+
+
 }

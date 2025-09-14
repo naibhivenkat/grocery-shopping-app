@@ -24,6 +24,8 @@ class LoginActivity : AppCompatActivity() {
     private lateinit var registerText: TextView
     private lateinit var titleText: TextView
     private lateinit var errorText: TextView
+    private lateinit var forgotPasswordText: TextView
+    private lateinit var helpText: TextView
 
     private val appRole by lazy { BuildConfig.APP_ROLE.lowercase() }
 
@@ -38,6 +40,8 @@ class LoginActivity : AppCompatActivity() {
         loginButton = findViewById(R.id.btn_login)
         registerText = findViewById(R.id.tv_register)
         errorText = findViewById(R.id.tv_error_message)
+        forgotPasswordText = findViewById(R.id.tv_forgot_password)
+        helpText = findViewById(R.id.tv_help)
 
         titleText.text = when (appRole) {
             "customer" -> getString(R.string.customer_login)
@@ -61,6 +65,15 @@ class LoginActivity : AppCompatActivity() {
 
         registerText.setOnClickListener {
             startActivity(Intent(this, RegisterActivity::class.java))
+        }
+
+
+        forgotPasswordText.setOnClickListener {
+            startActivity(Intent(this, ForgotPasswordActivity::class.java))
+        }
+
+        helpText.setOnClickListener {
+            startActivity(Intent(this, HelpActivity::class.java))
         }
     }
 

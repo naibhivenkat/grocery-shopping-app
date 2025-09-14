@@ -28,6 +28,7 @@ limiter = Limiter(key_func=get_remote_address)
 limiter.init_app(app)
 
 otp_store = {}
+forgot_password_otp_store = {}  # email -> {otp, expiry, attempts}
 
 
 def generate_token(user):
@@ -1291,6 +1292,82 @@ def get_shop_by_owner():
     else:
         return jsonify({'success': False, 'shop': None})
 
+@app.route("/send_password_reset_otp", methods=["POST"])
+def send_password_reset_otp():
+    data = request.get_json()
+    email = data.get("email")
+    if not email:
+        return jsonify({"status": "error", "message": "Email required"}), 400
+
+    # Check if user exists in Firestore
+    users_ref = db.collection("Users")
+    query = users_ref.where("email", "==", email).limit(1).get()
+    if not query:
+        return jsonify({"status": "error", "message": "Email not registered"}), 404
+
+    # Generate OTP
+    otp = random.randint(100000, 999999)
+    expiry = int(time.time()) + 120  # 2 minutes expiry
+    forgot_password_otp_store[email] = {"otp": otp, "expiry": expiry, "attempts": 0}
+
+    # Send OTP via email
+    if send_email_otp(email, otp, subject="Password Reset OTP"):
+        return jsonify({"status": "success", "message": "OTP sent"}), 200
+    return jsonify({"status": "error", "message": "Failed to send OTP"}), 500
+
+@app.route("/verify_password_reset_otp", methods=["POST"])
+def verify_password_reset_otp():
+    data = request.get_json()
+    email = data.get("email")
+    otp = data.get("otp")
+
+    if not email or not otp:
+        return jsonify({"status": "error", "message": "Email and OTP required"}), 400
+
+    record = forgot_password_otp_store.get(email)
+    if not record:
+        return jsonify({"status": "error", "message": "No OTP sent"}), 404
+
+    # Check expiry
+    if int(time.time()) > record["expiry"]:
+        return jsonify({"status": "error", "message": "OTP expired"}), 400
+
+    # Check OTP
+    if str(record["otp"]) != str(otp):
+        record["attempts"] += 1
+        if record["attempts"] > 3:
+            del forgot_password_otp_store[email]
+            return jsonify({"status": "error", "message": "Too many attempts, OTP invalidated"}), 403
+        return jsonify({"status": "error", "message": "Invalid OTP"}), 400
+
+    return jsonify({"status": "success", "message": "OTP verified"}), 200
+
+@app.route("/update_password", methods=["POST"])
+def update_password():
+    data = request.get_json()
+    email = data.get("email")
+    new_password = data.get("password")
+
+    if not email or not new_password:
+        return jsonify({"status": "error", "message": "Email and new password required"}), 400
+
+    # Check if OTP verified (optional: only allow if exists in store)
+    if email not in forgot_password_otp_store:
+        return jsonify({"status": "error", "message": "OTP not verified"}), 403
+
+    # Update password in Firestore
+    users_ref = db.collection("Users")
+    query = users_ref.where("email", "==", email).limit(1).get()
+    if not query:
+        return jsonify({"status": "error", "message": "User not found"}), 404
+
+    user_doc = query[0].reference
+    user_doc.update({"password": new_password})
+
+    # Remove OTP record
+    del forgot_password_otp_store[email]
+
+    return jsonify({"status": "success", "message": "Password updated successfully"}), 200
 
 if __name__ == "__main__":
     print("Gunicorn setup complete, about to run...")
