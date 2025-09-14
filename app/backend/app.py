@@ -1313,7 +1313,7 @@ def send_password_reset_otp():
     forgot_password_otp_store[email] = {"otp": otp, "expiry": expiry, "attempts": 0}
 
     # Send OTP via email
-    if send_email_otp(email, otp, subject="Password Reset OTP"):
+    if send_password_reset_email_otp(email, otp):
         return jsonify({"status": "success", "message": "OTP sent"}), 200
     return jsonify({"status": "error", "message": "Failed to send OTP"}), 500
 
@@ -1370,6 +1370,55 @@ def update_password():
     del forgot_password_otp_store[email]
 
     return jsonify({"status": "success", "message": "Password updated successfully"}), 200
+
+
+
+def send_password_reset_email_otp(email, otp):
+    try:
+        print(f"[DEBUG] Sending OTP email to {email}")
+        print(f"[DEBUG] Using FROM_EMAIL: {FROM_EMAIL}")
+
+        url = "https://api.sendinblue.com/v3/smtp/email"
+        headers = {
+            "api-key": SENDINBLUE_API_KEY,
+            "Content-Type": "application/json"
+        }
+
+        subject = "🔐 Grocery App – Password Reset Verification Code"
+        html_content = f"""
+        <div style="font-family: Arial, sans-serif; color: #333; padding: 20px;">
+            <h2 style="color:#4CAF50;">Grocery App Password Reset</h2>
+            <p>Hello,</p>
+            <p>We received a request to reset your password for your <b>Grocery App</b> account.</p>
+            <p style="font-size:16px;">
+                Please use the following One-Time Password (OTP) to reset your password:
+            </p>
+            <div style="background:#f4f4f4; padding:10px 20px; margin:20px 0; border-radius:8px; text-align:center;">
+                <h1 style="letter-spacing:5px; color:#2E7D32;">{otp}</h1>
+            </div>
+            <p>This OTP is valid for <b>2 minutes</b>. Do not share it with anyone.</p>
+            <p>If you didn’t request a password reset, you can safely ignore this email.</p>
+            <br/>
+            <p style="font-size:12px; color:#888;">– The Grocery App Team</p>
+        </div>
+        """
+
+        data = {
+            "sender": {"name": "Grocery App", "email": FROM_EMAIL},
+            "to": [{"email": email}],
+            "subject": subject,
+            "htmlContent": html_content
+        }
+
+        response = requests.post(url, headers=headers, json=data)
+        print(f"[DEBUG] Sendinblue response: {response.status_code}, {response.text}")
+
+        return response.status_code in (200, 201)
+
+    except Exception as e:
+        print(f"[ERROR] Failed to send OTP email: {e}")
+        return False
+
 
 if __name__ == "__main__":
     print("Gunicorn setup complete, about to run...")
