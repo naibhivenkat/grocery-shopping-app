@@ -1296,12 +1296,14 @@ def get_shop_by_owner():
 def send_password_reset_otp():
     data = request.get_json()
     email = data.get("email")
+    print("DEBUG: Looking for email:", email)
     if not email:
         return jsonify({"status": "error", "message": "Email required"}), 400
 
     # Check if user exists in Firestore
-    users_ref = firebase_db.db.collection("Users")
+    users_ref = firebase_db.db.collection("users")
     query = users_ref.where("email", "==", email).limit(1).get()
+    print("DEBUG: Query result:", query)
     if not query:
         return jsonify({"status": "error", "message": "Email not registered"}), 404
 
@@ -1356,7 +1358,7 @@ def update_password():
         return jsonify({"status": "error", "message": "OTP not verified"}), 403
 
     # Update password in Firestore
-    users_ref = firebase_db.db.collection("Users")
+    users_ref = firebase_db.db.collection("users")
     query = users_ref.where("email", "==", email).limit(1).get()
     if not query:
         return jsonify({"status": "error", "message": "User not found"}), 404
