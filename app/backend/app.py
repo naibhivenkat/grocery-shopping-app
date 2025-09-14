@@ -1070,26 +1070,72 @@ def check_update():
 
 
 # ---------------- Helper Function ----------------
-def send_email_otp(email, otp):
-    print(f"SENDINBLUE_API_KEY {SENDINBLUE_API_KEY}")
-    print(f"FROM_EMAIL : {FROM_EMAIL}")
-    url = "https://api.sendinblue.com/v3/smtp/email"
-    headers = {
-        "api-key": SENDINBLUE_API_KEY,
-        "Content-Type": "application/json"
-    }
-    data = {
-        "sender": {"name": "Grocery App", "email": FROM_EMAIL},
-        "to": [{"email": email}],
-        "subject": "Your OTP for Grocery App",
-        "htmlContent": f"<h3>Your OTP is: {otp}</h3><p>Valid for 2 minutes</p>"
-    }
-    response = requests.post(url, headers=headers, json=data)
-    print(response.status_code, response.text)
-    return response.status_code == 201 or response.status_code == 200
+# def send_email_otp(email, otp):
+#     print(f"SENDINBLUE_API_KEY {SENDINBLUE_API_KEY}")
+#     print(f"FROM_EMAIL : {FROM_EMAIL}")
+#     url = "https://api.sendinblue.com/v3/smtp/email"
+#     headers = {
+#         "api-key": SENDINBLUE_API_KEY,
+#         "Content-Type": "application/json"
+#     }
+#     data = {
+#         "sender": {"name": "Grocery App", "email": FROM_EMAIL},
+#         "to": [{"email": email}],
+#         "subject": "Your OTP for Grocery App",
+#         "htmlContent": f"<h3>Your OTP is: {otp}</h3><p>Valid for 2 minutes</p>"
+#     }
+#     response = requests.post(url, headers=headers, json=data)
+#     print(response.status_code, response.text)
+#     return response.status_code == 201 or response.status_code == 200
 
 
 # ---------------- 1️⃣ Send OTP ----------------
+
+def send_email_otp(email, otp):
+    try:
+        print(f"SENDINBLUE_API_KEY {SENDINBLUE_API_KEY}")
+        print(f"FROM_EMAIL : {FROM_EMAIL}")
+
+        url = "https://api.sendinblue.com/v3/smtp/email"
+        headers = {
+            "api-key": SENDINBLUE_API_KEY,
+            "Content-Type": "application/json"
+        }
+
+        subject = "🎉 Welcome to Grocery App – Verify Your Email"
+        html_content = f"""
+        <div style="font-family: Arial, sans-serif; color: #333; padding: 20px;">
+            <h2 style="color:#4CAF50;">Welcome to Grocery App! 🛒</h2>
+            <p>Thank you for registering with <b>Grocery App</b>. To complete your signup, please verify your email address.</p>
+            <p style="font-size:16px;">
+                Use the following One-Time Password (OTP) to verify your account:
+            </p>
+            <div style="background:#f4f4f4; padding:15px 25px; margin:20px 0; border-radius:8px; text-align:center;">
+                <h1 style="letter-spacing:5px; color:#2E7D32;">{otp}</h1>
+            </div>
+            <p>This OTP is valid for <b>2 minutes</b>. Please enter it in the app to verify your email.</p>
+            <p>If you did not create this account, you can safely ignore this email.</p>
+            <br/>
+            <p style="font-size:12px; color:#888;">– The Grocery App Team</p>
+        </div>
+        """
+
+        data = {
+            "sender": {"name": "Grocery App", "email": FROM_EMAIL},
+            "to": [{"email": email}],
+            "subject": subject,
+            "htmlContent": html_content
+        }
+
+        response = requests.post(url, headers=headers, json=data)
+        print(f"[DEBUG] Sendinblue response: {response.status_code}, {response.text}")
+
+        return response.status_code in (200, 201)
+
+    except Exception as e:
+        print(f"[ERROR] Failed to send OTP email: {e}")
+        return False
+
 @app.route("/send_otp", methods=["POST"])
 def send_otp():
     data = request.get_json()
@@ -1298,14 +1344,14 @@ def send_password_reset_otp():
     email = data.get("email")
     print("DEBUG: Looking for email:", email)
     if not email:
-        return jsonify({"status": "error", "message": "Email required"}), 400
+        return jsonify({"success": False, "message": "Email required"}), 400
 
     # Check if user exists in Firestore
     users_ref = firebase_db.db.collection("users")
     query = users_ref.where("email", "==", email).limit(1).get()
     print("DEBUG: Query result:", query)
     if not query:
-        return jsonify({"status": "error", "message": "Email not registered"}), 404
+        return jsonify({"success": False, "message": "Email not registered"}), 404
 
     # Generate OTP
     otp = random.randint(100000, 999999)
@@ -1314,8 +1360,8 @@ def send_password_reset_otp():
 
     # Send OTP via email
     if send_password_reset_email_otp(email, otp):
-        return jsonify({"status": "success", "message": "OTP sent"}), 200
-    return jsonify({"status": "error", "message": "Failed to send OTP"}), 500
+        return jsonify({"success": True, "message": "OTP sent"}), 200
+    return jsonify({"success": False, "message": "Failed to send OTP"}), 500
 
 @app.route("/verify_password_reset_otp", methods=["POST"])
 def verify_password_reset_otp():
@@ -1324,25 +1370,25 @@ def verify_password_reset_otp():
     otp = data.get("otp")
 
     if not email or not otp:
-        return jsonify({"status": "error", "message": "Email and OTP required"}), 400
+        return jsonify({"success": False, "message": "Email and OTP required"}), 400
 
     record = forgot_password_otp_store.get(email)
     if not record:
-        return jsonify({"status": "error", "message": "No OTP sent"}), 404
+        return jsonify({"success": False, "message": "No OTP sent"}), 404
 
     # Check expiry
     if int(time.time()) > record["expiry"]:
-        return jsonify({"status": "error", "message": "OTP expired"}), 400
+        return jsonify({"success": False, "message": "OTP expired"}), 400
 
     # Check OTP
     if str(record["otp"]) != str(otp):
         record["attempts"] += 1
         if record["attempts"] > 3:
             del forgot_password_otp_store[email]
-            return jsonify({"status": "error", "message": "Too many attempts, OTP invalidated"}), 403
-        return jsonify({"status": "error", "message": "Invalid OTP"}), 400
+            return jsonify({"success": False, "message": "Too many attempts, OTP invalidated"}), 403
+        return jsonify({"success": False, "message": "Invalid OTP"}), 400
 
-    return jsonify({"status": "success", "message": "OTP verified"}), 200
+    return jsonify({"success": True, "message": "OTP verified"}), 200
 
 @app.route("/update_password", methods=["POST"])
 def update_password():
@@ -1351,17 +1397,17 @@ def update_password():
     new_password = data.get("password")
 
     if not email or not new_password:
-        return jsonify({"status": "error", "message": "Email and new password required"}), 400
+        return jsonify({"success": False, "message": "Email and new password required"}), 400
 
     # Check if OTP verified (optional: only allow if exists in store)
     if email not in forgot_password_otp_store:
-        return jsonify({"status": "error", "message": "OTP not verified"}), 403
+        return jsonify({"success": False, "message": "OTP not verified"}), 403
 
     # Update password in Firestore
     users_ref = firebase_db.db.collection("users")
     query = users_ref.where("email", "==", email).limit(1).get()
     if not query:
-        return jsonify({"status": "error", "message": "User not found"}), 404
+        return jsonify({"success": False, "message": "User not found"}), 404
 
     user_doc = query[0].reference
     user_doc.update({"password": new_password})
@@ -1369,7 +1415,7 @@ def update_password():
     # Remove OTP record
     del forgot_password_otp_store[email]
 
-    return jsonify({"status": "success", "message": "Password updated successfully"}), 200
+    return jsonify({"success": True, "message": "Password updated successfully"}), 200
 
 
 
