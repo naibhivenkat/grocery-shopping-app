@@ -69,11 +69,11 @@ jobs:
           SENDINBLUE_API_KEY: ${{ secrets.SENDINBLUE_API_KEY }}
           FROM_EMAIL: ${{ secrets.FROM_EMAIL }}
 
-      #      - name: Build Customer APK
-      #        run: ./gradlew assembleCustomerDebug
-      #        env:
-      #          SENDINBLUE_API_KEY: ${{ secrets.SENDINBLUE_API_KEY }}
-      #          FROM_EMAIL: ${{ secrets.FROM_EMAIL }}
+      - name: Build Customer APK
+        run: ./gradlew assembleCustomerDebug
+        env:
+          SENDINBLUE_API_KEY: ${{ secrets.SENDINBLUE_API_KEY }}
+          FROM_EMAIL: ${{ secrets.FROM_EMAIL }}
 
       - name: Upload APKs to Release
         uses: softprops/action-gh-release@v1
@@ -82,4 +82,4 @@ jobs:
           name: Release v${{ env.NEW_VERSION_NAME }}
           files: |
             app/build/outputs/apk/shopowner/debug/app-shopowner-debug.apk
-          #  app/build/outputs/apk/customer/debug/app-customer-debug.apk
+            app/build/outputs/apk/customer/debug/app-customer-debug.apk
