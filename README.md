@@ -1,3 +1,3 @@
 # grocery-shopping-app
 
-for shop your necessary
+for shop your necessary grocery 
