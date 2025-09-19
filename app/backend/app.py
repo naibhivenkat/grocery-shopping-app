@@ -469,11 +469,13 @@ def create_order():
                  "quantity": quantity})
 
     user = getattr(g, "current_user", None)
+    print("DEBUG current_user:", user)
+
 
     order_dict = {
         "shopId": data["shopId"],
         "customer": {
-            "id": user.get("id"),   # ✅ this will now save correctly
+            "id": user.get("customerId"),   # <-- FIX
             "username": user.get("username"),
             "fullName": user.get("fullName"),
             "email": user.get("email"),

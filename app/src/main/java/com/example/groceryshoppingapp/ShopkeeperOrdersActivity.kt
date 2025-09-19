@@ -7,7 +7,6 @@ import androidx.appcompat.app.AppCompatActivity
 import androidx.recyclerview.widget.LinearLayoutManager
 import com.example.groceryshoppingapp.databinding.ActivityShopkeeperOrdersBinding
 import com.example.groceryshoppingapp.models.Order
-//import com.example.groceryshoppingapp.models.ApiResponse
 import com.example.groceryshoppingapp.network.ApiService
 import com.example.groceryshoppingapp.network.RetrofitClient
 import retrofit2.Call
