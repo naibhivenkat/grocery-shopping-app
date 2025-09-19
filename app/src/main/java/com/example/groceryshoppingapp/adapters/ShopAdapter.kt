@@ -15,7 +15,11 @@ class ShopAdapter(private val context: Context, private val shopList: List<Shop>
 
     override fun getItem(position: Int): Any = shopList[position]
 
-    override fun getItemId(position: Int): Long = shopList[position].id.toLong()
+    // 🔑 Fix: use position or hashCode() instead of toLong()
+    override fun getItemId(position: Int): Long {
+        return shopList[position].id.hashCode().toLong()  // stable + unique
+        // Or simply: return position.toLong()
+    }
 
     override fun getView(position: Int, convertView: View?, parent: ViewGroup): View {
         val view: View = convertView ?: LayoutInflater.from(context).inflate(R.layout.item_shop, parent, false)

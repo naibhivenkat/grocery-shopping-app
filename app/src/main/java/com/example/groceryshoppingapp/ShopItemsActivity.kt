@@ -2,6 +2,7 @@ package com.example.groceryshoppingapp
 
 import android.content.Intent
 import android.os.Bundle
+import android.util.Log
 import android.widget.Button
 import android.widget.TextView
 import android.widget.Toast
@@ -10,8 +11,8 @@ import androidx.recyclerview.widget.LinearLayoutManager
 import androidx.recyclerview.widget.RecyclerView
 import com.example.groceryshoppingapp.adapters.ItemAdapter
 import com.example.groceryshoppingapp.models.GetItemsResponse
-import com.example.groceryshoppingapp.network.ApiService
 import com.example.groceryshoppingapp.models.Item
+import com.example.groceryshoppingapp.network.ApiService
 import com.example.groceryshoppingapp.network.RetrofitClient
 import com.example.groceryshoppingapp.util.CartManager
 import com.example.groceryshoppingapp.utils.SessionManager
@@ -30,20 +31,18 @@ class ShopItemsActivity : AppCompatActivity() {
 
     private var shopId: String? = null
     private var shopName: String = ""
-    private val items = mutableListOf<Item>()  // 🔄 Mutable list for live updates
+    private val items = mutableListOf<Item>()
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_shop_items)
 
-        // Initialize views
         itemsRecyclerView = findViewById(R.id.rv_shop_items)
         btnGoToCart = findViewById(R.id.btn_go_to_cart)
         btnBackToShopList = findViewById(R.id.btn_back_to_shop_list)
         btnHome = findViewById(R.id.btn_home)
         shopTitleText = findViewById(R.id.tv_shop_title)
 
-        // Retrieve from intent
         shopId = intent.getStringExtra("SHOP_ID")
         shopName = intent.getStringExtra("SHOP_NAME") ?: ""
 
@@ -51,31 +50,29 @@ class ShopItemsActivity : AppCompatActivity() {
 
         if (shopId.isNullOrEmpty() || customerId.isNullOrEmpty()) {
             Toast.makeText(this, "Invalid session or shop. Please login again.", Toast.LENGTH_SHORT).show()
+            Log.e("ShopItemsActivity", "Invalid shopId=$shopId or customerId=$customerId")
             startActivity(Intent(this, LoginActivity::class.java))
             finish()
             return
         }
 
-        // Save selected shop to session
-        SessionManager.setShopInfo(this, shopId.toString(), shopName)
-
         shopTitleText.text = "Items in $shopName"
 
-        // Setup adapter
         adapter = ItemAdapter(items) { item ->
+            Log.d("ShopItemsActivity", "Adding item=${item.name}, id=${item.id}, shopId=$shopId")
             CartManager.addToCart(item, shopId!!)
-            Toast.makeText(this, "${item.name} added to cart for Shop #$shopId", Toast.LENGTH_SHORT).show()
+            Toast.makeText(this, "${item.name} added to cart", Toast.LENGTH_SHORT).show()
         }
+
         itemsRecyclerView.layoutManager = LinearLayoutManager(this)
         itemsRecyclerView.adapter = adapter
 
-        // Load items from backend
         fetchItemsFromBackend(shopId!!)
 
-        // Button click listeners
         btnGoToCart.setOnClickListener {
+            Log.d("ShopItemsActivity", "Navigating to CartActivity with shopId=$shopId")
             val intent = Intent(this, CartActivity::class.java)
-            intent.putParcelableArrayListExtra("cart_items", ArrayList(CartManager.getCart(shopId!!)))
+            intent.putExtra("SHOP_ID", shopId)
             startActivity(intent)
         }
 
@@ -91,32 +88,26 @@ class ShopItemsActivity : AppCompatActivity() {
     }
 
     private fun fetchItemsFromBackend(shopId: String) {
-        val token = SessionManager.getAuthToken(this)
-        if (token.isNullOrEmpty()) {
-            Toast.makeText(this, "Auth token missing. Please login again.", Toast.LENGTH_SHORT).show()
-            return
-        }
-
-        val authHeader = "Bearer $token"
         val api = RetrofitClient.getInstance(this).create(ApiService::class.java)
 
         api.getItems(shopId).enqueue(object : Callback<GetItemsResponse> {
             override fun onResponse(call: Call<GetItemsResponse>, response: Response<GetItemsResponse>) {
                 if (response.isSuccessful) {
                     val fetchedItems = response.body()?.items ?: emptyList()
+                    Log.d("ShopItemsActivity", "Fetched ${fetchedItems.size} items for shopId=$shopId")
                     items.clear()
                     items.addAll(fetchedItems)
                     adapter.notifyDataSetChanged()
                 } else {
-                    Toast.makeText(this@ShopItemsActivity, "Failed to load items: ${response.code()}", Toast.LENGTH_SHORT).show()
+                    Log.e("ShopItemsActivity", "Failed to load items: ${response.code()}")
+                    Toast.makeText(this@ShopItemsActivity, "Failed to load items", Toast.LENGTH_SHORT).show()
                 }
             }
 
             override fun onFailure(call: Call<GetItemsResponse>, t: Throwable) {
+                Log.e("ShopItemsActivity", "Error fetching items: ${t.message}")
                 Toast.makeText(this@ShopItemsActivity, "Error: ${t.message}", Toast.LENGTH_LONG).show()
             }
         })
     }
-
-
 }

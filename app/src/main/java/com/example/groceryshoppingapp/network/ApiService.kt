@@ -2,6 +2,7 @@ package com.example.groceryshoppingapp.network
 
 import com.example.groceryshoppingapp.models.AddItemsRequest
 import com.example.groceryshoppingapp.models.*
+import okhttp3.RequestBody
 import retrofit2.Call
 import retrofit2.http.Body
 import retrofit2.http.GET
@@ -28,7 +29,7 @@ interface ApiService {
     @GET("api/orders/{uuid}")
     fun getOrderById(@Path("uuid") uuid: String): Call<Order>
 
-    @GET("shops")
+    @GET("api/shops")
     fun getAllShops(): Call<List<Shop>>
 
 
@@ -77,7 +78,10 @@ interface ApiService {
     fun login(@Body request: LoginRequest): Call<LoginResponse>
 
     @GET("api/orders/customer/{customer_id}")
-    fun getCustomerOrders(@Path("customer_id") customerId: Int): Call<List<Order>>
+    fun getCustomerOrders(
+        @Path("customer_id") customerId: String
+    ): Call<List<Order>>
+
 
     @POST("/change_password")
     fun changePassword(
@@ -145,6 +149,7 @@ interface ApiService {
     @POST("update_password")
     fun updatePassword(@Body data: Map<String, String>): Call<GenericResponse>
 
-
+    @POST("api/orders")
+    fun createOrder(@Body body: CreateOrderRequest): Call<Map<String, Any>>
 
 }

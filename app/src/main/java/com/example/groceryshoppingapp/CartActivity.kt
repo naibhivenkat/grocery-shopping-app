@@ -2,6 +2,7 @@ package com.example.groceryshoppingapp
 
 import android.content.Intent
 import android.os.Bundle
+import android.util.Log
 import android.widget.Button
 import android.widget.TextView
 import android.widget.Toast
@@ -28,12 +29,20 @@ class CartActivity : AppCompatActivity() {
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_cart)
 
-        shopId = SessionManager.getShopId(this) ?: ""
-        if (shopId.isEmpty()) {
-            Toast.makeText(this, "Invalid shop selected", Toast.LENGTH_SHORT).show()
+        // Get shopId from intent or session
+        shopId = intent.getStringExtra("SHOP_ID") ?: SessionManager.getShopId(this) ?: ""
+       // Log.d("CartActivity", "Loaded with shopId=$shopId")
+
+        // Get shopId from intent or session
+        //shopId = intent.getStringExtra("SHOP_ID") ?: SessionManager.getShopId(this)
+
+        if (shopId.isNullOrEmpty()) {
+            Toast.makeText(this, "Please select a shop first.", Toast.LENGTH_SHORT).show()
+            startActivity(Intent(this, ShopSelectionActivity::class.java))
             finish()
             return
         }
+
 
         recyclerViewCart = findViewById(R.id.recyclerViewCart)
         totalTextView = findViewById(R.id.textViewTotal)
@@ -42,12 +51,13 @@ class CartActivity : AppCompatActivity() {
 
         recyclerViewCart.layoutManager = LinearLayoutManager(this)
 
+        // Load items from CartManager
         cartItems = CartManager.getCart(shopId).toMutableList()
+        Log.d("CartActivity", "Loaded ${cartItems.size} items from CartManager for shopId=$shopId")
 
         cartAdapter = CartAdapter(this, cartItems) {
             updateTotal()
         }
-
         recyclerViewCart.adapter = cartAdapter
 
         updateTotal()
@@ -55,16 +65,15 @@ class CartActivity : AppCompatActivity() {
         placeOrderButton.setOnClickListener {
             if (cartItems.isEmpty()) {
                 Toast.makeText(this, "Cart is empty!", Toast.LENGTH_SHORT).show()
+                Log.w("CartActivity", "Place order clicked but cart empty")
                 return@setOnClickListener
             }
-
             showConfirmOrderDialog()
         }
 
         backToShopButton.setOnClickListener {
-            val intent = Intent(this, ShopItemsActivity::class.java)
-            intent.putExtra("SHOP_ID", shopId) // ✅ Use "SHOP_ID" as expected by ShopItemsActivity
-            intent.putExtra("SHOP_NAME", SampleData.getShopNameById(shopId)) // ✅ add this too
+            val intent = Intent(this, CustomerItemsActivity::class.java)
+            intent.putExtra("SHOP_ID", shopId)
             startActivity(intent)
             finish()
         }
@@ -73,11 +82,7 @@ class CartActivity : AppCompatActivity() {
     private fun updateTotal() {
         val total = cartItems.sumOf { it.item.price * it.quantity }
         totalTextView.text = "Total: ₹%.2f".format(total)
-
-        if (cartItems.isEmpty()) {
-            Toast.makeText(this, "Cart is now empty", Toast.LENGTH_SHORT).show()
-            finish()
-        }
+        Log.d("CartActivity", "Cart updated → total=$total, items=${cartItems.size}")
     }
 
     private fun showConfirmOrderDialog() {
@@ -87,38 +92,19 @@ class CartActivity : AppCompatActivity() {
             "${it.item.name} x ${it.quantity} = ₹${"%.2f".format(it.item.price * it.quantity)}"
         }
 
-        val shopName = SampleData.getShopNameById(shopId)
-        val shopInfo = "Shop: $shopName"
-
-        val message = "$shopInfo\n\n$itemDetails\n\nTotal: ₹${"%.2f".format(total)}"
+        val message = "Shop ID: $shopId\n\n$itemDetails\n\nTotal: ₹${"%.2f".format(total)}"
 
         AlertDialog.Builder(this)
             .setTitle("Confirm Your Order")
             .setMessage(message)
             .setPositiveButton("Proceed") { _, _ ->
+                Log.d("CartActivity", "Proceeding to OrderConfirmActivity with shopId=$shopId")
                 val intent = Intent(this, OrderConfirmActivity::class.java)
-                intent.putExtra("shopId", shopId)
+                intent.putExtra("SHOP_ID", shopId)
                 intent.putExtra("total", total)
                 startActivity(intent)
             }
-            .setNeutralButton("Update Cart") { dialog, _ ->
-                dialog.dismiss()
-            }
-            .setNegativeButton("Cancel") { dialog, _ ->
-                dialog.dismiss()
-            }
+            .setNegativeButton("Cancel", null)
             .show()
-    }
-
-    private fun placeOrder() {
-        CartManager.clearCart(shopId)
-        cartItems.clear()
-        cartAdapter.notifyDataSetChanged()
-        updateTotal()
-
-        Toast.makeText(this, "Order placed successfully!", Toast.LENGTH_LONG).show()
-
-        startActivity(Intent(this, CartShopListActivity::class.java))
-        finish()
     }
 }

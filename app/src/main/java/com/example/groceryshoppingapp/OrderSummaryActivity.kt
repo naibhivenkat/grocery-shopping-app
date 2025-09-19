@@ -6,16 +6,24 @@ import android.util.Log
 import android.widget.Toast
 import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
-import com.android.volley.toolbox.JsonObjectRequest
-import com.android.volley.toolbox.Volley
 import com.example.groceryshoppingapp.databinding.ActivityOrderSummaryBinding
 import com.example.groceryshoppingapp.models.CartItem
+import com.example.groceryshoppingapp.models.CreateOrderRequest
+import com.example.groceryshoppingapp.models.OrderItemRequest
+import com.example.groceryshoppingapp.network.ApiService
+import com.example.groceryshoppingapp.network.RetrofitClient
 import com.example.groceryshoppingapp.util.CartManager
 import com.example.groceryshoppingapp.utils.SessionManager
-import org.json.JSONArray
-import org.json.JSONObject
+import com.google.gson.Gson
+import okhttp3.MediaType.Companion.toMediaTypeOrNull
+import okhttp3.RequestBody
+import okhttp3.RequestBody.Companion.toRequestBody
+import retrofit2.Call
+import retrofit2.Callback
+import retrofit2.Response
 import java.text.SimpleDateFormat
 import java.util.*
+
 
 class OrderSummaryActivity : AppCompatActivity() {
 
@@ -113,48 +121,49 @@ class OrderSummaryActivity : AppCompatActivity() {
     }
 
     private fun sendOrderToBackend() {
-        val url = "https://grocery-shopping-app-yyqx.onrender.com/api/orders"
-        val userName =  SessionManager.getUsername(this)
+        val apiService = RetrofitClient.getInstance(this).create(ApiService::class.java)
 
-        val orderJson = JSONObject().apply {
-            put("customer", userName)
-            put("shop_id", shopId)
-            put("payment_method", paymentMethod)
+        val itemsList = cartItems.map { item ->
+            OrderItemRequest(
+                item_id = item.item.id,
+                quantity = item.quantity
+            )
+        }
 
-            val itemsArray = JSONArray()
-            for (item in cartItems) {
-                val itemObj = JSONObject().apply {
-                    put("item_id", item.item.id)
-                    put("quantity", item.quantity)
+        val orderData = CreateOrderRequest(
+            shopId = shopId!!,               // ✅ matches backend
+            payment_method = paymentMethod,
+            items = itemsList
+        )
+
+        val call = apiService.createOrder(orderData)
+
+        call.enqueue(object : Callback<Map<String, Any>> {
+            override fun onResponse(
+                call: Call<Map<String, Any>>,
+                response: Response<Map<String, Any>>
+            ) {
+                if (response.isSuccessful) {
+                    Toast.makeText(this@OrderSummaryActivity, "Order Confirmed!", Toast.LENGTH_SHORT).show()
+                    CartManager.clearCart(shopId)
+
+                    val intent = Intent(this@OrderSummaryActivity, ThankYouActivity::class.java)
+                    intent.flags = Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_NEW_TASK
+                    startActivity(intent)
+                    finish()
+                } else {
+                    Log.e("OrderSummaryActivity", "Error: ${response.code()} - ${response.errorBody()?.string()}")
+                    Toast.makeText(this@OrderSummaryActivity, "Failed to confirm order!", Toast.LENGTH_LONG).show()
                 }
-                itemsArray.put(itemObj)
             }
-            put("items", itemsArray)
-        }
 
-        val request = object : JsonObjectRequest(
-            Method.POST, url, orderJson,
-            { response ->
-                Toast.makeText(this@OrderSummaryActivity, "Order Confirmed!", Toast.LENGTH_SHORT).show()
-                CartManager.clearCart(shopId)
-
-                val intent = Intent(this@OrderSummaryActivity, ThankYouActivity::class.java)
-                intent.flags = Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_NEW_TASK
-                startActivity(intent)
-                finish()
-            },
-            { error ->
-                Log.e("OrderSummaryActivity", "Failed to send order", error)
-                Toast.makeText(this@OrderSummaryActivity, "Failed to confirm order!", Toast.LENGTH_LONG).show()
+            override fun onFailure(call: Call<Map<String, Any>>, t: Throwable) {
+                Log.e("OrderSummaryActivity", "Network Error", t)
+                Toast.makeText(this@OrderSummaryActivity, "Network error: ${t.message}", Toast.LENGTH_LONG).show()
             }
-        ) {
-            override fun getHeaders(): MutableMap<String, String> {
-                val headers = HashMap<String, String>()
-                headers["Content-Type"] = "application/json"
-                return headers
-            }
-        }
-
-        Volley.newRequestQueue(this).add(request)
+        })
     }
+
+
+
 }

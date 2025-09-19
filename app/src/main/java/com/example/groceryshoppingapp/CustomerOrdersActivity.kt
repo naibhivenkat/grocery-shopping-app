@@ -14,6 +14,8 @@ import com.android.volley.toolbox.Volley
 import com.example.groceryshoppingapp.models.Item
 import com.example.groceryshoppingapp.models.ItemQuantity
 import com.example.groceryshoppingapp.models.Order
+import com.example.groceryshoppingapp.network.ApiService
+import com.example.groceryshoppingapp.network.RetrofitClient
 import com.example.groceryshoppingapp.utils.SessionManager
 import org.json.JSONArray
 
@@ -75,69 +77,112 @@ class CustomerOrdersActivity : AppCompatActivity() {
         }
     }
 
+//    private fun fetchOrders() {
+//        val customerName = SessionManager.getUsername(this) ?: ""
+//        val token = SessionManager.getAuthToken(this) ?: ""  // ✅ retrieve token
+//        val url = "https://grocery-shopping-app-yyqx.onrender.com/api/orders/customer/$customerName"
+//
+//        val request = object : JsonArrayRequest(
+//            Method.GET, url, null,
+//            { response: JSONArray ->
+//                if (response.length() == 0) {
+//                    emptyTextView.visibility = View.VISIBLE
+//                    ordersRecyclerView.visibility = View.GONE
+//                } else {
+//                    allOrdersList.clear()
+//                    filteredOrdersList.clear()
+//
+//                    for (i in 0 until response.length()) {
+//                        val orderObj = response.getJSONObject(i)
+//                        val orderUuid = orderObj.getString("order_uuid")
+//                        val customer = orderObj.getString("customer")
+//                        val status = orderObj.getString("status")
+//                        val createdAt = orderObj.optString("created_at", "Unknown")
+//                        val shopName = orderObj.optString("shop_name", "Unknown Shop")
+//
+//                        val itemsArray = orderObj.getJSONArray("items")
+//                        val itemQuantities = mutableListOf<ItemQuantity>()
+//                        for (j in 0 until itemsArray.length()) {
+//                            val itemObj = itemsArray.getJSONObject(j)
+//                            val itemJson = itemObj.getJSONObject("item")
+//
+//                            val item = Item(
+//                                id = itemJson.getString("id"),
+//                                name = itemJson.getString("name"),
+//                                price = itemJson.getDouble("price"),
+//                                stockQuantity = itemJson.getInt("stock_quantity"),
+//                                description = itemJson.getString("description"),
+//                                shopid = itemJson.getString("shopid")
+//                            )
+//                            val quantity = itemObj.getInt("quantity")
+//                            itemQuantities.add(ItemQuantity(item, quantity))
+//                        }
+//
+//                        val order = Order(
+//                            orderUuid = orderUuid,
+//                            customerName = customer,
+//                            items = itemQuantities,
+//                            status = status,
+//                            createdAt = createdAt,
+//                            shopName = shopName
+//                        )
+//
+//                        allOrdersList.add(order)
+//                    }
+//
+//                    spinnerFilter.setSelection(0) // Default to "ALL ORDERS"
+//                }
+//            },
+//            { error ->
+//                Log.e("OrdersFetchError", "Volley error: $error")
+//                Toast.makeText(this, "Failed to fetch orders", Toast.LENGTH_SHORT).show()
+//            }
+//        ) {
+//            override fun getHeaders(): MutableMap<String, String> {
+//                val headers = HashMap<String, String>()
+//                headers["Authorization"] = "Bearer $token"  // ✅ add token
+//                headers["Content-Type"] = "application/json"
+//                return headers
+//            }
+//        }
+//
+//        Volley.newRequestQueue(this).add(request)
+//    }
+
+
+
     private fun fetchOrders() {
-        val customerName = SessionManager.getUsername(this) ?: ""
-        val url = "https://grocery-shopping-app-yyqx.onrender.com/api/orders/customer/$customerName"
+        val customerId = SessionManager.getCustomerId(this)
+        if (customerId.isNullOrEmpty()) {
+            Toast.makeText(this, "Invalid session. Please login again.", Toast.LENGTH_SHORT).show()
+            return
+        }
 
-        val request = JsonArrayRequest(
-            Request.Method.GET, url, null,
-            { response: JSONArray ->
-                if (response.length() == 0) {
-                    emptyTextView.visibility = View.VISIBLE
-                    ordersRecyclerView.visibility = View.GONE
-                } else {
+        val api = RetrofitClient.getInstance(this).create(ApiService::class.java)
+        val call = api.getCustomerOrders(customerId)
+        call.enqueue(object : retrofit2.Callback<List<Order>> {
+            override fun onResponse(
+                call: retrofit2.Call<List<Order>>,
+                response: retrofit2.Response<List<Order>>
+            ) {
+                if (response.isSuccessful) {
+                    val orders = response.body() ?: emptyList()
                     allOrdersList.clear()
-                    filteredOrdersList.clear()
-
-                    for (i in 0 until response.length()) {
-                        val orderObj = response.getJSONObject(i)
-                        val orderUuid = orderObj.getString("order_uuid")
-                        val customer = orderObj.getString("customer")
-                        val status = orderObj.getString("status")
-                        val createdAt = orderObj.optString("created_at", "Unknown")
-                        val shopName = orderObj.optString("shop_name", "Unknown Shop")
-
-                        val itemsArray = orderObj.getJSONArray("items")
-                        val itemQuantities = mutableListOf<ItemQuantity>()
-                        for (j in 0 until itemsArray.length()) {
-                            val itemObj = itemsArray.getJSONObject(j)
-                            val itemJson = itemObj.getJSONObject("item")
-
-                            val item = Item(
-                                id = itemJson.getString("id"),
-                                name = itemJson.getString("name"),
-                                price = itemJson.getDouble("price"),
-                                stockQuantity = itemJson.getInt("stock_quantity"),
-                                description = itemJson.getString("description"),
-                                shopid = itemJson.getString("shopid")
-                            )
-                            val quantity = itemObj.getInt("quantity")
-                            itemQuantities.add(ItemQuantity(item, quantity))
-                        }
-
-                        val order = Order(
-                            orderUuid = orderUuid,
-                            customerName = customer,
-                            items = itemQuantities,
-                            status = status,
-                            createdAt = createdAt,
-                            shopName = shopName
-                        )
-
-                        allOrdersList.add(order)
-                    }
-
-                    spinnerFilter.setSelection(0) // Default to "ALL ORDERS"
+                    allOrdersList.addAll(orders)
+                    spinnerFilter.setSelection(0) // default to "All"
+                } else {
+                    Toast.makeText(this@CustomerOrdersActivity, "Failed to load orders", Toast.LENGTH_SHORT).show()
+                    Log.e("CustomerOrders", "Error: ${response.errorBody()?.string()}")
                 }
-            },
-            { error ->
-                Log.e("OrdersFetchError", "Volley error: $error")
-                Toast.makeText(this, "Failed to fetch orders", Toast.LENGTH_SHORT).show()
             }
-        )
 
-        Volley.newRequestQueue(this).add(request)
+            override fun onFailure(call: retrofit2.Call<List<Order>>, t: Throwable) {
+                Toast.makeText(this@CustomerOrdersActivity, "Error: ${t.message}", Toast.LENGTH_SHORT).show()
+                Log.e("CustomerOrders", "Network error", t)
+            }
+        })
     }
+
 
     private fun filterOrders(status: String) {
         filteredOrdersList.clear()

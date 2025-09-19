@@ -1,8 +1,10 @@
 package com.example.groceryshoppingapp.adapters
 
+import android.util.Log
 import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
+import android.widget.Button
 import android.widget.TextView
 import androidx.recyclerview.widget.RecyclerView
 import com.example.groceryshoppingapp.R
@@ -21,12 +23,15 @@ class ItemAdapter(
     inner class ItemViewHolder(itemView: View) : RecyclerView.ViewHolder(itemView) {
         private val itemName: TextView = itemView.findViewById(R.id.itemName)
         private val itemPrice: TextView = itemView.findViewById(R.id.itemPrice)
+        private val addButton: Button = itemView.findViewById(R.id.addButton)
 
         fun bind(item: Item) {
             itemName.text = item.name
             itemPrice.text = "₹%.2f".format(item.price)
 
-            itemView.setOnClickListener {
+            // Add button click → add to cart
+            addButton.setOnClickListener {
+                Log.d("ItemAdapter", "Add button clicked → ${item.name} (${item.id})")
                 onItemClick(item)
             }
         }

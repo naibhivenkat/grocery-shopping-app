@@ -2,21 +2,26 @@ package com.example.groceryshoppingapp
 
 import android.content.Intent
 import android.os.Bundle
-import android.view.View
 import android.widget.AdapterView
 import android.widget.Button
 import android.widget.ListView
 import android.widget.Toast
 import androidx.appcompat.app.AppCompatActivity
+import androidx.appcompat.app.AlertDialog
 import com.example.groceryshoppingapp.adapters.ShopAdapter
 import com.example.groceryshoppingapp.models.Shop
+import com.example.groceryshoppingapp.network.ApiService
+import com.example.groceryshoppingapp.network.RetrofitClient
 import com.example.groceryshoppingapp.util.CartManager
 import com.example.groceryshoppingapp.utils.SessionManager
+import retrofit2.Call
+import retrofit2.Callback
+import retrofit2.Response
 
 class ShopSelectionActivity : AppCompatActivity() {
 
     private lateinit var shopListView: ListView
-    private lateinit var shops: List<Shop>
+    private var shops: List<Shop> = emptyList()
     private var customerId: String? = null
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -32,29 +37,8 @@ class ShopSelectionActivity : AppCompatActivity() {
             return
         }
 
-        // Sample shops (you can later load from server/db)
-        shops = SampleData.getShops()
-        val adapter = ShopAdapter(this, shops)
-        shopListView.adapter = adapter
-
-        shopListView.onItemClickListener = AdapterView.OnItemClickListener { _, _, position, _ ->
-            val selectedShop = shops[position]
-
-            val dialog = androidx.appcompat.app.AlertDialog.Builder(this)
-                .setTitle("Confirm Shop")
-                .setMessage("Do you want to continue with '${selectedShop.name}'?")
-                .setPositiveButton("OK") { _, _ ->
-                    val intent = Intent(this, ShopItemsActivity::class.java).apply {
-                        putExtra("SHOP_ID", selectedShop.id)
-                        putExtra("SHOP_NAME", selectedShop.name)
-                        putExtra("customer_id", customerId)
-                    }
-                    startActivity(intent)
-                }
-                .setNegativeButton("Cancel", null)
-                .create()
-            dialog.show()
-        }
+        // 🔑 Fetch shops from backend API
+        fetchShopsFromServer()
 
         // ✅ Buttons
         val btnHome: Button = findViewById(R.id.btn_home)
@@ -86,7 +70,7 @@ class ShopSelectionActivity : AppCompatActivity() {
             }.toTypedArray()
 
             // Show a dialog to pick one shop cart
-            val dialog = androidx.appcompat.app.AlertDialog.Builder(this)
+            val dialog = AlertDialog.Builder(this)
                 .setTitle("Select Cart (Shop)")
                 .setItems(shopNames) { _, index ->
                     val selectedShopId = shopIdList[index]
@@ -103,5 +87,68 @@ class ShopSelectionActivity : AppCompatActivity() {
                 .create()
             dialog.show()
         }
+    }
+
+    private fun fetchShopsFromServer() {
+        val apiService = RetrofitClient.getInstance(this).create(ApiService::class.java)
+
+        apiService.getAllShops().enqueue(object : Callback<List<Shop>> {
+            override fun onResponse(call: Call<List<Shop>>, response: Response<List<Shop>>) {
+                if (response.isSuccessful && response.body() != null) {
+                    shops = response.body()!!
+
+                    val adapter = ShopAdapter(this@ShopSelectionActivity, shops)
+                    shopListView.adapter = adapter
+
+                    // Handle shop selection
+                    shopListView.onItemClickListener =
+                        AdapterView.OnItemClickListener { _, _, position, _ ->
+                            val selectedShop = shops[position]
+
+                            shopListView.onItemClickListener =
+                                AdapterView.OnItemClickListener { _, _, position, _ ->
+                                    val selectedShop = shops[position]
+
+                                    val dialog = AlertDialog.Builder(this@ShopSelectionActivity)
+                                        .setTitle("Confirm Shop")
+                                        .setMessage("Do you want to continue with '${selectedShop.name}'?")
+                                        .setPositiveButton("OK") { _, _ ->
+
+                                            // ✅ Save selected shop in session
+                                            SessionManager.setShopId(
+                                                this@ShopSelectionActivity,
+                                                selectedShop.id
+                                            )
+                                            SessionManager.setShopInfo(
+                                                this@ShopSelectionActivity,
+                                                selectedShop.id,
+                                                selectedShop.name
+                                            )
+
+                                            val intent = Intent(
+                                                this@ShopSelectionActivity,
+                                                ShopItemsActivity::class.java
+                                            ).apply {
+                                                putExtra("SHOP_ID", selectedShop.id)
+                                                putExtra("SHOP_NAME", selectedShop.name)
+                                                putExtra("customer_id", customerId)
+                                            }
+                                            startActivity(intent)
+                                        }
+                                        .setNegativeButton("Cancel", null)
+                                        .create()
+                                    dialog.show()
+
+                                }
+                        }}
+                else {
+                    Toast.makeText(this@ShopSelectionActivity, "Failed to load shops", Toast.LENGTH_SHORT).show()
+                }
+            }
+
+            override fun onFailure(call: Call<List<Shop>>, t: Throwable) {
+                Toast.makeText(this@ShopSelectionActivity, "Error: ${t.message}", Toast.LENGTH_SHORT).show()
+            }
+        })
     }
 }

@@ -33,3 +33,15 @@ data class ItemQuantity(
     val quantity: Int
 ) : Parcelable
 
+
+
+data class OrderItemRequest(
+    val item_id: String,
+    val quantity: Int
+)
+
+data class CreateOrderRequest(
+    val shopId: String,
+    val payment_method: String,
+    val items: List<OrderItemRequest>
+)

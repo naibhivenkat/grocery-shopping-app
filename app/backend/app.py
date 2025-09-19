@@ -473,7 +473,7 @@ def create_order():
     order_dict = {
         "shopId": data["shopId"],
         "customer": {
-            "id": user.get("customerId"),
+            "id": user.get("id"),   # ✅ this will now save correctly
             "username": user.get("username"),
             "fullName": user.get("fullName"),
             "email": user.get("email"),
@@ -484,6 +484,7 @@ def create_order():
         "status": "Pending",
         "created_at": datetime.datetime.utcnow().isoformat()
     }
+
 
     new_order = firebase_db.append_order(order_dict)
     return jsonify({"success": True, "order_id": new_order["order_uuid"]})

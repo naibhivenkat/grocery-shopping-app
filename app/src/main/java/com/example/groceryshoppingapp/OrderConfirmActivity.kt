@@ -31,7 +31,7 @@ class OrderConfirmActivity : AppCompatActivity() {
 
         // Load session data
         customerId = SessionManager.getCustomerId(this)
-        shopId = SessionManager.getShopId(this)
+        shopId = intent.getStringExtra("SHOP_ID") ?: SessionManager.getShopId(this)
 
         if (customerId.isNullOrEmpty() || shopId.isNullOrEmpty()) {
             Toast.makeText(this, "Session expired. Please login again.", Toast.LENGTH_SHORT).show()
