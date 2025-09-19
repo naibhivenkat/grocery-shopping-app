@@ -118,7 +118,8 @@ def login():
     }
 
     # ✅ Generate JWT token
-    token = generate_token(user)
+    # token = generate_token(user)
+    token = generate_token(response_user)
 
     return jsonify({
         "success": True,
