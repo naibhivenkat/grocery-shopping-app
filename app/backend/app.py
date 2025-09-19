@@ -33,14 +33,17 @@ forgot_password_otp_store = {}  # email -> {otp, expiry, attempts}
 
 def generate_token(user):
     payload = {
-        "id": user.get("id") or user.get("customerId"),  # ✅ include id
+    #    "id": user.get("id") or   # ✅ include id
+        "id": user.get("customerId"),
         "username": user["username"],
         "role": user["role"],
         "exp": datetime.datetime.utcnow() + datetime.timedelta(days=7)
     }
     token = jwt.encode(payload, SECRET_KEY, algorithm="HS256")
-    print("SECRET_KEY in generate_token:", SECRET_KEY)
+    print("id ", user.get("id"))
+    print(f"cust id { user.get("customerId")}")
     print(f"Payload in generate token : {payload}")
+
 
     # ensure it's str, not bytes
     if isinstance(token, bytes):
