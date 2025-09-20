@@ -459,7 +459,6 @@ def create_order():
 
     # Compute total from items
     items = data.get("items", [])
-    # Each item: {item_id, quantity}
     total = 0
     detailed_items = []
     for entry in items:
@@ -470,18 +469,32 @@ def create_order():
             item = item_doc.to_dict()
             item_price = float(item.get("price", 0))
             total += item_price * quantity
-            detailed_items.append(
-                {"item_id": item_id, "name": item.get("name", ""), "price": item_price,
-                 "quantity": quantity})
+            detailed_items.append({
+                "item_id": item_id,
+                "name": item.get("name", ""),
+                "price": item_price,
+                "quantity": quantity
+            })
 
     user = getattr(g, "current_user", None)
     print("DEBUG current_user:", user)
 
+    # 🔎 Resolve the Firestore docId for the shop
+    input_shop_id = data["shopId"]
+    shop_query = firebase_db.db.collection("shops").where("id", "==", input_shop_id).stream()
+
+    shop_doc_id = None
+    for doc in shop_query:
+        shop_doc_id = doc.id   # Firestore document id
+        break
+
+    if not shop_doc_id:
+        return jsonify({"success": False, "message": "Invalid shopId"}), 400
 
     order_dict = {
-        "shopId": data["shopId"],
+        "shopId": shop_doc_id,   # ✅ always use Firestore doc id
         "customer": {
-            "id": user.get("id"),   # <-- use "id" not "customerId"
+            "id": user.get("id"),
             "username": user.get("username"),
             "fullName": user.get("fullName"),
             "email": user.get("email"),
@@ -493,7 +506,9 @@ def create_order():
         "created_at": datetime.datetime.utcnow().isoformat()
     }
 
-    print(f"order_dict : {user.get("id")}")
+    print(f"order_dict : {order_dict}")
+    print(f"shop id -- {data["shopId"]}")
+    print(f"shop doc id -- {shop_doc_id}")
     new_order = firebase_db.append_order(order_dict)
     return jsonify({"success": True, "order_id": new_order["order_uuid"]})
 
@@ -584,28 +599,6 @@ def check_update():
         logging.exception("Error checking update")
         return jsonify({"error": str(e)}), 500
 
-
-# ---------------- Helper Function ----------------
-# def send_email_otp(email, otp):
-#     print(f"SENDINBLUE_API_KEY {SENDINBLUE_API_KEY}")
-#     print(f"FROM_EMAIL : {FROM_EMAIL}")
-#     url = "https://api.sendinblue.com/v3/smtp/email"
-#     headers = {
-#         "api-key": SENDINBLUE_API_KEY,
-#         "Content-Type": "application/json"
-#     }
-#     data = {
-#         "sender": {"name": "Grocery App", "email": FROM_EMAIL},
-#         "to": [{"email": email}],
-#         "subject": "Your OTP for Grocery App",
-#         "htmlContent": f"<h3>Your OTP is: {otp}</h3><p>Valid for 2 minutes</p>"
-#     }
-#     response = requests.post(url, headers=headers, json=data)
-#     print(response.status_code, response.text)
-#     return response.status_code == 201 or response.status_code == 200
-
-
-# ---------------- 1️⃣ Send OTP ----------------
 
 def send_email_otp(email, otp):
     try:

@@ -11,7 +11,7 @@ data class Order(
     val orderUuid: String,
 
     @SerializedName("customer")
-    val customerName: String,
+    val customer: Customer,  // ✅ Use Customer object, not String
 
     @SerializedName("items")
     val items: List<ItemQuantity>,
@@ -19,7 +19,6 @@ data class Order(
     @SerializedName("status")
     val status: String,
 
-    // Optional fields — set as nullable or default
     @SerializedName("created_at")
     val createdAt: String? = null,
 
@@ -27,11 +26,17 @@ data class Order(
     val shopName: String? = null
 ) : Parcelable
 
+
 @Parcelize
 data class ItemQuantity(
-    val item: Item,
-    val quantity: Int
+    @SerializedName("item_id")
+    val itemId: String,
+
+    val name: String,
+    val price: Double,
+    val quantity: Double
 ) : Parcelable
+
 
 
 
@@ -45,3 +50,13 @@ data class CreateOrderRequest(
     val payment_method: String,
     val items: List<OrderItemRequest>
 )
+
+
+@Parcelize
+data class Customer(
+    val id: String,
+    val username: String,
+    val fullName: String? = null,
+    val email: String? = null,
+    val phone: String? = null
+) : Parcelable

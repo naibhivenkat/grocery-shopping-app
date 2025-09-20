@@ -24,8 +24,8 @@ class ShopOrderAdapter(
         val order = orders[position]
         val b = holder.binding
 
-        b.customerName.text = "Customer: ${order.customerName}"
-        b.orderDetails.text = "Items: ${order.items.joinToString { "${it.item.name} x${it.quantity}" }}"
+        b.customerName.text = "Customer: ${order.customer}"
+        b.orderDetails.text = "Items: ${order.items.joinToString { "${it.name} x${it.quantity}" }}"
         b.currentStatus.text = "Status: ${order.status}"
 
         b.statusSpinner.setSelection(0)

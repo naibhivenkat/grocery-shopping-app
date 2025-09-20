@@ -28,7 +28,7 @@ class OrdersAdapter(
     override fun onBindViewHolder(holder: OrderViewHolder, position: Int) {
         val order = orders[position]
         holder.orderId.text = "Order #${order.orderUuid}"
-        holder.orderDetails.text = order.items.joinToString { "${it.quantity}×${it.item.name}" }
+        holder.orderDetails.text = order.items.joinToString { "${it.quantity}×${it.name}" }
 
         holder.statusButton.text = order.status
         holder.statusButton.setOnClickListener {

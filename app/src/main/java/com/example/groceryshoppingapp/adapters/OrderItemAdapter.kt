@@ -26,9 +26,9 @@ class OrderItemAdapter(
 
     override fun onBindViewHolder(holder: ItemViewHolder, position: Int) {
         val itemQty = items[position]
-        holder.tvItemName.text = itemQty.item.name
+        holder.tvItemName.text = itemQty.name
         holder.tvItemQty.text = "Qty: ${itemQty.quantity}"
-        holder.tvItemPrice.text = "₹ %.2f".format(itemQty.item.price)
+        holder.tvItemPrice.text = "₹ %.2f".format(itemQty.price)
     }
 
     override fun getItemCount(): Int = items.size
