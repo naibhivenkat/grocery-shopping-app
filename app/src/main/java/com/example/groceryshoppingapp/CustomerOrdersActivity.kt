@@ -8,16 +8,10 @@ import android.widget.*
 import androidx.appcompat.app.AppCompatActivity
 import androidx.recyclerview.widget.LinearLayoutManager
 import androidx.recyclerview.widget.RecyclerView
-import com.android.volley.Request
-import com.android.volley.toolbox.JsonArrayRequest
-import com.android.volley.toolbox.Volley
-import com.example.groceryshoppingapp.models.Item
-import com.example.groceryshoppingapp.models.ItemQuantity
 import com.example.groceryshoppingapp.models.Order
 import com.example.groceryshoppingapp.network.ApiService
 import com.example.groceryshoppingapp.network.RetrofitClient
 import com.example.groceryshoppingapp.utils.SessionManager
-import org.json.JSONArray
 
 class CustomerOrdersActivity : AppCompatActivity() {
 
@@ -77,8 +71,6 @@ class CustomerOrdersActivity : AppCompatActivity() {
         }
     }
 
-
-
     private fun fetchOrders() {
         val customerId = SessionManager.getCustomerId(this)
         if (customerId.isNullOrEmpty()) {
@@ -87,8 +79,7 @@ class CustomerOrdersActivity : AppCompatActivity() {
         }
 
         val api = RetrofitClient.getInstance(this).create(ApiService::class.java)
-        val call = api.getCustomerOrders(customerId)
-        call.enqueue(object : retrofit2.Callback<List<Order>> {
+        api.getCustomerOrders(customerId).enqueue(object : retrofit2.Callback<List<Order>> {
             override fun onResponse(
                 call: retrofit2.Call<List<Order>>,
                 response: retrofit2.Response<List<Order>>
@@ -97,7 +88,8 @@ class CustomerOrdersActivity : AppCompatActivity() {
                     val orders = response.body() ?: emptyList()
                     allOrdersList.clear()
                     allOrdersList.addAll(orders)
-                    spinnerFilter.setSelection(0) // default to "All"
+                    filterOrders("all")  // 🔹 Important: populate filtered list
+                    spinnerFilter.setSelection(0)
                 } else {
                     Toast.makeText(this@CustomerOrdersActivity, "Failed to load orders", Toast.LENGTH_SHORT).show()
                     Log.e("CustomerOrders", "Error: ${response.errorBody()?.string()}")
@@ -111,19 +103,19 @@ class CustomerOrdersActivity : AppCompatActivity() {
         })
     }
 
-
     private fun filterOrders(status: String) {
         filteredOrdersList.clear()
         filteredOrdersList.addAll(
             when (status) {
                 "all" -> allOrdersList
-                "pending" -> allOrdersList.filter { it.status.equals("pending", true) }
-                "packed" -> allOrdersList.filter { it.status.equals("packed", true) }
-                "completed" -> allOrdersList.filter { it.status.equals("delivered", true) }
-                "cancelled" -> allOrdersList.filter { it.status.equals("cancelled", true) }
+                "pending" -> allOrdersList.filter { it.status.equals("Pending", true) }
+                "packed" -> allOrdersList.filter { it.status.equals("Packed", true) }
+                "completed" -> allOrdersList.filter { it.status.equals("Delivered", true) }
+                "cancelled" -> allOrdersList.filter { it.status.equals("Cancelled", true) }
                 else -> allOrdersList
             }
         )
+
         ordersAdapter.notifyDataSetChanged()
 
         emptyTextView.visibility = if (filteredOrdersList.isEmpty()) View.VISIBLE else View.GONE

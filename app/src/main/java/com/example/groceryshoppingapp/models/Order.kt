@@ -1,4 +1,3 @@
-
 package com.example.groceryshoppingapp.models
 
 import android.os.Parcelable
@@ -11,7 +10,7 @@ data class Order(
     val orderUuid: String,
 
     @SerializedName("customer")
-    val customer: Customer,  // ✅ Use Customer object, not String
+    val customer: Customer,  // object, not String
 
     @SerializedName("items")
     val items: List<ItemQuantity>,
@@ -22,8 +21,14 @@ data class Order(
     @SerializedName("created_at")
     val createdAt: String? = null,
 
+    @SerializedName("shopId")
+    val shopId: String? = null,   // ✅ fixed key
+
     @SerializedName("shop_name")
-    val shopName: String? = null
+    val shopName: String? = null,
+
+    @SerializedName("total")
+    val total: Double? = null     // ✅ added total
 ) : Parcelable
 
 
@@ -37,9 +42,6 @@ data class ItemQuantity(
     val quantity: Double
 ) : Parcelable
 
-
-
-
 data class OrderItemRequest(
     val item_id: String,
     val quantity: Int
@@ -50,7 +52,6 @@ data class CreateOrderRequest(
     val payment_method: String,
     val items: List<OrderItemRequest>
 )
-
 
 @Parcelize
 data class Customer(

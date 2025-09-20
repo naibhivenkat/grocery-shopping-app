@@ -77,9 +77,9 @@ interface ApiService {
     @POST("login")
     fun login(@Body request: LoginRequest): Call<LoginResponse>
 
-    @GET("api/orders/customer/{customer_id}")
+    @GET("api/orders/customer/{customerId}")
     fun getCustomerOrders(
-        @Path("customer_id") customerId: String
+        @Path("customerId") customerId: String
     ): Call<List<Order>>
 
 
