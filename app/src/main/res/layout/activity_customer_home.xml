@@ -49,6 +49,9 @@
         android:layout_gravity="end"
         android:background="@android:color/white"
         android:fitsSystemWindows="true"
-        app:menu="@drawable/drawer_menu" />
+        app:menu="@drawable/drawer_menu"
+        app:itemTextColor="@color/black"
+        app:itemIconTint="@color/black" />
+
 
 </androidx.drawerlayout.widget.DrawerLayout>

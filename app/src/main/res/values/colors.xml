@@ -1,4 +1,4 @@
-<resources>
+<resources xmlns:tools="http://schemas.android.com/tools">
     <color name="purple_200">#BB86FC</color>
     <color name="purple_500">#6200EE</color>
     <color name="purple_700">#3700B3</color>
@@ -14,5 +14,4 @@
 
     <!-- Missing purple shades -->
     <color name="purple_400">#7E57C2</color>
-
 </resources>

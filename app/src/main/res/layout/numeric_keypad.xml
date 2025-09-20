@@ -1,30 +1,124 @@
 <?xml version="1.0" encoding="utf-8"?>
 <LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
-    android:id="@+id/customKeypad"
+    android:id="@+id/numericKeypadLayout"
     android:layout_width="match_parent"
     android:layout_height="wrap_content"
     android:orientation="vertical"
-    android:background="@android:color/darker_gray"
-    android:padding="8dp">
+    android:background="?attr/colorSurface"
+    android:padding="12dp"
+    android:gravity="center">
 
+    <!-- Number Buttons Grid -->
     <GridLayout
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:columnCount="3"
-        android:rowCount="4">
+        android:rowCount="4"
+        android:layout_marginBottom="12dp">
 
-        <!-- Buttons -->
-        <Button android:id="@+id/btn1" android:text="1" style="@style/KeyButton"/>
-        <Button android:id="@+id/btn2" android:text="2" style="@style/KeyButton"/>
-        <Button android:id="@+id/btn3" android:text="3" style="@style/KeyButton"/>
-        <Button android:id="@+id/btn4" android:text="4" style="@style/KeyButton"/>
-        <Button android:id="@+id/btn5" android:text="5" style="@style/KeyButton"/>
-        <Button android:id="@+id/btn6" android:text="6" style="@style/KeyButton"/>
-        <Button android:id="@+id/btn7" android:text="7" style="@style/KeyButton"/>
-        <Button android:id="@+id/btn8" android:text="8" style="@style/KeyButton"/>
-        <Button android:id="@+id/btn9" android:text="9" style="@style/KeyButton"/>
-        <Button android:id="@+id/btnClear" android:text="⌫" style="@style/KeyButton"/>
-        <Button android:id="@+id/btn0" android:text="0" style="@style/KeyButton"/>
-        <Button android:id="@+id/btnDone" android:text="@string/ui_text" style="@style/KeyButton"/>
+        <!-- Row 1 -->
+        <Button
+            android:id="@+id/btn1"
+            style="@style/KeypadButton"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_columnWeight="1"
+            android:layout_margin="4dp"
+            android:text="1"/>
+        <Button
+            android:id="@+id/btn2"
+            style="@style/KeypadButton"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_columnWeight="1"
+            android:layout_margin="4dp"
+            android:text="2"/>
+        <Button
+            android:id="@+id/btn3"
+            style="@style/KeypadButton"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_columnWeight="1"
+            android:layout_margin="4dp"
+            android:text="3"/>
+
+        <!-- Row 2 -->
+        <Button
+            android:id="@+id/btn4"
+            style="@style/KeypadButton"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_columnWeight="1"
+            android:layout_margin="4dp"
+            android:text="4"/>
+        <Button
+            android:id="@+id/btn5"
+            style="@style/KeypadButton"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_columnWeight="1"
+            android:layout_margin="4dp"
+            android:text="5"/>
+        <Button
+            android:id="@+id/btn6"
+            style="@style/KeypadButton"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_columnWeight="1"
+            android:layout_margin="4dp"
+            android:text="6"/>
+
+        <!-- Row 3 -->
+        <Button
+            android:id="@+id/btn7"
+            style="@style/KeypadButton"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_columnWeight="1"
+            android:layout_margin="4dp"
+            android:text="7"/>
+        <Button
+            android:id="@+id/btn8"
+            style="@style/KeypadButton"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_columnWeight="1"
+            android:layout_margin="4dp"
+            android:text="8"/>
+        <Button
+            android:id="@+id/btn9"
+            style="@style/KeypadButton"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_columnWeight="1"
+            android:layout_margin="4dp"
+            android:text="9"/>
+
+        <!-- Row 4 -->
+        <Button
+            android:id="@+id/btnClear"
+            style="@style/KeypadButton"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_columnWeight="1"
+            android:layout_margin="4dp"
+            android:text="⌫"/>
+        <Button
+            android:id="@+id/btn0"
+            style="@style/KeypadButton"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_columnWeight="1"
+            android:layout_margin="4dp"
+            android:text="0"/>
+        <Button
+            android:id="@+id/btnDone"
+            style="@style/KeypadButton"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_columnWeight="1"
+            android:layout_margin="4dp"
+            android:text="✔"/>
+
     </GridLayout>
 </LinearLayout>

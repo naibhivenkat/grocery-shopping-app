@@ -56,10 +56,11 @@
         android:layout_height="match_parent"
         android:layout_gravity="end"
         android:fitsSystemWindows="true"
-        android:background="?attr/colorSurface"
+        android:background="@android:color/white"
         app:menu="@drawable/shopowner_drawer_menu"
-        app:itemTextColor="?attr/colorOnSurface"
-        app:itemIconTint="?attr/colorOnSurface" />
+        app:itemTextColor="@color/black"
+        app:itemIconTint="@color/black" />
+
 
 
 </androidx.drawerlayout.widget.DrawerLayout>

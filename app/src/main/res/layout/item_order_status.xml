@@ -4,7 +4,7 @@
     android:layout_height="wrap_content"
     android:orientation="vertical"
     android:padding="12dp"
-    android:background="@android:color/white"
+    android:background="?attr/colorSurface"
     android:elevation="2dp"
     android:layout_marginBottom="8dp">
 
@@ -15,6 +15,7 @@
         android:text="@string/ui_order_id"
         android:textStyle="bold"
         android:textSize="16sp"
+        android:textColor="?attr/colorOnSurface"
         android:layout_marginBottom="4dp" />
 
     <TextView
@@ -23,6 +24,7 @@
         android:layout_height="wrap_content"
         android:text="@string/ui_items"
         android:textSize="14sp"
+        android:textColor="?attr/colorOnSurface"
         android:layout_marginBottom="8dp" />
 
     <Button
@@ -30,6 +32,6 @@
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
         android:text="@string/ui_delivered"
-        android:backgroundTint="@color/purple_700"
-        android:textColor="@android:color/white" />
+        android:backgroundTint="?attr/colorPrimary"
+        android:textColor="?attr/colorOnPrimary" />
 </LinearLayout>

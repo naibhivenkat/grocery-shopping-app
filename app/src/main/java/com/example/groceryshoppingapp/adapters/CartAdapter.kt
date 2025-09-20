@@ -5,7 +5,6 @@ import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
 import android.widget.*
-import androidx.appcompat.app.AlertDialog
 import androidx.recyclerview.widget.RecyclerView
 import com.example.groceryshoppingapp.R
 import com.example.groceryshoppingapp.models.CartItem
@@ -37,12 +36,19 @@ class CartAdapter(
         holder.priceTextView.text = "₹%.2f".format(item.item.price)
         holder.quantityEditText.setText(item.quantity.toString())
 
+        // ✅ Theme-aware text colors
+        holder.nameTextView.setTextColor(context.getColorFromAttr(com.google.android.material.R.attr.colorOnBackground))
+        holder.priceTextView.setTextColor(context.getColorFromAttr(com.google.android.material.R.attr.colorOnBackground))
+        holder.quantityEditText.setTextColor(context.getColorFromAttr(com.google.android.material.R.attr.colorOnBackground))
+
+        // Load image
         if (!item.item.imageUrl.isNullOrEmpty()) {
             Picasso.get().load(item.item.imageUrl).placeholder(R.drawable.placeholder).into(holder.itemImageView)
         } else {
             holder.itemImageView.setImageResource(R.drawable.placeholder)
         }
 
+        // Increment/Decrement buttons
         holder.plusButton.setOnClickListener {
             item.quantity++
             holder.quantityEditText.setText(item.quantity.toString())
@@ -63,7 +69,7 @@ class CartAdapter(
             }
         }
 
-        // ✅ Custom Keypad trigger on click
+        // Custom numeric keypad
         holder.quantityEditText.setOnClickListener {
             showNumericKeypad(holder.quantityEditText, item, position)
         }
@@ -71,7 +77,6 @@ class CartAdapter(
 
     override fun getItemCount(): Int = cartItems.size
 
-    // ✅ Custom Keypad Function
     private fun showNumericKeypad(editText: EditText, cartItem: CartItem, position: Int) {
         val inflater = LayoutInflater.from(editText.context)
         val keypadView = inflater.inflate(R.layout.numeric_keypad, null)
@@ -104,6 +109,8 @@ class CartAdapter(
         )
 
         numberButtons.forEach { btn ->
+            // ✅ Theme-aware text
+            btn.setTextColor(editText.context.getColorFromAttr(com.google.android.material.R.attr.colorOnBackground))
             btn.setOnClickListener {
                 input += btn.text
                 editText.setText(input)
@@ -123,7 +130,7 @@ class CartAdapter(
             val newQty = input.toIntOrNull()
             if (newQty != null && newQty > 0) {
                 cartItem.quantity = newQty
-                notifyItemChanged(position) // Or holder.adapterPosition
+                notifyItemChanged(position)
                 onQuantityChanged()
             } else {
                 Toast.makeText(context, "Invalid quantity", Toast.LENGTH_SHORT).show()
@@ -135,5 +142,12 @@ class CartAdapter(
             popupWindow.showAtLocation(editText, android.view.Gravity.BOTTOM, 0, 0)
         }
     }
+}
 
+// Extension function to get theme colors
+fun Context.getColorFromAttr(attr: Int): Int {
+    val typedArray = obtainStyledAttributes(intArrayOf(attr))
+    val color = typedArray.getColor(0, 0)
+    typedArray.recycle()
+    return color
 }

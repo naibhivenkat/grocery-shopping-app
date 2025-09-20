@@ -39,6 +39,8 @@
     <string name="ui__back">⬅ BACK</string>
     <string name="ui_shop_owner_dashboard">Shop Owner Dashboard</string>
     <string name="ui_view_orders">View Orders</string>
+    <string name="ui_your_orders" >Your Orders</string>
+
     <string name="ui_place_order_2">Place Order</string>
     <string name="ui_back">Back</string>
     <string name="ui_item_name_2">Item Name</string>
@@ -139,6 +141,14 @@
     <string name="login_failed">Login failed. Please try again</string>
 
     <string name="forgot_password">Forgot Password?</string>
+
+    <style name="KeypadButton" parent="Widget.MaterialComponents.Button.OutlinedButton">
+        <item name="android:backgroundTint">?attr/colorPrimary</item>
+        <item name="android:textColor">?attr/colorOnPrimary</item>
+        <item name="android:textSize">18sp</item>
+        <item name="android:textAllCaps">false</item>
+    </style>
+
 
 
 
