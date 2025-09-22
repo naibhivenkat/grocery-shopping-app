@@ -43,22 +43,6 @@ def append_user(user_dict):
 def get_all_shops():
     return [doc.to_dict() for doc in db.collection("shops").stream()]
 
-# def append_shop(shop_dict):
-#     shop_id = str(uuid.uuid4())
-#     shop_dict["id"] = shop_id
-#     db.collection("shops").document(shop_id).set(shop_dict)
-#     return shop_dict
-
-# def append_shop(shop_dict):
-#     # ✅ Let Firestore generate doc.id
-#     doc_ref = db.collection("shops").add(shop_dict)
-#     shop_id = doc_ref[1].id   # Firestore doc.id
-#     shop_dict["id"] = shop_id
-#
-#     # ✅ Update the document with its ID field
-#     db.collection("shops").document(shop_id).update({"id": shop_id})
-#
-#     return shop_dict
 
 
 # ---------------- ITEMS ----------------
@@ -180,3 +164,18 @@ def append_shop(shop_dict):
 
     shop_dict["id"] = shop_id
     return shop_dict
+
+def get_order_by_uuid(order_uuid: str):
+    """Fetch a single order document by its order_uuid."""
+    try:
+        doc_ref = db.collection("orders").document(order_uuid)
+        doc = doc_ref.get()
+        if doc.exists:
+            order = doc.to_dict()
+            order["order_uuid"] = doc.id  # ensure ID is attached
+            return order
+        return None
+    except Exception as e:
+        print(f"[ERROR] get_order_by_uuid failed: {e}")
+        return None
+
