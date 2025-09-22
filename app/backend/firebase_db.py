@@ -79,15 +79,25 @@ def get_orders_by_shop(shop_id):
     return [doc.to_dict() for doc in docs]
 
 
-def update_order_status(order_uuid, new_status):
-    ref = db.collection("orders").document(order_uuid)
-    doc = ref.get()
-    if doc.exists:
-        ref.update({
-            "status": new_status
-        })
+def update_order_status(order_uuid: str, new_status: str, extra_fields: dict = None):
+    """
+    Updates the order document with a new status and optional extra fields.
+    """
+    try:
+        ref = db.collection("orders").document(order_uuid)
+        doc = ref.get()
+        if not doc.exists:
+            return False
+
+        update_data = {"status": new_status}
+        if extra_fields and isinstance(extra_fields, dict):
+            update_data.update(extra_fields)
+
+        ref.update(update_data)
         return True
-    return False
+    except Exception as e:
+        print(f"[ERROR] update_order_status failed: {e}")
+        return False
 
 # ---------------- STORAGE ----------------
 
@@ -112,19 +122,6 @@ def get_shop_by_shopkeeper(shopkeeper_id):
     return None
 
 
-# def get_user_by_username(username):
-#     users = db.collection("users")
-#     for user in users:
-#         if user.get("username") == username:
-#             return user
-#     return None
-
-# def get_user_by_email(email):
-#     users = db.collection("users")
-#     for user in users:
-#         if user.get("email") == email:
-#             return user
-#     return None
 
 def get_user_by_username(username: str):
     try:

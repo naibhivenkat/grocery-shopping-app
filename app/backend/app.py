@@ -552,9 +552,12 @@ def create_order():
 
 @app.route("/api/verify_payment", methods=["POST"])
 def verify_payment():
-    data = request.json
-    print("Received verify_payment request:", request.json)
+    data = request.json or {}
+    print("Received verify_payment request:", data)
+
     order_uuid = data.get("order_id")
+    if not order_uuid:
+        return jsonify({"success": False, "message": "Missing order_id"}), 400
 
     # 1️⃣ Fetch order
     order_doc = firebase_db.get_order_by_uuid(order_uuid)
@@ -565,9 +568,7 @@ def verify_payment():
 
     # 2️⃣ If Cash → skip Razorpay verification
     if payment_method == "Cash":
-        firebase_db.update_order_status(order_uuid, {
-            "status": "Confirmed"  # or "Paid" if you want same flow
-        })
+        firebase_db.update_order_status(order_uuid, "Confirmed")
         return jsonify({"success": True, "message": "Cash order confirmed"})
 
     # 3️⃣ Otherwise verify Razorpay signature
@@ -589,13 +590,16 @@ def verify_payment():
     except razorpay.errors.SignatureVerificationError:
         return jsonify({"success": False, "message": "Payment verification failed"}), 400
 
-    # 4️⃣ Update order as paid
-    firebase_db.update_order_status(order_uuid, {
-        "transaction_id": razorpay_payment_id,
-        "status": "Paid"
-    })
+    # 4️⃣ Update order as paid + save transaction id
+    firebase_db.update_order_status(
+        order_uuid,
+        "Paid",
+        extra_fields={"transaction_id": razorpay_payment_id}
+    )
 
     return jsonify({"success": True, "message": "Payment verified and order updated"})
+
+
 
 
 
