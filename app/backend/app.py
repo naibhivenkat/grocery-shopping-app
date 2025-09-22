@@ -557,7 +557,7 @@ def verify_payment():
     order_uuid = data.get("order_id")
 
     # 1️⃣ Fetch order
-    order_doc = firebase_db.get_order_by_uuid(order_uuid)
+    order_doc = firebase_db.db.get_order_by_uuid(order_uuid)
     if not order_doc:
         return jsonify({"success": False, "message": "Order not found"}), 404
 
@@ -565,7 +565,7 @@ def verify_payment():
 
     # 2️⃣ If Cash → skip Razorpay verification
     if payment_method == "Cash":
-        firebase_db.update_order(order_uuid, {
+        firebase_db.db.update_order(order_uuid, {
             "status": "Confirmed"  # or "Paid" if you want same flow
         })
         return jsonify({"success": True, "message": "Cash order confirmed"})
