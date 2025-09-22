@@ -82,11 +82,13 @@ def get_orders_by_shop(shop_id):
 def update_order_status(order_uuid: str, new_status: str, extra_fields: dict = None):
     """
     Updates the order document with a new status and optional extra fields.
+    Logs everything for debugging.
     """
     try:
         ref = db.collection("orders").document(order_uuid)
         doc = ref.get()
         if not doc.exists:
+            print(f"❌ Order not found in Firestore: {order_uuid}")
             return False
 
         update_data = {"status": new_status}
@@ -94,10 +96,18 @@ def update_order_status(order_uuid: str, new_status: str, extra_fields: dict = N
             update_data.update(extra_fields)
 
         ref.update(update_data)
+
+        print(f"✅ Order updated in Firestore")
+        print(f"   order_uuid: {order_uuid}")
+        print(f"   new_status: {new_status}")
+        if extra_fields:
+            print(f"   extra_fields: {extra_fields}")
+
         return True
     except Exception as e:
-        print(f"[ERROR] update_order_status failed: {e}")
+        print(f"[ERROR] update_order_status failed for {order_uuid}: {e}")
         return False
+
 
 # ---------------- STORAGE ----------------
 

@@ -553,30 +553,40 @@ def create_order():
 @app.route("/api/verify_payment", methods=["POST"])
 def verify_payment():
     data = request.json or {}
-    print("Received verify_payment request:", data)
+    print("\n=== /api/verify_payment CALLED ===")
+    print("Raw request JSON:", data)
 
     order_uuid = data.get("order_id")
-    if not order_uuid:
-        return jsonify({"success": False, "message": "Missing order_id"}), 400
-
-    # 1️⃣ Fetch order
-    order_doc = firebase_db.get_order_by_uuid(order_uuid)
-    if not order_doc:
-        return jsonify({"success": False, "message": "Order not found"}), 404
-
-    payment_method = order_doc.get("payment_method", "Razorpay")
-
-    # 2️⃣ If Cash → skip Razorpay verification
-    if payment_method == "Cash":
-        firebase_db.update_order_status(order_uuid, "Confirmed")
-        return jsonify({"success": True, "message": "Cash order confirmed"})
-
-    # 3️⃣ Otherwise verify Razorpay signature
     razorpay_payment_id = data.get("razorpay_payment_id")
     razorpay_order_id = data.get("razorpay_order_id")
     razorpay_signature = data.get("razorpay_signature")
 
+    print(f"order_id (backend): {order_uuid}")
+    print(f"razorpay_payment_id: {razorpay_payment_id}")
+    print(f"razorpay_order_id: {razorpay_order_id}")
+    print(f"razorpay_signature: {razorpay_signature}")
+
+    if not order_uuid:
+        return jsonify({"success": False, "message": "Missing order_id"}), 400
+
+    # 1️⃣ Fetch order from Firestore
+    order_doc = firebase_db.get_order_by_uuid(order_uuid)
+    if not order_doc:
+        print("❌ Order not found in Firestore")
+        return jsonify({"success": False, "message": "Order not found"}), 404
+
+    payment_method = order_doc.get("payment_method", "Razorpay")
+    print(f"Payment method for order: {payment_method}")
+
+    # 2️⃣ Cash orders (skip Razorpay)
+    if payment_method == "Cash":
+        updated = firebase_db.update_order_status(order_uuid, "Confirmed")
+        print(f"Cash order update result: {updated}")
+        return jsonify({"success": True, "message": "Cash order confirmed"})
+
+    # 3️⃣ Razorpay verification
     if not razorpay_payment_id or not razorpay_order_id or not razorpay_signature:
+        print("❌ Missing Razorpay details in request")
         return jsonify({"success": False, "message": "Missing Razorpay payment details"}), 400
 
     params_dict = {
@@ -587,17 +597,21 @@ def verify_payment():
 
     try:
         razorpay_client.utility.verify_payment_signature(params_dict)
+        print("✅ Razorpay signature verified successfully")
     except razorpay.errors.SignatureVerificationError:
+        print("❌ Razorpay signature verification failed")
         return jsonify({"success": False, "message": "Payment verification failed"}), 400
 
-    # 4️⃣ Update order as paid + save transaction id
-    firebase_db.update_order_status(
+    # 4️⃣ Update Firestore order
+    updated = firebase_db.update_order_status(
         order_uuid,
         "Paid",
         extra_fields={"transaction_id": razorpay_payment_id}
     )
+    print(f"Firestore update result: {updated}")
 
     return jsonify({"success": True, "message": "Payment verified and order updated"})
+
 
 
 

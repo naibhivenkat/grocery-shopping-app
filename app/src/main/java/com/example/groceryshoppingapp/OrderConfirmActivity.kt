@@ -16,13 +16,14 @@ import com.example.groceryshoppingapp.network.RetrofitClient
 import com.example.groceryshoppingapp.util.CartManager
 import com.example.groceryshoppingapp.utils.SessionManager
 import com.razorpay.Checkout
-import com.razorpay.PaymentResultListener
+import com.razorpay.PaymentResultWithDataListener
+import com.razorpay.PaymentData
 import org.json.JSONObject
 import retrofit2.Call
 import retrofit2.Callback
 import retrofit2.Response
 
-class OrderConfirmActivity : AppCompatActivity(), PaymentResultListener {
+class OrderConfirmActivity : AppCompatActivity(), PaymentResultWithDataListener {
 
     private lateinit var binding: ActivityOrderConfirmBinding
     private lateinit var cartItems: List<CartItem>
@@ -32,12 +33,15 @@ class OrderConfirmActivity : AppCompatActivity(), PaymentResultListener {
     private var shopName: String = "Shop"
     private var selectedPaymentMethod: String = "UPI" // default option
 
+    // 🔹 Store order data for later verify
+    private var backendOrderId: String? = null
+    private var razorpayOrderId: String? = null
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         binding = ActivityOrderConfirmBinding.inflate(layoutInflater)
         setContentView(binding.root)
 
-        // Init Razorpay (only needed if UPI is used)
         Checkout.preload(applicationContext)
 
         customerId = SessionManager.getCustomerId(this)
@@ -63,7 +67,6 @@ class OrderConfirmActivity : AppCompatActivity(), PaymentResultListener {
         binding.textViewTotal.text = "Total: ₹%.2f".format(totalAmount)
         binding.textViewShopName.text = "Shop: $shopName"
 
-        // 🔹 Setup payment options spinner
         val paymentMethods = listOf("UPI", "Cash")
         val adapter = ArrayAdapter(this, android.R.layout.simple_spinner_item, paymentMethods)
         adapter.setDropDownViewResource(android.R.layout.simple_spinner_dropdown_item)
@@ -73,48 +76,19 @@ class OrderConfirmActivity : AppCompatActivity(), PaymentResultListener {
             override fun onItemSelected(parent: AdapterView<*>, view: View?, position: Int, id: Long) {
                 selectedPaymentMethod = paymentMethods[position]
             }
-
             override fun onNothingSelected(parent: AdapterView<*>) {}
         }
 
-        // 🔹 Place order button click
         binding.buttonPlaceOrder.setOnClickListener {
             if (selectedPaymentMethod == "UPI") {
-                startRazorpayCheckout()
-            } else if (selectedPaymentMethod == "Cash") {
-                placeOrder("Cash", "N/A") // no transaction id for cash
+                placeOrder("Razorpay", "") // first create order on backend
+            } else {
+                placeOrder("Cash", "N/A")
             }
         }
     }
 
-    private fun startRazorpayCheckout() {
-        val checkout = Checkout()
-        checkout.setKeyID("rzp_test_RKK3DuGSaxK9fR") // Replace with your key
-
-        val amountInPaise = (totalAmount * 100).toInt() // Razorpay needs amount in paise
-        val options = JSONObject()
-        options.put("name", shopName)
-        options.put("description", "Grocery Order")
-        options.put("currency", "INR")
-        options.put("amount", amountInPaise)
-        options.put("prefill.email", SessionManager.getEmail(this))
-        options.put("prefill.contact", SessionManager.getPhone(this))
-
-        checkout.open(this, options)
-    }
-
-    // 🔹 Razorpay payment success
-    override fun onPaymentSuccess(razorpayPaymentID: String) {
-        Toast.makeText(this, "Payment Successful", Toast.LENGTH_SHORT).show()
-        placeOrder("Razorpay", razorpayPaymentID)
-    }
-
-    // 🔹 Razorpay payment failed
-    override fun onPaymentError(code: Int, response: String?) {
-        Toast.makeText(this, "Payment Failed: $response", Toast.LENGTH_SHORT).show()
-    }
-
-    // 🔹 Place order on backend
+    // 🔹 Place order (backend call)
     private fun placeOrder(paymentMethod: String, transactionId: String) {
         val apiService = RetrofitClient.getInstance(this).create(ApiService::class.java)
 
@@ -134,18 +108,17 @@ class OrderConfirmActivity : AppCompatActivity(), PaymentResultListener {
 
         apiService.createOrder(orderData).enqueue(object : Callback<Map<String, Any>> {
             override fun onResponse(call: Call<Map<String, Any>>, response: Response<Map<String, Any>>) {
-                if (response.isSuccessful) {
+                if (response.isSuccessful && response.body() != null) {
+                    val body = response.body()!!
+                    backendOrderId = body["order_id"] as? String
+                    razorpayOrderId = body["razorpay_order_id"] as? String
+
                     if (paymentMethod == "Razorpay") {
-                        // 🔹 Call verify endpoint for Razorpay
-                        verifyPayment(transactionId)
+                        startRazorpayCheckout()
                     } else {
-                        // 🔹 Cash order directly confirmed
                         Toast.makeText(this@OrderConfirmActivity, "Cash Order Placed!", Toast.LENGTH_SHORT).show()
                         CartManager.clearCart(shopId!!)
-                        val intent = Intent(this@OrderConfirmActivity, ThankYouActivity::class.java)
-                        intent.flags = Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_NEW_TASK
-                        startActivity(intent)
-                        finish()
+                        goToThankYou()
                     }
                 } else {
                     Toast.makeText(this@OrderConfirmActivity, "Failed to place order. Try again!", Toast.LENGTH_LONG).show()
@@ -158,13 +131,49 @@ class OrderConfirmActivity : AppCompatActivity(), PaymentResultListener {
         })
     }
 
-    private fun verifyPayment(paymentId: String) {
+    // 🔹 Razorpay Checkout
+    private fun startRazorpayCheckout() {
+        val checkout = Checkout()
+        checkout.setKeyID("rzp_test_RKK3DuGSaxK9fR") // replace with your key
+
+        val amountInPaise = (totalAmount * 100).toInt()
+        val options = JSONObject()
+        options.put("name", shopName)
+        options.put("description", "Grocery Order")
+        options.put("currency", "INR")
+        options.put("amount", amountInPaise)
+        options.put("order_id", razorpayOrderId) // ✅ link backend order
+
+        options.put("prefill.email", SessionManager.getEmail(this))
+        options.put("prefill.contact", SessionManager.getPhone(this))
+
+        checkout.open(this, options)
+    }
+
+    // 🔹 Payment success (with payment data)
+    override fun onPaymentSuccess(razorpayPaymentID: String?, paymentData: PaymentData?) {
+        Toast.makeText(this, "Payment Successful", Toast.LENGTH_SHORT).show()
+
+        val paymentId = razorpayPaymentID ?: ""
+        val rpOrderId = paymentData?.orderId ?: ""
+        val rpSignature = paymentData?.signature ?: ""
+
+        verifyPayment(paymentId, rpOrderId, rpSignature)
+    }
+
+    override fun onPaymentError(code: Int, response: String?, paymentData: PaymentData?) {
+        Toast.makeText(this, "Payment Failed: $response", Toast.LENGTH_SHORT).show()
+    }
+
+    // 🔹 Verify Payment API
+    private fun verifyPayment(paymentId: String, rpOrderId: String, rpSignature: String) {
         val apiService = RetrofitClient.getInstance(this).create(ApiService::class.java)
+
         val verifyData = mapOf(
-            "order_id" to "", // if you store order_id from createOrder response, put here
+            "order_id" to (backendOrderId ?: ""),
             "razorpay_payment_id" to paymentId,
-            "razorpay_order_id" to "", // if available
-            "razorpay_signature" to "" // optional
+            "razorpay_order_id" to rpOrderId,
+            "razorpay_signature" to rpSignature
         )
 
         apiService.verifyPayment(verifyData).enqueue(object : Callback<Map<String, Any>> {
@@ -172,18 +181,22 @@ class OrderConfirmActivity : AppCompatActivity(), PaymentResultListener {
                 if (response.isSuccessful) {
                     Toast.makeText(this@OrderConfirmActivity, "Payment Verified & Order Placed!", Toast.LENGTH_SHORT).show()
                     CartManager.clearCart(shopId!!)
-                    val intent = Intent(this@OrderConfirmActivity, ThankYouActivity::class.java)
-                    intent.flags = Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_NEW_TASK
-                    startActivity(intent)
-                    finish()
+                    goToThankYou()
                 } else {
                     Toast.makeText(this@OrderConfirmActivity, "Payment verification failed", Toast.LENGTH_LONG).show()
                 }
             }
 
             override fun onFailure(call: Call<Map<String, Any>>, t: Throwable) {
-                Toast.makeText(this@OrderConfirmActivity, "Verification network error: ${t.message}", Toast.LENGTH_LONG).show()
+                Toast.makeText(this@OrderConfirmActivity, "Verification error: ${t.message}", Toast.LENGTH_LONG).show()
             }
         })
+    }
+
+    private fun goToThankYou() {
+        val intent = Intent(this@OrderConfirmActivity, ThankYouActivity::class.java)
+        intent.flags = Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_NEW_TASK
+        startActivity(intent)
+        finish()
     }
 }
