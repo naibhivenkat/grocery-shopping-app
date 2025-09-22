@@ -12,6 +12,7 @@ from flask import Flask, request, jsonify, g
 from flask_cors import CORS
 from flask_limiter import Limiter
 from flask_limiter.util import get_remote_address
+import razorpay
 
 import firebase_db
 
@@ -30,6 +31,10 @@ limiter.init_app(app)
 otp_store = {}
 forgot_password_otp_store = {}  # email -> {otp, expiry, attempts}
 
+# 🔹 Initialize Razorpay client
+RAZORPAY_KEY_ID = "rzp_test_RKK3DuGSaxK9fR"
+RAZORPAY_KEY_SECRET = "VgVc96Pdn3t5T8ieX0nb2ajt"
+razorpay_client = razorpay.Client(auth=(RAZORPAY_KEY_ID, RAZORPAY_KEY_SECRET))
 
 def generate_token(user):
     payload = {
@@ -457,7 +462,7 @@ def delete_item(item_id):
 def create_order():
     data = request.json
 
-    # Compute total from items
+    # 1️⃣ Compute total from items
     items = data.get("items", [])
     total = 0
     detailed_items = []
@@ -476,23 +481,38 @@ def create_order():
                 "quantity": quantity
             })
 
+    # 2️⃣ Get current user
     user = getattr(g, "current_user", None)
-    print("DEBUG current_user:", user)
+    if not user:
+        return jsonify({"success": False, "message": "User not logged in"}), 401
 
-    # 🔎 Resolve the Firestore docId for the shop
+    # 3️⃣ Resolve shop doc ID
     input_shop_id = data["shopId"]
     shop_query = firebase_db.db.collection("shops").where("id", "==", input_shop_id).stream()
-
     shop_doc_id = None
     for doc in shop_query:
-        shop_doc_id = doc.id   # Firestore document id
+        shop_doc_id = doc.id
         break
-
     if not shop_doc_id:
         return jsonify({"success": False, "message": "Invalid shopId"}), 400
 
+    # 4️⃣ Decide based on payment method
+    payment_method = data.get("payment_method", "Razorpay")
+    razorpay_order_id = None
+
+    if payment_method == "Razorpay":
+        # Create Razorpay order
+        razorpay_order = razorpay_client.order.create({
+            "amount": int(total * 100),  # in paise
+            "currency": "INR",
+            "receipt": f"order_{datetime.datetime.utcnow().timestamp()}",
+            "payment_capture": 1
+        })
+        razorpay_order_id = razorpay_order["id"]
+
+    # 5️⃣ Store order in Firestore
     order_dict = {
-        "shopId": shop_doc_id,   # ✅ always use Firestore doc id
+        "shopId": shop_doc_id,
         "customer": {
             "id": user.get("id"),
             "username": user.get("username"),
@@ -502,15 +522,81 @@ def create_order():
         },
         "items": detailed_items,
         "total": total,
-        "status": "Pending",
+        "payment_method": payment_method,
+        "transaction_id": "" if payment_method == "Razorpay" else "Cash",
+        "razorpay_order_id": razorpay_order_id if razorpay_order_id else "",
+        "status": "Pending" if payment_method == "Razorpay" else "Confirmed",
         "created_at": datetime.datetime.utcnow().isoformat()
     }
 
-    print(f"order_dict : {order_dict}")
-    print(f"shop id -- {data["shopId"]}")
-    print(f"shop doc id -- {shop_doc_id}")
     new_order = firebase_db.append_order(order_dict)
-    return jsonify({"success": True, "order_id": new_order["order_uuid"]})
+
+    # 6️⃣ Return response based on method
+    if payment_method == "Razorpay":
+        return jsonify({
+            "success": True,
+            "order_id": new_order["order_uuid"],
+            "razorpay_order_id": razorpay_order_id,
+            "amount": total
+        })
+    else:
+        # For cash, no Razorpay order needed
+        return jsonify({
+            "success": True,
+            "order_id": new_order["order_uuid"],
+            "amount": total,
+            "message": "Cash order placed successfully"
+        })
+
+
+
+@app.route("/api/verify_payment", methods=["POST"])
+def verify_payment():
+    data = request.json
+    print("Received verify_payment request:", request.json)
+    order_uuid = data.get("order_id")
+
+    # 1️⃣ Fetch order
+    order_doc = firebase_db.get_order_by_uuid(order_uuid)
+    if not order_doc:
+        return jsonify({"success": False, "message": "Order not found"}), 404
+
+    payment_method = order_doc.get("payment_method", "Razorpay")
+
+    # 2️⃣ If Cash → skip Razorpay verification
+    if payment_method == "Cash":
+        firebase_db.update_order(order_uuid, {
+            "status": "Confirmed"  # or "Paid" if you want same flow
+        })
+        return jsonify({"success": True, "message": "Cash order confirmed"})
+
+    # 3️⃣ Otherwise verify Razorpay signature
+    razorpay_payment_id = data.get("razorpay_payment_id")
+    razorpay_order_id = data.get("razorpay_order_id")
+    razorpay_signature = data.get("razorpay_signature")
+
+    if not razorpay_payment_id or not razorpay_order_id or not razorpay_signature:
+        return jsonify({"success": False, "message": "Missing Razorpay payment details"}), 400
+
+    params_dict = {
+        "razorpay_order_id": razorpay_order_id,
+        "razorpay_payment_id": razorpay_payment_id,
+        "razorpay_signature": razorpay_signature
+    }
+
+    try:
+        razorpay_client.utility.verify_payment_signature(params_dict)
+    except razorpay.errors.SignatureVerificationError:
+        return jsonify({"success": False, "message": "Payment verification failed"}), 400
+
+    # 4️⃣ Update order as paid
+    firebase_db.update_order(order_uuid, {
+        "transaction_id": razorpay_payment_id,
+        "status": "Paid"
+    })
+
+    return jsonify({"success": True, "message": "Payment verified and order updated"})
+
 
 
 @app.route("/api/orders/shopkeeper/<shop_id>", methods=["GET"])

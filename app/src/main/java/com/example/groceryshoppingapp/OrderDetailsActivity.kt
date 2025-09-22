@@ -19,6 +19,7 @@ class OrderDetailActivity : AppCompatActivity() {
 
     private lateinit var order: Order
     private lateinit var textStatus: TextView
+    private lateinit var textPayment: TextView
     private lateinit var spinnerStatus: Spinner
     private lateinit var editCancelMsg: EditText
     private lateinit var btnUpdateStatus: Button
@@ -36,6 +37,7 @@ class OrderDetailActivity : AppCompatActivity() {
         textStatus = findViewById(R.id.text_status)
         textCreatedAt = findViewById(R.id.text_created_at)
         recyclerItems = findViewById(R.id.recycler_items)
+        textPayment = findViewById(R.id.text_payment_info) // add in XML
 
         spinnerStatus = findViewById(R.id.spinner_status)
         editCancelMsg = findViewById(R.id.edit_cancel_msg)
@@ -58,7 +60,7 @@ class OrderDetailActivity : AppCompatActivity() {
             refreshOrder()
         }
 
-        // Update button
+        // Update status button
         btnUpdateStatus.setOnClickListener {
             val selectedStatus = spinnerStatus.selectedItem.toString()
             val cancelMsg = editCancelMsg.text.toString()
@@ -72,7 +74,10 @@ class OrderDetailActivity : AppCompatActivity() {
             RetrofitClient.getInstance(this).create(ApiService::class.java)
                 .updateOrder(order.orderUuid, updateMap)
                 .enqueue(object : Callback<Map<String, Any>> {
-                    override fun onResponse(call: Call<Map<String, Any>>, response: Response<Map<String, Any>>) {
+                    override fun onResponse(
+                        call: Call<Map<String, Any>>,
+                        response: Response<Map<String, Any>>
+                    ) {
                         Toast.makeText(this@OrderDetailActivity, "Order updated!", Toast.LENGTH_SHORT).show()
                         refreshOrder()
                     }
@@ -86,11 +91,18 @@ class OrderDetailActivity : AppCompatActivity() {
 
     private fun setupUI() {
         textShopName.text = "Shop: ${order.shopName}"
-        textStatus.text = "Status: ${order.status}"
+        updateStatusText(order.status)
+
         textCreatedAt.text = "Created At: ${order.createdAt}"
 
         recyclerItems.layoutManager = LinearLayoutManager(this)
         recyclerItems.adapter = OrderItemAdapter(order.items)
+
+        // Show transaction info if available
+        order.transaction_id?.let {
+            textPayment.text = "Payment: ${order.payment_method ?: "UPI"} (TxnRef: $it)"
+            textPayment.visibility = View.VISIBLE
+        } ?: run { textPayment.visibility = View.GONE }
 
         val role = SessionManager.getRole(this)
 
@@ -103,16 +115,13 @@ class OrderDetailActivity : AppCompatActivity() {
             adapter.setDropDownViewResource(android.R.layout.simple_spinner_dropdown_item)
             spinnerStatus.adapter = adapter
 
-            //val currentIndex = options.indexOf(order.status)
             val currentIndex = options.indexOfFirst { it.equals(order.status, ignoreCase = true) }
-
             if (currentIndex >= 0) spinnerStatus.setSelection(currentIndex)
 
             spinnerStatus.onItemSelectedListener = object : AdapterView.OnItemSelectedListener {
                 override fun onItemSelected(parent: AdapterView<*>, view: View?, pos: Int, id: Long) {
                     editCancelMsg.visibility = if (options[pos] == "Cancelled") View.VISIBLE else View.GONE
                 }
-
                 override fun onNothingSelected(parent: AdapterView<*>) {}
             }
         } else {
@@ -122,6 +131,19 @@ class OrderDetailActivity : AppCompatActivity() {
         }
     }
 
+    // 🔹 Status color helper
+    private fun updateStatusText(status: String) {
+        textStatus.text = "Status: $status"
+        when (status.lowercase()) {
+            "pending" -> textStatus.setTextColor(resources.getColor(android.R.color.holo_orange_dark))
+            "packed" -> textStatus.setTextColor(resources.getColor(android.R.color.holo_blue_dark))
+            "delivered" -> textStatus.setTextColor(resources.getColor(android.R.color.holo_green_dark))
+            "cancelled" -> textStatus.setTextColor(resources.getColor(android.R.color.holo_red_dark))
+            else -> textStatus.setTextColor(resources.getColor(android.R.color.black))
+        }
+    }
+
+    // 🔹 Refresh order from backend
     private fun refreshOrder() {
         RetrofitClient.getInstance(this).create(ApiService::class.java)
             .getOrderById(order.orderUuid)
@@ -129,14 +151,17 @@ class OrderDetailActivity : AppCompatActivity() {
                 override fun onResponse(call: Call<Order>, response: Response<Order>) {
                     if (response.isSuccessful) {
                         order = response.body()!!
-                        textStatus.text = "Status: ${order.status}"
+                        updateStatusText(order.status)
                         recyclerItems.adapter = OrderItemAdapter(order.items)
 
                         val options = listOf("Pending", "Packed", "Delivered", "Cancelled")
                         val index = options.indexOfFirst { it.equals(order.status, ignoreCase = true) }
-
-                       // val index = options.indexOf(order.status)
                         if (index >= 0) spinnerStatus.setSelection(index)
+
+                        order.transaction_id?.let {
+                            textPayment.text = "Payment: ${order.payment_method ?: "UPI"} (TxnRef: $it)"
+                            textPayment.visibility = View.VISIBLE
+                        } ?: run { textPayment.visibility = View.GONE }
                     } else {
                         Toast.makeText(this@OrderDetailActivity, "Failed to refresh order", Toast.LENGTH_SHORT).show()
                     }
@@ -147,5 +172,4 @@ class OrderDetailActivity : AppCompatActivity() {
                 }
             })
     }
-
 }

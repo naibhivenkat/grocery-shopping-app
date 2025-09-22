@@ -1,8 +1,8 @@
 package com.example.groceryshoppingapp
 
 import android.content.Intent
+import android.graphics.Color
 import android.os.Bundle
-import android.util.Log
 import android.widget.Button
 import android.widget.TextView
 import android.widget.Toast
@@ -23,7 +23,6 @@ class ShopOwnerMainActivity : AppCompatActivity() {
     private lateinit var recyclerView: RecyclerView
     private lateinit var ordersAdapter: OrdersAdapter
     private val orders = mutableListOf<Order>()
-    // private val ordersList = mutableListOf<Order>()
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -33,32 +32,28 @@ class ShopOwnerMainActivity : AppCompatActivity() {
         recyclerView = findViewById(R.id.recycler_orders)
         recyclerView.layoutManager = LinearLayoutManager(this)
 
-
         val refreshBtn = findViewById<Button>(R.id.btn_refresh_orders)
         val backBtn = findViewById<Button>(R.id.btn_back)
 
-        refreshBtn.setOnClickListener {
-            fetchOrders()
-        }
+        refreshBtn.setOnClickListener { fetchOrders() }
+        backBtn.setOnClickListener { finish() }
 
-        backBtn.setOnClickListener {
-            finish()
-        }
-
+        // Adapter with highlighting logic
         ordersAdapter = OrdersAdapter(
             orders,
             onStatusClick = { selectedOrder ->
                 val intent = Intent(this, OrderDetailActivity::class.java)
                 intent.putExtra("order", selectedOrder)
                 startActivity(intent)
-            }
+            },
+            highlightCancelled = true // 🔹 Enable cancelled order highlight
         )
-
         recyclerView.adapter = ordersAdapter
 
         displayShopInfo()
         fetchOrders()
     }
+
     private fun displayShopInfo() {
         val shopName = SessionManager.getShopName(this)
         shopNameTv.text = shopName?.let { "Shop: $it" } ?: "My Shop"
@@ -71,29 +66,42 @@ class ShopOwnerMainActivity : AppCompatActivity() {
             return
         }
 
-        RetrofitClient.getInstance(this).create(ApiService::class.java)
-            .getShopOrders(shopId)
-            .enqueue(object : Callback<List<Order>> {
-                override fun onResponse(call: Call<List<Order>>, response: Response<List<Order>>) {
-                    if (response.isSuccessful) {
-                        val list = response.body().orEmpty()
-                        if (list.isEmpty()) {
-                            Toast.makeText(this@ShopOwnerMainActivity, "No orders assigned to your shop.", Toast.LENGTH_SHORT).show()
-                        }
-                        orders.clear()
-                        orders.addAll(list)
-                        ordersAdapter.notifyDataSetChanged()
-                    } else {
-                        showToast("Failed to load: ${response.code()}")
-                    }
-                }
+        val api = RetrofitClient.getInstance(this).create(ApiService::class.java)
+        api.getShopOrders(shopId).enqueue(object : Callback<List<Order>> {
+            override fun onResponse(call: Call<List<Order>>, response: Response<List<Order>>) {
+                if (response.isSuccessful) {
+                    val list = response.body().orEmpty()
 
-                override fun onFailure(call: Call<List<Order>>, t: Throwable) {
-                    showToast("Error: ${t.message}")
+                    // 🔹 Sort orders by status: Pending → Packed → Delivered → Cancelled
+                    val sorted = list.sortedWith(compareBy { statusPriority(it.status) })
+
+                    orders.clear()
+                    orders.addAll(sorted)
+                    ordersAdapter.notifyDataSetChanged()
+
+                    if (list.isEmpty()) {
+                        Toast.makeText(this@ShopOwnerMainActivity, "No orders assigned to your shop.", Toast.LENGTH_SHORT).show()
+                    }
+                } else {
+                    showToast("Failed to load: ${response.code()}")
                 }
-            })
+            }
+
+            override fun onFailure(call: Call<List<Order>>, t: Throwable) {
+                showToast("Error: ${t.message}")
+            }
+        })
     }
 
+    private fun statusPriority(status: String): Int {
+        return when (status.lowercase()) {
+            "pending" -> 0
+            "packed" -> 1
+            "delivered" -> 2
+            "cancelled" -> 3
+            else -> 4
+        }
+    }
 
     private fun showToast(msg: String) {
         Toast.makeText(this, msg, Toast.LENGTH_SHORT).show()

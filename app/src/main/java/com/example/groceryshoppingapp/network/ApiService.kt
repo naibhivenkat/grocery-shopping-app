@@ -152,4 +152,10 @@ interface ApiService {
     @POST("api/orders")
     fun createOrder(@Body body: CreateOrderRequest): Call<Map<String, Any>>
 
+    // 🔹 Verify payment endpoint
+    @POST("/api/verify_payment")
+    fun verifyPayment(
+        @Body verifyData: Map<String, String>
+    ): Call<Map<String, Any>>
+
 }

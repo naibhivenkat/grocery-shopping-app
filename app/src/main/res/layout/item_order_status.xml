@@ -1,37 +1,54 @@
-<!-- res/layout/item_order_status.xml -->
+<?xml version="1.0" encoding="utf-8"?>
 <LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:id="@+id/order_container"
     android:layout_width="match_parent"
     android:layout_height="wrap_content"
     android:orientation="vertical"
     android:padding="12dp"
+    android:layout_marginBottom="8dp"
     android:background="?attr/colorSurface"
-    android:elevation="2dp"
-    android:layout_marginBottom="8dp">
+    android:elevation="2dp">
 
+    <!-- Order ID -->
     <TextView
         android:id="@+id/order_id"
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
-        android:text="@string/ui_order_id"
-        android:textStyle="bold"
+        android:text="Order #123"
         android:textSize="16sp"
-        android:textColor="?attr/colorOnSurface"
-        android:layout_marginBottom="4dp" />
+        android:textStyle="bold"
+        android:textColor="?attr/colorOnSurface"/>
 
+    <!-- Order details -->
     <TextView
         android:id="@+id/order_details"
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
-        android:text="@string/ui_items"
+        android:text="Customer: 2×Apple, 1×Milk"
         android:textSize="14sp"
-        android:textColor="?attr/colorOnSurface"
-        android:layout_marginBottom="8dp" />
+        android:layout_marginTop="4dp"
+        android:textColor="?attr/colorOnSurface"/>
 
+    <!-- Transaction ID -->
+    <TextView
+        android:id="@+id/text_transaction_id"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:text="Txn ID: 1234567890"
+        android:textSize="12sp"
+        android:layout_marginTop="2dp"
+        android:visibility="gone"
+        android:textColor="?attr/colorOnSurface" />
+
+    <!-- Status button -->
     <Button
         android:id="@+id/status_button"
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
-        android:text="@string/ui_delivered"
-        android:backgroundTint="?attr/colorPrimary"
-        android:textColor="?attr/colorOnPrimary" />
+        android:text="Pending"
+        android:layout_marginTop="8dp"
+        android:paddingLeft="16dp"
+        android:paddingRight="16dp"
+        android:textColor="@android:color/white"/>
+
 </LinearLayout>

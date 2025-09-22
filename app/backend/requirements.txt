@@ -10,3 +10,4 @@ elasticsearch
 requests
 Flask-Limiter
 PyJWT
+razorpay

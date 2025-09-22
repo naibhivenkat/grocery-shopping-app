@@ -116,4 +116,7 @@ dependencies {
     // Optional: Picasso (if still used)
     implementation 'com.squareup.picasso:picasso:2.71828'
     implementation 'com.google.firebase:firebase-analytics'
+
+    implementation 'com.razorpay:checkout:1.6.33'
+
 }
