@@ -163,4 +163,8 @@ interface ApiService {
         @Path("shop_id") shopId: String
     ): Call<Shop>
 
+    @GET("healthz")
+    fun healthCheck(): Call<Map<String, String>>
+
+
 }
