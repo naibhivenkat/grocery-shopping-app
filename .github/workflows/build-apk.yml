@@ -3,10 +3,11 @@ name: Android CI
 on:
   push:
     branches:
-      - '**'   # any branch
+      - '**'
 
 permissions:
-  contents: write   # allow push to repo
+  contents: write
+  packages: write
 
 jobs:
   build:
@@ -23,6 +24,19 @@ jobs:
         with:
           distribution: 'temurin'
           java-version: '17'
+
+      # -----------------------------
+      # Gradle Cache
+      # -----------------------------
+      - name: Cache Gradle packages
+        uses: actions/cache@v3
+        with:
+          path: |
+            ~/.gradle/caches
+            ~/.gradle/wrapper
+          key: gradle-${{ runner.os }}-${{ hashFiles('**/build.gradle*', '**/gradle-wrapper.properties') }}
+          restore-keys: |
+            gradle-${{ runner.os }}-
 
       - name: Bump version
         run: |
@@ -84,7 +98,6 @@ jobs:
             app/build/outputs/apk/shopowner/debug/app-shopowner-debug.apk
             app/build/outputs/apk/customer/debug/app-customer-debug.apk
 
-
       # -----------------------------
       # Docker build & push backend
       # -----------------------------
@@ -98,8 +111,9 @@ jobs:
       - name: Build backend Docker image
         run: |
           IMAGE_NAME=ghcr.io/${{ github.repository }}/backend:${{ env.NEW_VERSION_NAME }}
-          docker build -t $IMAGE_NAME app/backend
+          docker build -t $IMAGE_NAME -f app/backend/Dockerfile app/backend
           echo "IMAGE_NAME=$IMAGE_NAME" >> $GITHUB_ENV
+
 
       - name: Push backend Docker image
         run: |
