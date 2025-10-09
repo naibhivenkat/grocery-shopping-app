@@ -36,9 +36,10 @@ RAZORPAY_KEY_ID = "rzp_test_RKK3DuGSaxK9fR"
 RAZORPAY_KEY_SECRET = "VgVc96Pdn3t5T8ieX0nb2ajt"
 razorpay_client = razorpay.Client(auth=(RAZORPAY_KEY_ID, RAZORPAY_KEY_SECRET))
 
+
 def generate_token(user):
     payload = {
-    #    "id": user.get("id") or   # ✅ include id
+        #    "id": user.get("id") or   # ✅ include id
         "id": user.get("customerId"),
         "username": user["username"],
         "role": user["role"],
@@ -46,9 +47,8 @@ def generate_token(user):
     }
     token = jwt.encode(payload, SECRET_KEY, algorithm="HS256")
     print("id ", user.get("id"))
-    print(f"cust id { user.get("customerId")}")
+    print(f"cust id {user.get("customerId")}")
     print(f"Payload in generate token : {payload}")
-
 
     # ensure it's str, not bytes
     if isinstance(token, bytes):
@@ -66,7 +66,7 @@ def healthz():
         service_ok = True  # replace with actual check, e.g., DB ping, cache, etc.
 
         if service_ok:
-           # logging.info("✅ Health check ping received")
+            # logging.info("✅ Health check ping received")
             return jsonify(status="Up and Running"), 200
         else:
             logging.error("❌ Health check failed!")
@@ -74,7 +74,6 @@ def healthz():
     except Exception as e:
         logging.error(f"❌ Health check exception: {e}")
         return jsonify(status="Service Down", error=str(e)), 503
-
 
 
 @app.route("/login", methods=["POST"])
@@ -137,8 +136,6 @@ def login():
         "user": response_user,
         "token": token
     }), 200
-
-
 
 
 @app.route('/register', methods=['POST'])
@@ -204,8 +201,8 @@ def register():
         "location": user_dict.get("location"),
         "photoUrl": user_dict.get("photoUrl"),
         "photoBase64": user_dict.get("photoBase64"),
-        "shop": None,          # no shop yet
-        "shopExists": False    # must create after login
+        "shop": None,  # no shop yet
+        "shopExists": False  # must create after login
     }
 
     return jsonify({
@@ -276,8 +273,8 @@ def register_after_otp():
         "location": user_dict.get("location"),
         "photoUrl": user_dict.get("photoUrl"),
         "photoBase64": user_dict.get("photoBase64"),
-        "shop": None,          # no shop yet
-        "shopExists": False    # must create after login
+        "shop": None,  # no shop yet
+        "shopExists": False  # must create after login
     }
 
     return jsonify({
@@ -286,7 +283,6 @@ def register_after_otp():
         "user": response_user,
         "token": token
     }), 201
-
 
 
 @app.route('/change_password', methods=['POST'])
@@ -351,7 +347,6 @@ def get_shops_for_shopkeeper(shopkeeper_id):
     return jsonify(result)
 
 
-
 @app.route('/create_shop', methods=['POST'])
 def create_shop():
     data = request.form if request.form else request.get_json()
@@ -374,11 +369,12 @@ def create_shop():
     shop = firebase_db.append_shop(shop_dict)  # returns with correct "id" field
 
     # ✅ Update user record with shopId + embed shop object
-    user_ref = firebase_db.db.collection("users").where("shopkeeperId", "==", shopkeeper_id).stream()
+    user_ref = firebase_db.db.collection("users").where("shopkeeperId", "==",
+                                                        shopkeeper_id).stream()
     for doc in user_ref:
         firebase_db.db.collection("users").document(doc.id).update({
             "shopId": shop["id"],
-            "shop": {   # ✅ embed minimal shop info so client sees it immediately
+            "shop": {  # ✅ embed minimal shop info so client sees it immediately
                 "id": shop["id"],
                 "name": shop["name"],
                 "shopkeeper_id": shop["shopkeeper_id"]
@@ -397,9 +393,6 @@ def create_shop():
             'contact': shop['contact']
         }
     }), 200
-
-
-
 
 
 @app.route('/api/shops/<shop_id>/items', methods=['GET'])
@@ -428,8 +421,6 @@ def get_shop_items(shop_id):
     return jsonify({"success": True, "shop": shop, "items": items}), 200
 
 
-
-
 @app.route("/update_item/<item_id>", methods=["PUT"])
 def update_item(item_id):
     ref = firebase_db.db.collection("items").document(item_id)
@@ -444,7 +435,6 @@ def update_item(item_id):
         "description": data.get("description", doc.get("description")),
     })
     return jsonify({"success": True})
-
 
 
 @app.route('/delete_item/<item_id>', methods=['POST'])
@@ -486,12 +476,15 @@ def create_order():
     if not user:
         return jsonify({"success": False, "message": "User not logged in"}), 401
 
-    # 3️⃣ Resolve shop doc ID
+    # 3️⃣ Resolve shop doc ID and fetch shop name
     input_shop_id = data["shopId"]
     shop_query = firebase_db.db.collection("shops").where("id", "==", input_shop_id).stream()
     shop_doc_id = None
+    shop_name = ""
     for doc in shop_query:
         shop_doc_id = doc.id
+        shop_data = doc.to_dict()
+        shop_name = shop_data.get("name", "")
         break
     if not shop_doc_id:
         return jsonify({"success": False, "message": "Invalid shopId"}), 400
@@ -510,9 +503,10 @@ def create_order():
         })
         razorpay_order_id = razorpay_order["id"]
 
-    # 5️⃣ Store order in Firestore
+    # 5️⃣ Store order in Firestore including shopName
     order_dict = {
         "shopId": shop_doc_id,
+        "shopName": shop_name,  # 🔹 Add shopName here
         "customer": {
             "id": user.get("id"),
             "username": user.get("username"),
@@ -537,17 +531,17 @@ def create_order():
             "success": True,
             "order_id": new_order["order_uuid"],
             "razorpay_order_id": razorpay_order_id,
-            "amount": total
+            "amount": total,
+            "shopName": shop_name  # 🔹 Include for convenience
         })
     else:
-        # For cash, no Razorpay order needed
         return jsonify({
             "success": True,
             "order_id": new_order["order_uuid"],
             "amount": total,
-            "message": "Cash order placed successfully"
+            "message": "Cash order placed successfully",
+            "shopName": shop_name  # 🔹 Include for convenience
         })
-
 
 
 @app.route("/api/verify_payment", methods=["POST"])
@@ -613,14 +607,26 @@ def verify_payment():
     return jsonify({"success": True, "message": "Payment verified and order updated"})
 
 
-
-
-
-
 @app.route("/api/orders/shopkeeper/<shop_id>", methods=["GET"])
 def get_shop_orders(shop_id):
     orders = firebase_db.get_orders_by_shop(shop_id)
-    return jsonify(orders)
+
+    # 🔹 Fetch shop details once
+    shop_doc = firebase_db.db.collection("shops").document(shop_id).get()
+    shop_name = "Unknown"
+    if shop_doc.exists:
+        shop_data = shop_doc.to_dict()
+        shop_name = shop_data.get("name", "Unknown")
+
+    # 🔹 Add shopName to every order
+    enriched_orders = []
+    for order in orders:
+        if "shopName" not in order or not order["shopName"]:
+            order["shopName"] = shop_name
+        enriched_orders.append(order)
+
+    return jsonify(enriched_orders)
+
 
 
 @app.route("/api/orders/customer/<customer_id>", methods=["GET"])
@@ -634,7 +640,23 @@ def get_order_details(order_uuid):
     order_doc = firebase_db.db.collection("orders").document(order_uuid).get()
     if not order_doc.exists:
         return jsonify({'error': 'Order not found'}), 404
-    return jsonify(order_doc.to_dict())
+
+    order_data = order_doc.to_dict()
+
+    # 🔹 Ensure shopName is always included
+    if "shopName" not in order_data or not order_data["shopName"]:
+        shop_id = order_data.get("shopId")
+        if shop_id:
+            shop_doc = firebase_db.db.collection("shops").document(shop_id).get()
+            if shop_doc.exists:
+                shop_data = shop_doc.to_dict()
+                order_data["shopName"] = shop_data.get("name", "Unknown")
+            else:
+                order_data["shopName"] = "Unknown"
+        else:
+            order_data["shopName"] = "Unknown"
+
+    return jsonify(order_data)
 
 
 @app.route("/api/orders/<order_uuid>", methods=["PATCH"])
@@ -749,6 +771,7 @@ def send_email_otp(email, otp):
         print(f"[ERROR] Failed to send OTP email: {e}")
         return False
 
+
 @app.route("/send_otp", methods=["POST"])
 def send_otp():
     data = request.get_json()
@@ -786,8 +809,6 @@ def verify_otp():
     return jsonify({"status": "error", "message": "Invalid OTP"}), 400
 
 
-
-
 def send_welcome_email(email, name):
     url = "https://api.sendinblue.com/v3/smtp/email"
     headers = {
@@ -810,11 +831,13 @@ def send_welcome_email(email, name):
     print("Welcome email response:", response.status_code, response.text)
     return response.status_code in [200, 201]
 
+
 @app.before_request
 def require_authentication():
     public_paths = [
         "/healthz", "/send_otp", "/verify_otp", "/register", "/login",
-        "/register_after_otp", "/check_update", "/update_password", "/verify_password_reset_otp", "/send_password_reset_otp",
+        "/register_after_otp", "/check_update", "/update_password", "/verify_password_reset_otp",
+        "/send_password_reset_otp",
     ]
 
     # Allow if matches public paths
@@ -823,7 +846,6 @@ def require_authentication():
             return None
 
     auth_header = request.headers.get("Authorization")
-
 
     if not auth_header or not auth_header.startswith("Bearer "):
         return jsonify(
@@ -868,8 +890,8 @@ def add_item():
         canonical_shop_id = None
         for d in q:
             shop_doc = d.to_dict()
-            canonical_shop_id = d.id     # ✅ translate to doc.id
-            print (f"canonical_shop_id : {canonical_shop_id}")
+            canonical_shop_id = d.id  # ✅ translate to doc.id
+            print(f"canonical_shop_id : {canonical_shop_id}")
             break
 
     if not canonical_shop_id:
@@ -883,14 +905,14 @@ def add_item():
             "price": float(it.get("price") or 0),
             "quantity": int(it.get("stockQuantity") or 0),
             "description": it.get("description") or "",
-            "shopId": canonical_shop_id,             # ✅ always store doc.id
+            "shopId": canonical_shop_id,  # ✅ always store doc.id
             "createdAt": datetime.datetime.utcnow().isoformat(),
             "createdBy": username
         }
         saved_items.append(firebase_db.append_item(item_dict))
 
-    return jsonify({'success': True, 'message': 'Items added successfully', 'items': saved_items}), 201
-
+    return jsonify(
+        {'success': True, 'message': 'Items added successfully', 'items': saved_items}), 201
 
 
 @app.route('/get_shop_by_owner', methods=['GET'])
@@ -899,7 +921,7 @@ def get_shop_by_owner():
     if not user:
         return jsonify({'success': False, 'message': 'Unauthorized'}), 401
 
-    shopkeeper_id = user.get("username")   # or user.get("id") depending on your schema
+    shopkeeper_id = user.get("username")  # or user.get("id") depending on your schema
     if not shopkeeper_id:
         return jsonify({'success': False, 'shop': None, 'message': 'Missing shopkeeperId'}), 400
 
@@ -908,6 +930,7 @@ def get_shop_by_owner():
         return jsonify({'success': True, 'shop': shop})
     else:
         return jsonify({'success': False, 'shop': None})
+
 
 @app.route("/send_password_reset_otp", methods=["POST"])
 def send_password_reset_otp():
@@ -933,6 +956,7 @@ def send_password_reset_otp():
     if send_password_reset_email_otp(email, otp):
         return jsonify({"success": True, "message": "OTP sent"}), 200
     return jsonify({"success": False, "message": "Failed to send OTP"}), 500
+
 
 @app.route("/verify_password_reset_otp", methods=["POST"])
 def verify_password_reset_otp():
@@ -961,6 +985,7 @@ def verify_password_reset_otp():
 
     return jsonify({"success": True, "message": "OTP verified"}), 200
 
+
 @app.route("/update_password", methods=["POST"])
 def update_password():
     data = request.get_json()
@@ -987,7 +1012,6 @@ def update_password():
     del forgot_password_otp_store[email]
 
     return jsonify({"success": True, "message": "Password updated successfully"}), 200
-
 
 
 def send_password_reset_email_otp(email, otp):

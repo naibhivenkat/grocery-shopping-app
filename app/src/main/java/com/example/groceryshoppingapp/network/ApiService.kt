@@ -158,4 +158,9 @@ interface ApiService {
         @Body verifyData: Map<String, String>
     ): Call<Map<String, Any>>
 
+    @GET("api/shops/{shop_id}")
+    fun getShop(
+        @Path("shop_id") shopId: String
+    ): Call<Shop>
+
 }

@@ -1,19 +1,25 @@
 package com.example.groceryshoppingapp
 
+import android.os.Build
 import android.os.Bundle
 import android.view.View
 import android.widget.*
+import androidx.annotation.RequiresApi
 import androidx.appcompat.app.AppCompatActivity
 import androidx.recyclerview.widget.LinearLayoutManager
 import androidx.recyclerview.widget.RecyclerView
 import com.example.groceryshoppingapp.adapters.OrderItemAdapter
 import com.example.groceryshoppingapp.models.Order
+import com.example.groceryshoppingapp.models.Shop
 import com.example.groceryshoppingapp.network.ApiService
 import com.example.groceryshoppingapp.network.RetrofitClient
 import com.example.groceryshoppingapp.utils.SessionManager
 import retrofit2.Call
 import retrofit2.Callback
 import retrofit2.Response
+import java.time.ZoneId
+import java.time.ZonedDateTime
+import java.time.format.DateTimeFormatter
 
 class OrderDetailActivity : AppCompatActivity() {
 
@@ -28,6 +34,7 @@ class OrderDetailActivity : AppCompatActivity() {
     private lateinit var textShopName: TextView
     private lateinit var textCreatedAt: TextView
 
+    @RequiresApi(Build.VERSION_CODES.O)
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_order_details)
@@ -37,7 +44,7 @@ class OrderDetailActivity : AppCompatActivity() {
         textStatus = findViewById(R.id.text_status)
         textCreatedAt = findViewById(R.id.text_created_at)
         recyclerItems = findViewById(R.id.recycler_items)
-        textPayment = findViewById(R.id.text_payment_info) // add in XML
+        textPayment = findViewById(R.id.text_payment_info)
 
         spinnerStatus = findViewById(R.id.spinner_status)
         editCancelMsg = findViewById(R.id.edit_cancel_msg)
@@ -49,63 +56,33 @@ class OrderDetailActivity : AppCompatActivity() {
         order = intent.getParcelableExtra("order")!!
 
         setupUI()
+        loadShopName() // 🔹 Fetch shop name if null
 
         // Back button
-        btnBack.setOnClickListener {
-            finish()
-        }
+        btnBack.setOnClickListener { finish() }
 
         // Refresh button
-        btnRefresh.setOnClickListener {
-            refreshOrder()
-        }
+        btnRefresh.setOnClickListener { refreshOrder() }
 
         // Update status button
-        btnUpdateStatus.setOnClickListener {
-            val selectedStatus = spinnerStatus.selectedItem.toString()
-            val cancelMsg = editCancelMsg.text.toString()
-
-            val updateMap = mutableMapOf<String, String>()
-            updateMap["status"] = selectedStatus.lowercase()
-            if (selectedStatus == "Cancelled" && cancelMsg.isNotBlank()) {
-                updateMap["cancel_message"] = cancelMsg
-            }
-
-            RetrofitClient.getInstance(this).create(ApiService::class.java)
-                .updateOrder(order.orderUuid, updateMap)
-                .enqueue(object : Callback<Map<String, Any>> {
-                    override fun onResponse(
-                        call: Call<Map<String, Any>>,
-                        response: Response<Map<String, Any>>
-                    ) {
-                        Toast.makeText(this@OrderDetailActivity, "Order updated!", Toast.LENGTH_SHORT).show()
-                        refreshOrder()
-                    }
-
-                    override fun onFailure(call: Call<Map<String, Any>>, t: Throwable) {
-                        Toast.makeText(this@OrderDetailActivity, "Failed to update", Toast.LENGTH_SHORT).show()
-                    }
-                })
-        }
+        btnUpdateStatus.setOnClickListener { updateOrderStatus() }
     }
 
+    @RequiresApi(Build.VERSION_CODES.O)
     private fun setupUI() {
-        textShopName.text = "Shop: ${order.shopName}"
         updateStatusText(order.status)
-
-        textCreatedAt.text = "Created At: ${order.createdAt}"
-
         recyclerItems.layoutManager = LinearLayoutManager(this)
         recyclerItems.adapter = OrderItemAdapter(order.items)
 
-        // Show transaction info if available
+        textCreatedAt.text = "Created At: ${order.createdAt?.let { formatToIST(it) }}"
+
+        // Show payment info if available
         order.transaction_id?.let {
             textPayment.text = "Payment: ${order.payment_method ?: "UPI"} (TxnRef: $it)"
             textPayment.visibility = View.VISIBLE
         } ?: run { textPayment.visibility = View.GONE }
 
         val role = SessionManager.getRole(this)
-
         if (role == "shopowner") {
             spinnerStatus.visibility = View.VISIBLE
             btnUpdateStatus.visibility = View.VISIBLE
@@ -131,7 +108,41 @@ class OrderDetailActivity : AppCompatActivity() {
         }
     }
 
-    // 🔹 Status color helper
+    // 🔹 Convert UTC → IST
+    @RequiresApi(Build.VERSION_CODES.O)
+    private fun formatToIST(utcTime: String): String {
+        return try {
+            val zdt = ZonedDateTime.parse(utcTime)
+            val istZdt = zdt.withZoneSameInstant(ZoneId.of("Asia/Kolkata"))
+            istZdt.format(DateTimeFormatter.ofPattern("dd MMM yyyy, hh:mm a"))
+        } catch (e: Exception) {
+            utcTime
+        }
+    }
+
+    // 🔹 Fetch shop name if missing
+    private fun loadShopName() {
+        if (!order.shopName.isNullOrEmpty()) {
+            textShopName.text = "Shop: ${order.shopName}"
+            return
+        }
+
+        order.shopId?.let {
+            RetrofitClient.getInstance(this).create(ApiService::class.java)
+                .getShop(it)
+                .enqueue(object : Callback<Shop> {
+                    override fun onResponse(call: Call<Shop>, response: Response<Shop>) {
+                        val shop = response.body()
+                        textShopName.text = "Shop: ${shop?.name ?: "Unknown"}"
+                    }
+
+                    override fun onFailure(call: Call<Shop>, t: Throwable) {
+                        textShopName.text = "Shop: Unknown"
+                    }
+                })
+        }
+    }
+
     private fun updateStatusText(status: String) {
         textStatus.text = "Status: $status"
         when (status.lowercase()) {
@@ -143,7 +154,6 @@ class OrderDetailActivity : AppCompatActivity() {
         }
     }
 
-    // 🔹 Refresh order from backend
     private fun refreshOrder() {
         RetrofitClient.getInstance(this).create(ApiService::class.java)
             .getOrderById(order.orderUuid)
@@ -153,6 +163,8 @@ class OrderDetailActivity : AppCompatActivity() {
                         order = response.body()!!
                         updateStatusText(order.status)
                         recyclerItems.adapter = OrderItemAdapter(order.items)
+                        textCreatedAt.text = "Created At: ${order.createdAt?.let { formatToIST(it) }}"
+                        loadShopName()
 
                         val options = listOf("Pending", "Packed", "Delivered", "Cancelled")
                         val index = options.indexOfFirst { it.equals(order.status, ignoreCase = true) }
@@ -169,6 +181,30 @@ class OrderDetailActivity : AppCompatActivity() {
 
                 override fun onFailure(call: Call<Order>, t: Throwable) {
                     Toast.makeText(this@OrderDetailActivity, "Error: ${t.message}", Toast.LENGTH_SHORT).show()
+                }
+            })
+    }
+
+    private fun updateOrderStatus() {
+        val selectedStatus = spinnerStatus.selectedItem.toString()
+        val cancelMsg = editCancelMsg.text.toString()
+
+        val updateMap = mutableMapOf<String, String>()
+        updateMap["status"] = selectedStatus.lowercase()
+        if (selectedStatus == "Cancelled" && cancelMsg.isNotBlank()) {
+            updateMap["cancel_message"] = cancelMsg
+        }
+
+        RetrofitClient.getInstance(this).create(ApiService::class.java)
+            .updateOrder(order.orderUuid, updateMap)
+            .enqueue(object : Callback<Map<String, Any>> {
+                override fun onResponse(call: Call<Map<String, Any>>, response: Response<Map<String, Any>>) {
+                    Toast.makeText(this@OrderDetailActivity, "Order updated!", Toast.LENGTH_SHORT).show()
+                    refreshOrder()
+                }
+
+                override fun onFailure(call: Call<Map<String, Any>>, t: Throwable) {
+                    Toast.makeText(this@OrderDetailActivity, "Failed to update", Toast.LENGTH_SHORT).show()
                 }
             })
     }
