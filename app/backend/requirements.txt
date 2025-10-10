@@ -11,3 +11,4 @@ requests
 Flask-Limiter
 PyJWT
 razorpay
+prometheus-client

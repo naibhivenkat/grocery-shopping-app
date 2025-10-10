@@ -13,6 +13,7 @@ from flask_cors import CORS
 from flask_limiter import Limiter
 from flask_limiter.util import get_remote_address
 import razorpay
+from prometheus_client import Counter, Histogram, generate_latest, CONTENT_TYPE_LATEST
 
 import firebase_db
 
@@ -36,6 +37,34 @@ RAZORPAY_KEY_ID = "rzp_test_RKK3DuGSaxK9fR"
 RAZORPAY_KEY_SECRET = "VgVc96Pdn3t5T8ieX0nb2ajt"
 razorpay_client = razorpay.Client(auth=(RAZORPAY_KEY_ID, RAZORPAY_KEY_SECRET))
 
+
+# Count of total HTTP requests
+REQUEST_COUNT = Counter(
+    "flask_app_requests_total",
+    "Total HTTP requests",
+    ["method", "endpoint", "http_status"]
+)
+
+# Histogram for request latency
+REQUEST_LATENCY = Histogram(
+    "flask_app_request_latency_seconds",
+    "HTTP request latency in seconds",
+    ["endpoint"]
+)
+@app.before_request
+def start_timer():
+    g.start_time = time.time()
+
+@app.after_request
+def record_metrics(response):
+    request_latency = time.time() - g.start_time
+    REQUEST_LATENCY.labels(endpoint=request.path).observe(request_latency)
+    REQUEST_COUNT.labels(
+        method=request.method,
+        endpoint=request.path,
+        http_status=response.status_code
+    ).inc()
+    return response
 
 def generate_token(user):
     payload = {
@@ -75,6 +104,9 @@ def healthz():
         logging.error(f"❌ Health check exception: {e}")
         return jsonify(status="Service Down", error=str(e)), 503
 
+@app.route("/metrics")
+def metrics():
+    return generate_latest(), 200, {"Content-Type": CONTENT_TYPE_LATEST}
 
 @app.route("/login", methods=["POST"])
 def login():
