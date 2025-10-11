@@ -66,6 +66,7 @@ def record_metrics(response):
     return response
 
 def generate_token(user):
+    IST = timezone(timedelta(hours=5, minutes=30))
     payload = {
         #    "id": user.get("id") or   # ✅ include id
         "id": user.get("customerId"),
@@ -577,7 +578,7 @@ def create_order():
     # 4️⃣ Decide based on payment method
     payment_method = data.get("payment_method", "Razorpay")
     razorpay_order_id = None
-
+    IST = timezone(timedelta(hours=5, minutes=30))
     if payment_method == "Razorpay":
         # Create Razorpay order
         razorpay_order = razorpay_client.order.create({
@@ -981,7 +982,7 @@ def add_item():
 
     if not canonical_shop_id:
         return jsonify({'success': False, 'message': f'Shop not found for id={raw_shop_id}'}), 404
-
+    IST = timezone(timedelta(hours=5, minutes=30))
     saved_items = []
     username = user.get('username')
     for it in items:
