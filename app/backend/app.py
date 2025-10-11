@@ -89,6 +89,21 @@ def record_metrics(response):
 
 # Health check endpoint – exempt from rate limits
 
+@app.before_request
+def load_current_user():
+    auth_header = request.headers.get("Authorization", "")
+    if auth_header.startswith("Bearer "):
+        token = auth_header[7:]
+        try:
+            payload = jwt.encode(token, SECRET_KEY, algorithm="HS256")
+            g.current_user = payload
+        except jwt.ExpiredSignatureError:
+            g.current_user = None
+        except jwt.InvalidTokenError:
+            g.current_user = None
+    else:
+        g.current_user = None
+
 def generate_token(user):
     IST = timezone(timedelta(hours=5, minutes=30))
 
