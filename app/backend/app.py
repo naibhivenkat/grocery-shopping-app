@@ -30,6 +30,7 @@ limiter.init_app(app)
 
 otp_store = {}
 forgot_password_otp_store = {}  # email -> {otp, expiry, attempts}
+GITHUB_REPO = "naibhivenkat/grocery-shopping-app"
 
 # 🔹 Initialize Razorpay client
 RAZORPAY_KEY_ID = "rzp_test_RKK3DuGSaxK9fR"
@@ -748,45 +749,92 @@ def get_shop_orders_multi():
 
 
 # ----------- APP VERSION ------------
-
+#
+# @app.route("/check_update", methods=["GET"])
+# def check_update():
+#     # Leave logic as before
+#     try:
+#         base_dir = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+#         version_file = os.path.join(base_dir, "version.properties")
+#         if not os.path.exists(version_file):
+#             logging.error("version.properties file not found at %s", version_file)
+#             return jsonify({"error": "version.properties file not found"}), 500
+#         props = {}
+#         with open(version_file, "r") as f:
+#             for line in f:
+#                 line = line.strip()
+#                 if line and "=" in line:
+#                     key, value = line.split("=", 1)
+#                     props[key.strip()] = value.strip()
+#         version_code = int(props.get("VERSION_CODE", 1))
+#         version_name = props.get("VERSION_NAME", "0.1")
+#         apk_url = "https://github.com/naibhivenkat/grocery-shopping-app/releases/latest/download/app-shopowner-debug.apk"
+#         apk_size = 0
+#         try:
+#             r = requests.head(apk_url, allow_redirects=True, timeout=10)
+#             apk_size = int(r.headers.get("Content-Length", "0"))
+#         except Exception as e:
+#             logging.error(f"Unable to fetch APK size: {e}")
+#             apk_size = 0
+#         logging.info("Returning version %s (code %d) with size %d", version_name, version_code,
+#                      apk_size)
+#         return jsonify({
+#             "versionCode": version_code,
+#             "versionName": version_name,
+#             "apkUrl": apk_url,
+#             "apkSize": apk_size
+#         })
+#     except Exception as e:
+#         logging.exception("Error checking update")
+#         return jsonify({"error": str(e)}), 500
 @app.route("/check_update", methods=["GET"])
 def check_update():
-    # Leave logic as before
     try:
-        base_dir = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-        version_file = os.path.join(base_dir, "version.properties")
-        if not os.path.exists(version_file):
-            logging.error("version.properties file not found at %s", version_file)
-            return jsonify({"error": "version.properties file not found"}), 500
-        props = {}
-        with open(version_file, "r") as f:
-            for line in f:
-                line = line.strip()
-                if line and "=" in line:
-                    key, value = line.split("=", 1)
-                    props[key.strip()] = value.strip()
-        version_code = int(props.get("VERSION_CODE", 1))
-        version_name = props.get("VERSION_NAME", "0.1")
-        apk_url = "https://github.com/naibhivenkat/grocery-shopping-app/releases/latest/download/app-shopowner-debug.apk"
+        # Get user role from query parameter
+        role = request.args.get("role", "customer").lower()
+        if role not in ["customer", "shopowner"]:
+            return jsonify({"error": "Invalid role"}), 400
+
+        # Fetch the latest release from GitHub
+        api_url = f"https://api.github.com/repos/{GITHUB_REPO}/releases/latest"
+        r = requests.get(api_url, timeout=10)
+        r.raise_for_status()
+        release = r.json()
+
+        # Extract version info from tag
+        version_name = release.get("tag_name", "0.1")
+        if version_name.startswith("v"):
+            version_name = version_name[1:]
+
+        # Convert version_name to Android versionCode (1.153 -> 1153)
+        parts = version_name.split(".")
+        version_code = int("".join(f"{int(p):02d}" for p in parts))
+
+        # Find APK asset dynamically based on role
+        apk_url = None
         apk_size = 0
-        try:
-            r = requests.head(apk_url, allow_redirects=True, timeout=10)
-            apk_size = int(r.headers.get("Content-Length", "0"))
-        except Exception as e:
-            logging.error(f"Unable to fetch APK size: {e}")
-            apk_size = 0
-        logging.info("Returning version %s (code %d) with size %d", version_name, version_code,
-                     apk_size)
+        for asset in release.get("assets", []):
+            if role in asset["name"].lower() and asset["name"].endswith(".apk"):
+                apk_url = asset["browser_download_url"]
+                apk_size = asset.get("size", 0)
+                break
+
+        if not apk_url:
+            logging.error("No APK found for role %s in latest release", role)
+            return jsonify({"error": f"No APK found for role {role}"}), 500
+
+        logging.info("Returning version %s (code %d) with size %d for role %s",
+                     version_name, version_code, apk_size, role)
         return jsonify({
             "versionCode": version_code,
             "versionName": version_name,
             "apkUrl": apk_url,
             "apkSize": apk_size
         })
+
     except Exception as e:
         logging.exception("Error checking update")
         return jsonify({"error": str(e)}), 500
-
 
 def send_email_otp(email, otp):
     try:
