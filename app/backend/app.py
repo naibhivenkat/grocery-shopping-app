@@ -95,7 +95,7 @@ def load_current_user():
     if auth_header.startswith("Bearer "):
         token = auth_header[7:]
         try:
-            # ✅ decode the token to get user info
+            # ✅ decode with same algorithm
             payload = jwt.decode(token, SECRET_KEY, algorithms=["HS256"])
             g.current_user = payload
         except jwt.ExpiredSignatureError:
@@ -108,24 +108,20 @@ def load_current_user():
 
 def generate_token(user):
     IST = timezone(timedelta(hours=5, minutes=30))
-
-    # Use datetime + timedelta properly
-    exp_time = datetime.now(IST) + timedelta(days=7)
-
+    exp_time = datetime.now(IST) + timedelta(days=7)  # datetime object
     payload = {
         "id": user.get("customerId"),
         "username": user["username"],
         "role": user["role"],
-        "exp": exp_time.replace(microsecond=0).isoformat()
+        "exp": int(exp_time.timestamp())  # numeric timestamp
     }
 
     token = jwt.encode(payload, SECRET_KEY, algorithm="HS256")
-
-    # ensure it's str, not bytes
     if isinstance(token, bytes):
         token = token.decode("utf-8")
 
     return token
+
 
 @app.get("/healthz")
 @limiter.exempt
