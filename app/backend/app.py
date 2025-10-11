@@ -6,14 +6,13 @@ import razorpay
 import requests
 import time
 import uuid
-
+from datetime import datetime, timedelta, timezone
 from firebase_admin import credentials, auth, db
 from flask import Flask, request, jsonify, g
 from flask_cors import CORS
 from flask_limiter import Limiter
 from flask_limiter.util import get_remote_address
 from prometheus_client import Counter, Histogram, generate_latest, CONTENT_TYPE_LATEST
-from datetime import datetime, timedelta, timezone
 
 import firebase_db
 
@@ -89,13 +88,15 @@ def record_metrics(response):
 
 # Health check endpoint – exempt from rate limits
 
+
 @app.before_request
 def load_current_user():
     auth_header = request.headers.get("Authorization", "")
     if auth_header.startswith("Bearer "):
         token = auth_header[7:]
         try:
-            payload = jwt.encode(token, SECRET_KEY, algorithm="HS256")
+            # ✅ decode the token to get user info
+            payload = jwt.decode(token, SECRET_KEY, algorithms=["HS256"])
             g.current_user = payload
         except jwt.ExpiredSignatureError:
             g.current_user = None
@@ -103,6 +104,7 @@ def load_current_user():
             g.current_user = None
     else:
         g.current_user = None
+
 
 def generate_token(user):
     IST = timezone(timedelta(hours=5, minutes=30))
