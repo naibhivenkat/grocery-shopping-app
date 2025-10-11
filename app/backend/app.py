@@ -6,13 +6,14 @@ import razorpay
 import requests
 import time
 import uuid
-from datetime import datetime, timedelta, timezone
+
 from firebase_admin import credentials, auth, db
 from flask import Flask, request, jsonify, g
 from flask_cors import CORS
 from flask_limiter import Limiter
 from flask_limiter.util import get_remote_address
 from prometheus_client import Counter, Histogram, generate_latest, CONTENT_TYPE_LATEST
+from datetime import datetime, timedelta, timezone
 
 import firebase_db
 
@@ -65,19 +66,43 @@ def record_metrics(response):
     ).inc()
     return response
 
+# def generate_token(user):
+#     IST = timezone(timedelta(hours=5, minutes=30))
+#     payload = {
+#         #    "id": user.get("id") or   # ✅ include id
+#         "id": user.get("customerId"),
+#         "username": user["username"],
+#         "role": user["role"],
+#         "exp": datetime.now(IST).replace(microsecond=0).isoformat() + datetime.timedelta(days=7)
+#     }
+#     token = jwt.encode(payload, SECRET_KEY, algorithm="HS256")
+#     print("id ", user.get("id"))
+#     print(f"cust id {user.get("customerId")}")
+#     print(f"Payload in generate token : {payload}")
+#
+#     # ensure it's str, not bytes
+#     if isinstance(token, bytes):
+#         token = token.decode("utf-8")
+#
+#     return token
+
+
+# Health check endpoint – exempt from rate limits
+
 def generate_token(user):
     IST = timezone(timedelta(hours=5, minutes=30))
+
+    # Use datetime + timedelta properly
+    exp_time = datetime.now(IST) + timedelta(days=7)
+
     payload = {
-        #    "id": user.get("id") or   # ✅ include id
         "id": user.get("customerId"),
         "username": user["username"],
         "role": user["role"],
-        "exp": datetime.now(IST).replace(microsecond=0).isoformat() + datetime.timedelta(days=7)
+        "exp": exp_time.replace(microsecond=0).isoformat()
     }
+
     token = jwt.encode(payload, SECRET_KEY, algorithm="HS256")
-    print("id ", user.get("id"))
-    print(f"cust id {user.get("customerId")}")
-    print(f"Payload in generate token : {payload}")
 
     # ensure it's str, not bytes
     if isinstance(token, bytes):
@@ -85,8 +110,6 @@ def generate_token(user):
 
     return token
 
-
-# Health check endpoint – exempt from rate limits
 @app.get("/healthz")
 @limiter.exempt
 def healthz():
