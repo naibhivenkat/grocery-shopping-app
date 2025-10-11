@@ -108,12 +108,16 @@ def load_current_user():
 
 def generate_token(user):
     IST = timezone(timedelta(hours=5, minutes=30))
-    exp_time = datetime.now(IST) + timedelta(days=7)  # datetime object
+    exp_time = datetime.now(IST) + timedelta(days=7)
+
+    # ✅ Use correct ID field based on role
+    user_id = user.get("customerId") or user.get("shopkeeperId") or user.get("id")
+
     payload = {
-        "id": user.get("customerId"),
-        "username": user["username"],
-        "role": user["role"],
-        "exp": int(exp_time.timestamp())  # numeric timestamp
+        "id": user_id,
+        "username": user.get("username"),
+        "role": user.get("role"),
+        "exp": int(exp_time.timestamp())
     }
 
     token = jwt.encode(payload, SECRET_KEY, algorithm="HS256")
