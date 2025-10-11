@@ -9,9 +9,12 @@ import android.widget.*
 import androidx.appcompat.app.AppCompatActivity
 import com.example.groceryshoppingapp.models.LoginRequest
 import com.example.groceryshoppingapp.models.LoginResponse
+import com.example.groceryshoppingapp.models.Shop
+import com.example.groceryshoppingapp.models.Item
 import com.example.groceryshoppingapp.network.ApiService
 import com.example.groceryshoppingapp.network.RetrofitClient
 import com.example.groceryshoppingapp.utils.SessionManager
+import kotlinx.coroutines.*
 import retrofit2.Call
 import retrofit2.Callback
 import retrofit2.Response
@@ -28,8 +31,8 @@ class LoginActivity : AppCompatActivity() {
     private lateinit var helpText: TextView
     private lateinit var progressBar: ProgressBar
 
-
     private val appRole by lazy { BuildConfig.APP_ROLE.lowercase() }
+    private val api by lazy { RetrofitClient.getInstance(this).create(ApiService::class.java) }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         LanguageManager.applySavedLanguage(this)
@@ -67,10 +70,8 @@ class LoginActivity : AppCompatActivity() {
         }
 
         registerText.setOnClickListener {
-//            startActivity(Intent(this, RegisterActivity::class.java))
             checkServerBeforeRegister()
         }
-
 
         forgotPasswordText.setOnClickListener {
             startActivity(Intent(this, ForgotPasswordActivity::class.java))
@@ -101,38 +102,31 @@ class LoginActivity : AppCompatActivity() {
 
                     when {
                         !response.isSuccessful -> {
-                            // HTTP errors like 500, 404
                             errorText.text = "Server is temporarily unavailable. Please try later."
                             errorText.visibility = View.VISIBLE
                         }
                         loginResponse == null -> {
-                            // Null or malformed response
                             errorText.text = "Server is temporarily unavailable. Please try later."
                             errorText.visibility = View.VISIBLE
                         }
                         loginResponse.success != true -> {
-                            // Success=false → invalid credentials
                             errorText.text = getString(R.string.invalid_username_password)
                             errorText.visibility = View.VISIBLE
                         }
                         else -> {
-                            // ✅ Successful login
                             val user = loginResponse.user
                             val loginRole = user?.role?.lowercase()?.trim()
 
-                            // Save auth token if present
                             loginResponse.token?.let { token ->
                                 SessionManager.setAuthToken(this@LoginActivity, token)
                             }
 
-                            // Role mismatch check
                             if (loginRole != appRole) {
                                 errorText.text = getString(R.string.role_mismatch, appRole.replaceFirstChar { it.uppercase() })
                                 errorText.visibility = View.VISIBLE
                                 return
                             }
 
-                            // Save session and profile
                             SessionManager.saveLogin(this@LoginActivity, user?.username ?: "", loginRole ?: "")
                             SessionManager.saveUserProfile(
                                 this@LoginActivity,
@@ -146,7 +140,6 @@ class LoginActivity : AppCompatActivity() {
                             user?.customerId?.let { SessionManager.setCustomerId(this@LoginActivity, it) }
                             user?.shopkeeperId?.let { SessionManager.setShopkeeperId(this@LoginActivity, it) }
 
-                            // Save shop info if exists
                             user?.shop?.id?.let { shopDocId ->
                                 SessionManager.setShopId(this@LoginActivity, shopDocId)
                                 SessionManager.setShopInfo(this@LoginActivity, shopDocId, user.shop?.name ?: "")
@@ -154,7 +147,12 @@ class LoginActivity : AppCompatActivity() {
                             val hasItems = user?.hasItems ?: true
                             SessionManager.setHasItemsAdded(this@LoginActivity, hasItems)
 
-                            // Redirect based on role and shop/items
+                            // ---------- Minimal change: preload shops + items for customers ----------
+                            if (loginRole == "customer") {
+                                preloadShopsAndItems()
+                            }
+
+                            // Redirect based on role
                             when (loginRole) {
                                 "customer" -> startActivity(Intent(this@LoginActivity, CustomerHomeActivity::class.java))
                                 "shopowner" -> {
@@ -196,42 +194,58 @@ class LoginActivity : AppCompatActivity() {
         })
     }
 
+    // ---------- Preload shops and items in background ----------
+    private fun preloadShopsAndItems() {
+        val api = RetrofitClient.getInstance(this).create(ApiService::class.java)
+
+        CoroutineScope(Dispatchers.IO).launch {
+            try {
+                val shopsResponse = api.getAllShops().execute()
+                if (shopsResponse.isSuccessful && shopsResponse.body() != null) {
+                    val shops = shopsResponse.body()!!
+                    SessionManager.cacheShopList(this@LoginActivity, shops)
+
+                    val allItems = mutableMapOf<String, List<Item>>()
+                    shops.forEach { shop ->
+                        try {
+                            val itemsResp = api.getItems(shop.id).execute() // ✅ use getItems()
+                            if (itemsResp.isSuccessful && itemsResp.body() != null) {
+                                allItems[shop.id] = itemsResp.body()!!.items // extract items from GetItemsResponse
+                            }
+                        } catch (e: Exception) {
+                            Log.w("PreloadItems", "Failed for ${shop.name}: ${e.message}")
+                        }
+                    }
+                    SessionManager.cacheItemsByShop(this@LoginActivity, allItems)
+                }
+            } catch (e: Exception) {
+                Log.w("Preload", "Shop+Item preload failed: ${e.message}")
+            }
+        }
+    }
+
 
     private fun checkServerBeforeRegister() {
         val api = RetrofitClient.getInstance(this).create(ApiService::class.java)
 
-        // Show progress & disable register click
         progressBar.visibility = View.VISIBLE
         registerText.isEnabled = false
 
         api.healthCheck().enqueue(object : Callback<Map<String, String>> {
-            override fun onResponse(
-                call: Call<Map<String, String>>,
-                response: Response<Map<String, String>>
-            ) {
+            override fun onResponse(call: Call<Map<String, String>>, response: Response<Map<String, String>>) {
                 progressBar.visibility = View.GONE
                 registerText.isEnabled = true
-
                 if (response.isSuccessful) {
-                    // Server is active → proceed to RegisterActivity
                     startActivity(Intent(this@LoginActivity, RegisterActivity::class.java))
                 } else {
-                    Toast.makeText(
-                        this@LoginActivity,
-                        "Server is temporarily unavailable. Please try later.",
-                        Toast.LENGTH_SHORT
-                    ).show()
+                    Toast.makeText(this@LoginActivity, "Server is temporarily unavailable. Please try later.", Toast.LENGTH_SHORT).show()
                 }
             }
 
             override fun onFailure(call: Call<Map<String, String>>, t: Throwable) {
                 progressBar.visibility = View.GONE
                 registerText.isEnabled = true
-                Toast.makeText(
-                    this@LoginActivity,
-                    "Server is offline. Please check your connection.",
-                    Toast.LENGTH_SHORT
-                ).show()
+                Toast.makeText(this@LoginActivity, "Server is offline. Please check your connection.", Toast.LENGTH_SHORT).show()
             }
         })
     }

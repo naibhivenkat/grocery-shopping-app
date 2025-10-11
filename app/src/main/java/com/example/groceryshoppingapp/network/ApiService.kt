@@ -166,5 +166,22 @@ interface ApiService {
     @GET("healthz")
     fun healthCheck(): Call<Map<String, String>>
 
+    @POST("create_shop")
+    fun createShop(@Body request: CreateShopRequest): Call<CreateShopResponse>
+
+
+
+    data class CreateShopRequest(
+        val name: String,
+        val address: String,
+        val contact: String,
+        val shopkeeper_id: String
+    )
+
+    data class CreateShopResponse(
+        val success: Boolean,
+        val message: String,
+        val shop: Shop?
+    )
 
 }

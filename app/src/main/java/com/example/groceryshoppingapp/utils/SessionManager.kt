@@ -1,10 +1,13 @@
 package com.example.groceryshoppingapp.utils
-
 import android.content.Context
+import com.example.groceryshoppingapp.models.Shop
+import com.example.groceryshoppingapp.models.Item
+
 import android.content.SharedPreferences
 import android.util.Log
 import androidx.core.content.edit
-
+import com.google.gson.Gson
+import com.google.gson.reflect.TypeToken
 object SessionManager {
     private const val PREF_NAME = "GroceryAppSession"
 
@@ -20,6 +23,12 @@ object SessionManager {
 
     private const val KEY_LANGUAGE_SELECTED = "language_selected"
     private const val KEY_LANGUAGE_CODE = "language_code"
+
+    private const val PREFS_NAME = "grocery_app_prefs"
+    private const val KEY_CACHED_SHOPS = "cached_shops"
+    private const val KEY_CACHED_ITEMS = "cached_items_by_shop"
+
+    private val gson = Gson()
 
     private fun prefs(context: Context): SharedPreferences =
         context.getSharedPreferences(PREF_NAME, Context.MODE_PRIVATE)
@@ -128,6 +137,35 @@ object SessionManager {
     // --- SHOP CHECKS ---
     fun hasShop(context: Context): Boolean = !getShopId(context).isNullOrEmpty()
     fun hasShopWithItems(context: Context): Boolean = hasShop(context) && hasItemsAdded(context)
+
+
+    // ---------- Cache Shops ----------
+    fun cacheShopList(context: Context, shops: List<Shop>) {
+        val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+        val json = gson.toJson(shops)
+        prefs.edit().putString(KEY_CACHED_SHOPS, json).apply()
+    }
+
+    fun getCachedShops(context: Context): List<Shop> {
+        val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+        val json = prefs.getString(KEY_CACHED_SHOPS, null) ?: return emptyList()
+        val type = object : TypeToken<List<Shop>>() {}.type
+        return gson.fromJson(json, type)
+    }
+
+    // ---------- Cache Items by Shop ----------
+    fun cacheItemsByShop(context: Context, itemsByShop: Map<String, List<Item>>) {
+        val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+        val json = gson.toJson(itemsByShop)
+        prefs.edit().putString(KEY_CACHED_ITEMS, json).apply()
+    }
+
+    fun getCachedItemsByShop(context: Context): Map<String, List<Item>> {
+        val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+        val json = prefs.getString(KEY_CACHED_ITEMS, null) ?: return emptyMap()
+        val type = object : TypeToken<Map<String, List<Item>>>() {}.type
+        return gson.fromJson(json, type)
+    }
 
 
 }

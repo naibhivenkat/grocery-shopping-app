@@ -6,21 +6,22 @@ import android.widget.Button
 import android.widget.EditText
 import android.widget.Toast
 import androidx.appcompat.app.AppCompatActivity
+import com.example.groceryshoppingapp.models.Shop
+import com.example.groceryshoppingapp.network.ApiService
+import com.example.groceryshoppingapp.network.RetrofitClient
 import com.example.groceryshoppingapp.utils.SessionManager
-import com.google.firebase.firestore.FirebaseFirestore
-import java.util.UUID
+import retrofit2.Call
+import retrofit2.Callback
+import retrofit2.Response
 
 class CreateShopActivity : AppCompatActivity() {
 
     private lateinit var etShopName: EditText
     private lateinit var btnCreateShop: Button
-    private lateinit var db: FirebaseFirestore
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_create_shop)
-
-        db = FirebaseFirestore.getInstance()
 
         etShopName = findViewById(R.id.etShopName)
         btnCreateShop = findViewById(R.id.btnCreateShop)
@@ -36,6 +37,7 @@ class CreateShopActivity : AppCompatActivity() {
     }
 
     private fun createShop(shopName: String) {
+        val api = RetrofitClient.getInstance(this).create(ApiService::class.java)
         val shopkeeperId = SessionManager.getShopkeeperId(this)
         if (shopkeeperId.isNullOrEmpty()) {
             Toast.makeText(this, "Error: Shopkeeper ID missing. Please login again.", Toast.LENGTH_SHORT).show()
@@ -44,50 +46,57 @@ class CreateShopActivity : AppCompatActivity() {
             return
         }
 
-        // 🔑 Generate UUID instead of incremental IDs
-        val newShopId = UUID.randomUUID().toString()
+        // Dummy values for now (can add UI fields later)
+        val address = "Default Address"
+        val contact = "0000000000"
 
-        val shopData = hashMapOf(
-            "id" to newShopId,          // ✅ backend expects "id"
-            "name" to shopName,
-            "shopkeeper_id" to shopkeeperId
+        val request = ApiService.CreateShopRequest(
+            name = shopName,
+            address = address,
+            contact = contact,
+            shopkeeper_id = shopkeeperId
         )
 
-        db.collection("shops")
-            .add(shopData)
-            .addOnSuccessListener { _ ->
+        api.createShop(request)
+            .enqueue(object : Callback<ApiService.CreateShopResponse> {
+                override fun onResponse(
+                    call: Call<ApiService.CreateShopResponse>,
+                    response: Response<ApiService.CreateShopResponse>
+                ) {
+                    if (response.isSuccessful && response.body()?.success == true) {
+                        val shop = response.body()!!.shop
+                        if (shop != null) {
+                            // Use your existing Shop model
+                            val createdShop = Shop(
+                                id = shop.id,
+                                name = shop.name,
+                                address = shop.address,
+                                contact = shop.contact,
+                                shopkeeper_id = shopkeeperId
+                            )
 
-                // Save locally in SessionManager
-                SessionManager.setShopId(this, newShopId)
-                SessionManager.setShopInfo(this, newShopId, shopName)
+                            // Save locally
+                            SessionManager.setShopId(this@CreateShopActivity, createdShop.id)
+                            SessionManager.setShopInfo(this@CreateShopActivity, createdShop.id, createdShop.name)
 
-                // Preserve token if available
-                val token = SessionManager.getAuthToken(this)
-                if (!token.isNullOrEmpty()) {
-                    SessionManager.setAuthToken(this, token)
+                            // Preserve token if available
+                            val token = SessionManager.getAuthToken(this@CreateShopActivity)
+                            if (!token.isNullOrEmpty()) {
+                                SessionManager.setAuthToken(this@CreateShopActivity, token)
+                            }
+
+                            Toast.makeText(this@CreateShopActivity, "Shop created!", Toast.LENGTH_SHORT).show()
+                            startActivity(Intent(this@CreateShopActivity, AddItemsActivity::class.java))
+                            finish()
+                        }
+                    } else {
+                        Toast.makeText(this@CreateShopActivity, "Failed to create shop", Toast.LENGTH_SHORT).show()
+                    }
                 }
 
-                // Update user document → attach shop
-                db.collection("users")
-                    .whereEqualTo("shopkeeperId", shopkeeperId)
-                    .get()
-                    .addOnSuccessListener { snapshot ->
-                        if (!snapshot.isEmpty) {
-                            val userDoc = snapshot.documents[0]
-                            db.collection("users").document(userDoc.id)
-                                .update(
-                                    "shopExists", true,
-                                    "shop", mapOf("id" to newShopId, "name" to shopName)
-                                )
-                        }
-                    }
-
-                Toast.makeText(this, "Shop created!", Toast.LENGTH_SHORT).show()
-                startActivity(Intent(this, AddItemsActivity::class.java))
-                finish()
-            }
-            .addOnFailureListener {
-                Toast.makeText(this, "Error saving shop", Toast.LENGTH_SHORT).show()
-            }
+                override fun onFailure(call: Call<ApiService.CreateShopResponse>, t: Throwable) {
+                    Toast.makeText(this@CreateShopActivity, "Error: ${t.message}", Toast.LENGTH_SHORT).show()
+                }
+            })
     }
 }

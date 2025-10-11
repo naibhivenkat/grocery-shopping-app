@@ -1,18 +1,17 @@
-import datetime
-import datetime
 import jwt
 import logging
 import os
 import random
+import razorpay
 import requests
 import time
 import uuid
+from datetime import datetime, timedelta, timezone
 from firebase_admin import credentials, auth, db
 from flask import Flask, request, jsonify, g
 from flask_cors import CORS
 from flask_limiter import Limiter
 from flask_limiter.util import get_remote_address
-import razorpay
 from prometheus_client import Counter, Histogram, generate_latest, CONTENT_TYPE_LATEST
 
 import firebase_db
@@ -379,6 +378,54 @@ def get_shops_for_shopkeeper(shopkeeper_id):
     return jsonify(result)
 
 
+# @app.route('/create_shop', methods=['POST'])
+# def create_shop():
+#     data = request.form if request.form else request.get_json()
+#     name = data.get('name')
+#     address = data.get('address')
+#     contact = data.get('contact')
+#     shopkeeper_id = data.get('shopkeeper_id')
+#
+#     if not all([name, address, contact, shopkeeper_id]):
+#         return jsonify({'success': False, 'message': 'Missing fields'}), 400
+#
+#     # ✅ Create shop entry (doc.id is Firestore’s ID now)
+#     shop_dict = {
+#         "name": name,
+#         "address": address,
+#         "contact": contact,
+#         "shopkeeper_id": shopkeeper_id,
+#         "createdAt": datetime.utcnow().isoformat()
+#     }
+#     shop = firebase_db.append_shop(shop_dict)  # returns with correct "id" field
+#
+#     # ✅ Update user record with shopId + embed shop object
+#     user_ref = firebase_db.db.collection("users").where("shopkeeperId", "==",
+#                                                         shopkeeper_id).stream()
+#     for doc in user_ref:
+#         firebase_db.db.collection("users").document(doc.id).update({
+#             "shopId": shop["id"],
+#             "shop": {  # ✅ embed minimal shop info so client sees it immediately
+#                 "id": shop["id"],
+#                 "name": shop["name"],
+#                 "shopkeeper_id": shop["shopkeeper_id"]
+#             }
+#         })
+#         break
+#
+#     # ✅ Return shop info immediately
+#     return jsonify({
+#         'success': True,
+#         'message': 'Shop created successfully',
+#         'shop': {
+#             'id': shop['id'],
+#             'name': shop['name'],
+#             'address': shop['address'],
+#             'contact': shop['contact']
+#         }
+#     }), 200
+
+
 @app.route('/create_shop', methods=['POST'])
 def create_shop():
     data = request.form if request.form else request.get_json()
@@ -390,23 +437,28 @@ def create_shop():
     if not all([name, address, contact, shopkeeper_id]):
         return jsonify({'success': False, 'message': 'Missing fields'}), 400
 
-    # ✅ Create shop entry (doc.id is Firestore’s ID now)
+    # ✅ Define Indian Standard Time
+    IST = timezone(timedelta(hours=5, minutes=30))
+
+    # ✅ Simple ISO timestamp (with +05:30 offset)
+    created_at = datetime.now(IST).replace(microsecond=0).isoformat()
+
     shop_dict = {
         "name": name,
         "address": address,
         "contact": contact,
         "shopkeeper_id": shopkeeper_id,
-        "createdAt": datetime.utcnow().isoformat()
+        "createdAt": created_at
     }
-    shop = firebase_db.append_shop(shop_dict)  # returns with correct "id" field
 
-    # ✅ Update user record with shopId + embed shop object
-    user_ref = firebase_db.db.collection("users").where("shopkeeperId", "==",
-                                                        shopkeeper_id).stream()
+    shop = firebase_db.append_shop(shop_dict)
+
+    # ✅ Update user document
+    user_ref = firebase_db.db.collection("users").where("shopkeeperId", "==", shopkeeper_id).stream()
     for doc in user_ref:
         firebase_db.db.collection("users").document(doc.id).update({
             "shopId": shop["id"],
-            "shop": {  # ✅ embed minimal shop info so client sees it immediately
+            "shop": {
                 "id": shop["id"],
                 "name": shop["name"],
                 "shopkeeper_id": shop["shopkeeper_id"]
@@ -414,7 +466,7 @@ def create_shop():
         })
         break
 
-    # ✅ Return shop info immediately
+    # ✅ Return JSON response with same timestamp
     return jsonify({
         'success': True,
         'message': 'Shop created successfully',
@@ -422,7 +474,8 @@ def create_shop():
             'id': shop['id'],
             'name': shop['name'],
             'address': shop['address'],
-            'contact': shop['contact']
+            'contact': shop['contact'],
+            'createdAt': created_at
         }
     }), 200
 
