@@ -71,7 +71,7 @@ def generate_token(user):
         "id": user.get("customerId"),
         "username": user["username"],
         "role": user["role"],
-        "exp": datetime.datetime.utcnow() + datetime.timedelta(days=7)
+        "exp": datetime.now(IST).replace(microsecond=0).isoformat() + datetime.timedelta(days=7)
     }
     token = jwt.encode(payload, SECRET_KEY, algorithm="HS256")
     print("id ", user.get("id"))
@@ -583,7 +583,7 @@ def create_order():
         razorpay_order = razorpay_client.order.create({
             "amount": int(total * 100),  # in paise
             "currency": "INR",
-            "receipt": f"order_{datetime.datetime.utcnow().timestamp()}",
+            "receipt": f"order_{datetime.now(IST).replace(microsecond=0).isoformat()}",
             "payment_capture": 1
         })
         razorpay_order_id = razorpay_order["id"]
@@ -605,7 +605,7 @@ def create_order():
         "transaction_id": "" if payment_method == "Razorpay" else "Cash",
         "razorpay_order_id": razorpay_order_id if razorpay_order_id else "",
         "status": "Pending" if payment_method == "Razorpay" else "Confirmed",
-        "created_at": datetime.datetime.utcnow().isoformat()
+        "created_at": datetime.now(IST).replace(microsecond=0).isoformat()
     }
 
     new_order = firebase_db.append_order(order_dict)
@@ -991,7 +991,7 @@ def add_item():
             "quantity": int(it.get("stockQuantity") or 0),
             "description": it.get("description") or "",
             "shopId": canonical_shop_id,  # ✅ always store doc.id
-            "createdAt": datetime.datetime.utcnow().isoformat(),
+            "createdAt": datetime.now(IST).replace(microsecond=0).isoformat(),
             "createdBy": username
         }
         saved_items.append(firebase_db.append_item(item_dict))
