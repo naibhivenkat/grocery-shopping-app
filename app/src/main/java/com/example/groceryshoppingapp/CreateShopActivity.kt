@@ -39,21 +39,19 @@ class CreateShopActivity : AppCompatActivity() {
     private fun createShop(shopName: String) {
         val api = RetrofitClient.getInstance(this).create(ApiService::class.java)
         val shopkeeperId = SessionManager.getShopkeeperId(this)
-        if (shopkeeperId.isNullOrEmpty()) {
-            Toast.makeText(this, "Error: Shopkeeper ID missing. Please login again.", Toast.LENGTH_SHORT).show()
+        val token = SessionManager.getAuthToken(this)  // ✅ JWT token
+
+        if (shopkeeperId.isNullOrEmpty() || token.isNullOrEmpty()) {
+            Toast.makeText(this, "Error: Login required", Toast.LENGTH_SHORT).show()
             startActivity(Intent(this, LoginActivity::class.java))
             finish()
             return
         }
 
-        // Dummy values for now (can add UI fields later)
-        val address = "Default Address"
-        val contact = "0000000000"
-
         val request = ApiService.CreateShopRequest(
             name = shopName,
-            address = address,
-            contact = contact,
+            address = "Default Address",
+            contact = "0000000000",
             shopkeeper_id = shopkeeperId
         )
 
@@ -66,37 +64,22 @@ class CreateShopActivity : AppCompatActivity() {
                     if (response.isSuccessful && response.body()?.success == true) {
                         val shop = response.body()!!.shop
                         if (shop != null) {
-                            // Use your existing Shop model
-                            val createdShop = Shop(
-                                id = shop.id,
-                                name = shop.name,
-                                address = shop.address,
-                                contact = shop.contact,
-                                shopkeeper_id = shopkeeperId
-                            )
-
-                            // Save locally
-                            SessionManager.setShopId(this@CreateShopActivity, createdShop.id)
-                            SessionManager.setShopInfo(this@CreateShopActivity, createdShop.id, createdShop.name)
-
-                            // Preserve token if available
-                            val token = SessionManager.getAuthToken(this@CreateShopActivity)
-                            if (!token.isNullOrEmpty()) {
-                                SessionManager.setAuthToken(this@CreateShopActivity, token)
-                            }
-
+                            SessionManager.setShopId(this@CreateShopActivity, shop.id)
+                            SessionManager.setShopInfo(this@CreateShopActivity, shop.id, shop.name)
                             Toast.makeText(this@CreateShopActivity, "Shop created!", Toast.LENGTH_SHORT).show()
                             startActivity(Intent(this@CreateShopActivity, AddItemsActivity::class.java))
                             finish()
                         }
                     } else {
-                        Toast.makeText(this@CreateShopActivity, "Failed to create shop", Toast.LENGTH_SHORT).show()
+                        Toast.makeText(
+                            this@CreateShopActivity,
+                            "Failed: ${response.body()?.message ?: "Unknown"}",
+                            Toast.LENGTH_SHORT
+                        ).show()
                     }
                 }
 
                 override fun onFailure(call: Call<ApiService.CreateShopResponse>, t: Throwable) {
                     Toast.makeText(this@CreateShopActivity, "Error: ${t.message}", Toast.LENGTH_SHORT).show()
                 }
-            })
-    }
-}
+            })}}

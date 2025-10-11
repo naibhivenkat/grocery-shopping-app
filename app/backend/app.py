@@ -452,21 +452,28 @@ def get_shops_for_shopkeeper(shopkeeper_id):
 
 @app.route('/create_shop', methods=['POST'])
 def create_shop():
-    data = request.form if request.form else request.get_json()
+    # ✅ Check logged-in user
+    user = getattr(g, "current_user", None)
+    if not user:
+        return jsonify({'success': False, 'message': 'Unauthorized'}), 401
+    if user.get("role") not in ["shopowner", "shopkeeper"]:
+        return jsonify({'success': False, 'message': 'Unauthorized role'}), 403
+
+    # ✅ Get data from request
+    data = request.get_json(silent=True) or {}
     name = data.get('name')
     address = data.get('address')
     contact = data.get('contact')
-    shopkeeper_id = data.get('shopkeeper_id')
+    shopkeeper_id = user.get("id")  # use logged-in user's ID
 
     if not all([name, address, contact, shopkeeper_id]):
         return jsonify({'success': False, 'message': 'Missing fields'}), 400
 
-    # ✅ Define Indian Standard Time
+    # ✅ Define IST timezone
     IST = timezone(timedelta(hours=5, minutes=30))
-
-    # ✅ Simple ISO timestamp (with +05:30 offset)
     created_at = datetime.now(IST).replace(microsecond=0).isoformat()
 
+    # ✅ Create shop dict
     shop_dict = {
         "name": name,
         "address": address,
@@ -490,7 +497,7 @@ def create_shop():
         })
         break
 
-    # ✅ Return JSON response with same timestamp
+    # ✅ Return response
     return jsonify({
         'success': True,
         'message': 'Shop created successfully',

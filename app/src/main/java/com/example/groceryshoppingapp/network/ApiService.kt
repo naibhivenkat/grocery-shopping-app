@@ -166,10 +166,10 @@ interface ApiService {
     @GET("healthz")
     fun healthCheck(): Call<Map<String, String>>
 
-    @POST("create_shop")
-    fun createShop(@Body request: CreateShopRequest): Call<CreateShopResponse>
-
-
+    @POST("/create_shop")
+    fun createShop(
+        @Body request: CreateShopRequest
+    ): Call<CreateShopResponse>  // no Header here, interceptor handles it
 
     data class CreateShopRequest(
         val name: String,
@@ -180,7 +180,7 @@ interface ApiService {
 
     data class CreateShopResponse(
         val success: Boolean,
-        val message: String,
+        val message: String?,
         val shop: Shop?
     )
 
