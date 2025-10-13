@@ -748,45 +748,6 @@ def get_shop_orders_multi():
     return jsonify(all_orders), 200
 
 
-# ----------- APP VERSION ------------
-#
-# @app.route("/check_update", methods=["GET"])
-# def check_update():
-#     # Leave logic as before
-#     try:
-#         base_dir = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-#         version_file = os.path.join(base_dir, "version.properties")
-#         if not os.path.exists(version_file):
-#             logging.error("version.properties file not found at %s", version_file)
-#             return jsonify({"error": "version.properties file not found"}), 500
-#         props = {}
-#         with open(version_file, "r") as f:
-#             for line in f:
-#                 line = line.strip()
-#                 if line and "=" in line:
-#                     key, value = line.split("=", 1)
-#                     props[key.strip()] = value.strip()
-#         version_code = int(props.get("VERSION_CODE", 1))
-#         version_name = props.get("VERSION_NAME", "0.1")
-#         apk_url = "https://github.com/naibhivenkat/grocery-shopping-app/releases/latest/download/app-shopowner-debug.apk"
-#         apk_size = 0
-#         try:
-#             r = requests.head(apk_url, allow_redirects=True, timeout=10)
-#             apk_size = int(r.headers.get("Content-Length", "0"))
-#         except Exception as e:
-#             logging.error(f"Unable to fetch APK size: {e}")
-#             apk_size = 0
-#         logging.info("Returning version %s (code %d) with size %d", version_name, version_code,
-#                      apk_size)
-#         return jsonify({
-#             "versionCode": version_code,
-#             "versionName": version_name,
-#             "apkUrl": apk_url,
-#             "apkSize": apk_size
-#         })
-#     except Exception as e:
-#         logging.exception("Error checking update")
-#         return jsonify({"error": str(e)}), 500
 @app.route("/check_update", methods=["GET"])
 def check_update():
     try:

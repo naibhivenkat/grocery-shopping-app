@@ -9,46 +9,60 @@
     android:background="?attr/colorSurface"
     android:elevation="2dp">
 
+    <!-- Shop Name -->
+    <TextView
+        android:id="@+id/text_shop_name"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:text=""
+        android:textSize="16sp"
+        android:textStyle="bold"
+        android:textColor="?attr/colorOnSurface" />
+
     <!-- Order ID -->
     <TextView
         android:id="@+id/order_id"
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
-        android:text="Order #123"
-        android:textSize="16sp"
-        android:textStyle="bold"
-        android:textColor="?attr/colorOnSurface"/>
-
-    <!-- Order details -->
-    <TextView
-        android:id="@+id/order_details"
-        android:layout_width="wrap_content"
-        android:layout_height="wrap_content"
-        android:text="Customer: 2×Apple, 1×Milk"
+        android:text=""
         android:textSize="14sp"
-        android:layout_marginTop="4dp"
-        android:textColor="?attr/colorOnSurface"/>
-
-    <!-- Transaction ID -->
-    <TextView
-        android:id="@+id/text_transaction_id"
-        android:layout_width="wrap_content"
-        android:layout_height="wrap_content"
-        android:text="Txn ID: 1234567890"
-        android:textSize="12sp"
         android:layout_marginTop="2dp"
-        android:visibility="gone"
         android:textColor="?attr/colorOnSurface" />
 
-    <!-- Status button -->
+    <!-- Items & Total Price Row -->
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="horizontal"
+        android:layout_marginTop="4dp">
+
+        <TextView
+            android:id="@+id/text_total_items"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:text=""
+            android:textSize="14sp"
+            android:textColor="?attr/colorOnSurface" />
+
+        <TextView
+            android:id="@+id/text_total_price"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text=""
+            android:textSize="14sp"
+            android:textColor="?attr/colorOnSurface" />
+    </LinearLayout>
+
+    <!-- Status Button -->
     <Button
         android:id="@+id/status_button"
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
-        android:text="Pending"
-        android:layout_marginTop="8dp"
+        android:text=""
+        android:layout_marginTop="6dp"
         android:paddingLeft="16dp"
         android:paddingRight="16dp"
-        android:textColor="@android:color/white"/>
+        android:textColor="@android:color/white" />
 
 </LinearLayout>

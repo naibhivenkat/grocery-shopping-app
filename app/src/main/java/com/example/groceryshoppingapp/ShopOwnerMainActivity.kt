@@ -1,7 +1,6 @@
 package com.example.groceryshoppingapp
 
 import android.content.Intent
-import android.graphics.Color
 import android.os.Bundle
 import android.widget.Button
 import android.widget.TextView
@@ -10,6 +9,7 @@ import androidx.appcompat.app.AppCompatActivity
 import androidx.recyclerview.widget.LinearLayoutManager
 import androidx.recyclerview.widget.RecyclerView
 import com.example.groceryshoppingapp.models.Order
+import com.example.groceryshoppingapp.models.Shop
 import com.example.groceryshoppingapp.network.ApiService
 import com.example.groceryshoppingapp.network.RetrofitClient
 import com.example.groceryshoppingapp.utils.SessionManager
@@ -23,6 +23,7 @@ class ShopOwnerMainActivity : AppCompatActivity() {
     private lateinit var recyclerView: RecyclerView
     private lateinit var ordersAdapter: OrdersAdapter
     private val orders = mutableListOf<Order>()
+    private var currentShopName: String? = null // 🏪 Store shop name
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -38,7 +39,7 @@ class ShopOwnerMainActivity : AppCompatActivity() {
         refreshBtn.setOnClickListener { fetchOrders() }
         backBtn.setOnClickListener { finish() }
 
-        // Adapter with highlighting logic
+        // Initialize adapter
         ordersAdapter = OrdersAdapter(
             orders,
             onStatusClick = { selectedOrder ->
@@ -46,17 +47,49 @@ class ShopOwnerMainActivity : AppCompatActivity() {
                 intent.putExtra("order", selectedOrder)
                 startActivity(intent)
             },
-            highlightCancelled = true // 🔹 Enable cancelled order highlight
+            highlightCancelled = true
         )
         recyclerView.adapter = ordersAdapter
 
-        displayShopInfo()
-        fetchOrders()
+        fetchShopInfoAndOrders()
     }
 
-    private fun displayShopInfo() {
-        val shopName = SessionManager.getShopName(this)
-        shopNameTv.text = shopName?.let { "Shop: $it" } ?: "My Shop"
+    /**
+     * Fetch all shops, find current shop by ID, then load orders.
+     */
+    private fun fetchShopInfoAndOrders() {
+        val shopId = SessionManager.getShopId(this)
+        if (shopId.isNullOrEmpty()) {
+            Toast.makeText(this, "No shop assigned.", Toast.LENGTH_LONG).show()
+            return
+        }
+
+        val api = RetrofitClient.getInstance(this).create(ApiService::class.java)
+        api.getAllShops().enqueue(object : Callback<List<Shop>> {
+            override fun onResponse(call: Call<List<Shop>>, response: Response<List<Shop>>) {
+                if (response.isSuccessful) {
+                    val shops = response.body().orEmpty()
+                    val shop = shops.find { it.id == shopId }
+
+                    currentShopName = shop?.name ?: "My Shop"
+                    shopNameTv.text = "Shop: $currentShopName"
+                } else {
+                    currentShopName = "My Shop"
+                    shopNameTv.text = "Shop: $currentShopName"
+                }
+                fetchOrders()
+            }
+
+            override fun onFailure(call: Call<List<Shop>>, t: Throwable) {
+                Toast.makeText(
+                    this@ShopOwnerMainActivity,
+                    "Failed to load shop info: ${t.message}",
+                    Toast.LENGTH_SHORT
+                ).show()
+                currentShopName = "My Shop"
+                fetchOrders()
+            }
+        })
     }
 
     private fun fetchOrders() {
@@ -72,15 +105,22 @@ class ShopOwnerMainActivity : AppCompatActivity() {
                 if (response.isSuccessful) {
                     val list = response.body().orEmpty()
 
-                    // 🔹 Sort orders by status: Pending → Packed → Delivered → Cancelled
-                    val sorted = list.sortedWith(compareBy { statusPriority(it.status) })
+                    // Attach shop name to each order
+                    val namedOrders = list.map { it.copy(shopName = currentShopName) }
+
+                    // Sort orders by status
+                    val sorted = namedOrders.sortedWith(compareBy { statusPriority(it.status) })
 
                     orders.clear()
                     orders.addAll(sorted)
                     ordersAdapter.notifyDataSetChanged()
 
                     if (list.isEmpty()) {
-                        Toast.makeText(this@ShopOwnerMainActivity, "No orders assigned to your shop.", Toast.LENGTH_SHORT).show()
+                        Toast.makeText(
+                            this@ShopOwnerMainActivity,
+                            "No orders assigned to your shop.",
+                            Toast.LENGTH_SHORT
+                        ).show()
                     }
                 } else {
                     showToast("Failed to load: ${response.code()}")

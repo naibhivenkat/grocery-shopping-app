@@ -9,9 +9,13 @@ import androidx.appcompat.app.AppCompatActivity
 import androidx.recyclerview.widget.LinearLayoutManager
 import androidx.recyclerview.widget.RecyclerView
 import com.example.groceryshoppingapp.models.Order
+import com.example.groceryshoppingapp.models.Shop
 import com.example.groceryshoppingapp.network.ApiService
 import com.example.groceryshoppingapp.network.RetrofitClient
 import com.example.groceryshoppingapp.utils.SessionManager
+import retrofit2.Call
+import retrofit2.Callback
+import retrofit2.Response
 
 class CustomerOrdersActivity : AppCompatActivity() {
 
@@ -24,6 +28,9 @@ class CustomerOrdersActivity : AppCompatActivity() {
     private lateinit var spinnerFilter: Spinner
     private lateinit var refreshBtn: Button
     private lateinit var backBtn: Button
+
+    // ✅ Keep shopMap globally
+    private var shopMap: Map<String, String> = emptyMap()
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -39,6 +46,7 @@ class CustomerOrdersActivity : AppCompatActivity() {
 
         ordersAdapter = OrdersAdapter(
             filteredOrdersList,
+            shopMap = emptyMap(),
             onStatusClick = { selectedOrder ->
                 val intent = Intent(this, OrderDetailActivity::class.java)
                 intent.putExtra("order", selectedOrder)
@@ -52,7 +60,8 @@ class CustomerOrdersActivity : AppCompatActivity() {
         refreshBtn.setOnClickListener { fetchOrders() }
         backBtn.setOnClickListener { finish() }
 
-        fetchOrders()
+        // ✅ Fetch shops first, then orders
+        fetchShopsAndOrders()
     }
 
     private fun setupFilterSpinner() {
@@ -69,6 +78,25 @@ class CustomerOrdersActivity : AppCompatActivity() {
 
             override fun onNothingSelected(parent: AdapterView<*>?) {}
         }
+    }
+
+    // ✅ New helper to fetch shops first
+    private fun fetchShopsAndOrders() {
+        val api = RetrofitClient.getInstance(this).create(ApiService::class.java)
+        api.getAllShops().enqueue(object : Callback<List<Shop>> {
+            override fun onResponse(call: Call<List<Shop>>, response: Response<List<Shop>>) {
+                if (response.isSuccessful) {
+                    val shops = response.body() ?: emptyList()
+                    shopMap = shops.associate { it.id to it.name }  // ✅ build shopId → shopName map
+                }
+                fetchOrders() // ✅ fetch orders after we have shop names
+            }
+
+            override fun onFailure(call: Call<List<Shop>>, t: Throwable) {
+                Log.e("CustomerOrders", "Failed to fetch shops: ${t.message}")
+                fetchOrders() // ✅ still fetch orders even if shops fail
+            }
+        })
     }
 
     private fun fetchOrders() {
@@ -88,7 +116,20 @@ class CustomerOrdersActivity : AppCompatActivity() {
                     val orders = response.body() ?: emptyList()
                     allOrdersList.clear()
                     allOrdersList.addAll(orders)
-                    filterOrders("all")  // 🔹 Important: populate filtered list
+
+                    // ✅ Update adapter with proper shop map
+                    ordersAdapter = OrdersAdapter(
+                        filteredOrdersList,
+                        shopMap = shopMap,
+                        onStatusClick = { selectedOrder ->
+                            val intent = Intent(this@CustomerOrdersActivity, OrderDetailActivity::class.java)
+                            intent.putExtra("order", selectedOrder)
+                            startActivity(intent)
+                        }
+                    )
+                    ordersRecyclerView.adapter = ordersAdapter
+
+                    filterOrders("all")
                     spinnerFilter.setSelection(0)
                 } else {
                     Toast.makeText(this@CustomerOrdersActivity, "Failed to load orders", Toast.LENGTH_SHORT).show()

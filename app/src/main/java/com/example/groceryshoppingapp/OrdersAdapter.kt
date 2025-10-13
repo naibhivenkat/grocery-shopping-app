@@ -1,6 +1,6 @@
 package com.example.groceryshoppingapp
-import android.content.Context;
-import android.graphics.Color
+
+import android.content.Context
 import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
@@ -9,18 +9,21 @@ import android.widget.TextView
 import androidx.core.content.ContextCompat
 import androidx.recyclerview.widget.RecyclerView
 import com.example.groceryshoppingapp.models.Order
+import com.example.groceryshoppingapp.utils.SessionManager
 
 class OrdersAdapter(
     private val orders: List<Order>,
+    private val shopMap: Map<String, String> = emptyMap(), // shopId -> shopName mapping
     private val onStatusClick: (Order) -> Unit,
-    private val highlightCancelled: Boolean = true // 🔹 new optional flag
+    private val highlightCancelled: Boolean = true
 ) : RecyclerView.Adapter<OrdersAdapter.OrderViewHolder>() {
 
     inner class OrderViewHolder(view: View) : RecyclerView.ViewHolder(view) {
+        val shopName: TextView = view.findViewById(R.id.text_shop_name)
         val orderId: TextView = view.findViewById(R.id.order_id)
-        val orderDetails: TextView = view.findViewById(R.id.order_details)
+        val totalItems: TextView = view.findViewById(R.id.text_total_items)
+        val totalPrice: TextView = view.findViewById(R.id.text_total_price)
         val statusButton: Button = view.findViewById(R.id.status_button)
-        val txnIdText: TextView = view.findViewById(R.id.text_transaction_id)
         val container: View = view.findViewById(R.id.order_container)
     }
 
@@ -33,32 +36,50 @@ class OrdersAdapter(
     override fun onBindViewHolder(holder: OrderViewHolder, position: Int) {
         val order = orders[position]
 
-        holder.orderId.text = "Order #${order.orderUuid}"
-        val customerName = order.customer.fullName ?: order.customer.username
-        val itemsText = order.items.joinToString { "${it.quantity}×${it.name}" }
-        holder.orderDetails.text = "$customerName: $itemsText"
+        // Get role from SessionManager
+        val role = SessionManager.getRole(holder.shopName.context)
 
-        // Transaction ID
-        if (!order.transaction_id.isNullOrEmpty()) {
-            holder.txnIdText.visibility = View.VISIBLE
-            holder.txnIdText.text = "Txn ID: ${order.transaction_id}"
+        // Get customer name
+        val customerName = order.customer.fullName?.takeIf { it.isNotEmpty() } ?: order.customer.username
+
+        // Get shop name from order or shopMap
+        //val shopName = order.shopName ?: shopMap[order.shopId] ?: "Unknown Shop"
+        val shopName = order.shopName ?: shopMap[order.shopId] ?: "Unknown Shop"
+
+        // Role-based display
+        holder.shopName.text = if (role.equals("shopowner", true)) {
+            // Shop owner sees customer
+            "🧑 Customer Name: $customerName"
         } else {
-            holder.txnIdText.visibility = View.GONE
+            // Customer sees shop
+            "🏪 Shop Name: $shopName"
         }
+
+        // Order ID with emoji
+        holder.orderId.text = "🧾 Order No. : ${order.orderUuid}"
+
+        // Total items and total price
+        val totalItems = order.items.sumOf { it.quantity.toInt() }
+        val totalPrice = order.total ?: order.items.sumOf { it.price * it.quantity }
+        holder.totalItems.text = "📦 Total Items : $totalItems"
+        holder.totalPrice.text = "💰 Total Amount : $totalPrice"
 
         // Status button
         holder.statusButton.text = order.status
         holder.statusButton.setBackgroundColor(getStatusColor(holder.statusButton.context, order.status))
         holder.statusButton.setTextColor(ContextCompat.getColor(holder.statusButton.context, android.R.color.white))
 
-        // Container background - only if highlightCancelled is true
+        // Highlight cancelled orders
         val bgColorRes = if (highlightCancelled && order.status.equals("cancelled", true))
             R.color.order_bg_cancelled else R.color.order_bg
         holder.container.setBackgroundColor(ContextCompat.getColor(holder.container.context, bgColorRes))
 
-        holder.statusButton.setOnClickListener {
+
+        holder.itemView.setOnClickListener {
             onStatusClick(order)
         }
+        // Status button click listener
+        holder.statusButton.setOnClickListener { onStatusClick(order) }
     }
 
     override fun getItemCount(): Int = orders.size
@@ -73,4 +94,3 @@ class OrdersAdapter(
         }
     }
 }
-

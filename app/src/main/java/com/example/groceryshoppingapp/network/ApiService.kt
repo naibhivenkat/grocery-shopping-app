@@ -92,13 +92,6 @@ interface ApiService {
     @POST("/update_profile")
     fun updateProfile(@Body profileData: Map<String, String>): Call<ResponseBody>
 
-//    @GET("api/shops/{shop_id}/items")
-//    fun getItems(
-//        @Header("Authorization") token: String,
-//        @Path("shop_id") shopId: String
-//    ): Call<GetItemsResponse>
-//
-
     @GET("api/shops/{shop_id}/items")
     fun getItems(
         @Path("shop_id") shopId: String
