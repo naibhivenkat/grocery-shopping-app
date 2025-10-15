@@ -6,6 +6,7 @@ import com.example.groceryshoppingapp.models.Item
 import android.content.SharedPreferences
 import android.util.Log
 import androidx.core.content.edit
+import com.example.groceryshoppingapp.models.Order
 import com.google.gson.Gson
 import com.google.gson.reflect.TypeToken
 object SessionManager {
@@ -27,6 +28,8 @@ object SessionManager {
     private const val PREFS_NAME = "grocery_app_prefs"
     private const val KEY_CACHED_SHOPS = "cached_shops"
     private const val KEY_CACHED_ITEMS = "cached_items_by_shop"
+    private var shopOrdersListener: ((List<Order>) -> Unit)? = null
+
 
     private val gson = Gson()
 
@@ -167,5 +170,46 @@ object SessionManager {
         return gson.fromJson(json, type)
     }
 
+    // ---------- Cache Orders ----------
+    fun cacheCustomerOrders(context: Context, orders: List<Order>) {
+        val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+        val json = gson.toJson(orders)
+        prefs.edit().putString("cached_customer_orders", json).apply()
+    }
 
+    fun getCachedCustomerOrders(context: Context): List<Order> {
+        val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+        val json = prefs.getString("cached_customer_orders", null) ?: return emptyList()
+        val type = object : TypeToken<List<Order>>() {}.type
+        return gson.fromJson(json, type)
+    }
+
+//    fun cacheShopOrders(context: Context, orders: List<Order>) {
+//        val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+//        val json = gson.toJson(orders)
+//        prefs.edit().putString("cached_shop_orders", json).apply()
+//    }
+
+    fun getCachedShopOrders(context: Context): List<Order> {
+        val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+        val json = prefs.getString("cached_shop_orders", null) ?: return emptyList()
+        val type = object : TypeToken<List<Order>>() {}.type
+        return gson.fromJson(json, type)
+    }
+
+
+    fun setShopOrdersListener(listener: (List<Order>) -> Unit) {
+        shopOrdersListener = listener
+    }
+
+    fun clearShopOrdersListener() {
+        shopOrdersListener = null
+    }
+
+    fun cacheShopOrders(context: Context, orders: List<Order>) {
+        val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+        val json = gson.toJson(orders)
+        prefs.edit().putString("cached_shop_orders", json).apply()
+        shopOrdersListener?.invoke(orders) // notify listener
+    }
 }

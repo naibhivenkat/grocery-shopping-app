@@ -16,6 +16,9 @@ import com.example.groceryshoppingapp.utils.SessionManager
 import retrofit2.Call
 import retrofit2.Callback
 import retrofit2.Response
+import com.google.gson.Gson
+import com.google.gson.reflect.TypeToken
+import kotlinx.coroutines.*
 
 class CustomerOrdersActivity : AppCompatActivity() {
 
@@ -29,7 +32,6 @@ class CustomerOrdersActivity : AppCompatActivity() {
     private lateinit var refreshBtn: Button
     private lateinit var backBtn: Button
 
-    // ✅ Keep shopMap globally
     private var shopMap: Map<String, String> = emptyMap()
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -60,6 +62,9 @@ class CustomerOrdersActivity : AppCompatActivity() {
         refreshBtn.setOnClickListener { fetchOrders() }
         backBtn.setOnClickListener { finish() }
 
+        // ✅ Load cached orders first
+        loadCachedOrders()
+
         // ✅ Fetch shops first, then orders
         fetchShopsAndOrders()
     }
@@ -80,21 +85,30 @@ class CustomerOrdersActivity : AppCompatActivity() {
         }
     }
 
-    // ✅ New helper to fetch shops first
+    // ---------- Load cached orders ----------
+    private fun loadCachedOrders() {
+        val cachedOrders = SessionManager.getCachedCustomerOrders(this)
+        if (cachedOrders.isNotEmpty()) {
+            allOrdersList.clear()
+            allOrdersList.addAll(cachedOrders)
+            filterOrders("all")
+        }
+    }
+
     private fun fetchShopsAndOrders() {
         val api = RetrofitClient.getInstance(this).create(ApiService::class.java)
         api.getAllShops().enqueue(object : Callback<List<Shop>> {
             override fun onResponse(call: Call<List<Shop>>, response: Response<List<Shop>>) {
                 if (response.isSuccessful) {
                     val shops = response.body() ?: emptyList()
-                    shopMap = shops.associate { it.id to it.name }  // ✅ build shopId → shopName map
+                    shopMap = shops.associate { it.id to it.name }  // shopId → shopName map
                 }
-                fetchOrders() // ✅ fetch orders after we have shop names
+                fetchOrders() // fetch orders after we have shop names
             }
 
             override fun onFailure(call: Call<List<Shop>>, t: Throwable) {
                 Log.e("CustomerOrders", "Failed to fetch shops: ${t.message}")
-                fetchOrders() // ✅ still fetch orders even if shops fail
+                fetchOrders() // still fetch orders even if shops fail
             }
         })
     }
@@ -107,17 +121,17 @@ class CustomerOrdersActivity : AppCompatActivity() {
         }
 
         val api = RetrofitClient.getInstance(this).create(ApiService::class.java)
-        api.getCustomerOrders(customerId).enqueue(object : retrofit2.Callback<List<Order>> {
-            override fun onResponse(
-                call: retrofit2.Call<List<Order>>,
-                response: retrofit2.Response<List<Order>>
-            ) {
+        api.getCustomerOrders(customerId).enqueue(object : Callback<List<Order>> {
+            override fun onResponse(call: Call<List<Order>>, response: Response<List<Order>>) {
                 if (response.isSuccessful) {
                     val orders = response.body() ?: emptyList()
                     allOrdersList.clear()
                     allOrdersList.addAll(orders)
 
-                    // ✅ Update adapter with proper shop map
+                    // ✅ Cache orders for next session
+                    SessionManager.cacheCustomerOrders(this@CustomerOrdersActivity, orders)
+
+                    // Update adapter with shop map
                     ordersAdapter = OrdersAdapter(
                         filteredOrdersList,
                         shopMap = shopMap,
@@ -137,7 +151,7 @@ class CustomerOrdersActivity : AppCompatActivity() {
                 }
             }
 
-            override fun onFailure(call: retrofit2.Call<List<Order>>, t: Throwable) {
+            override fun onFailure(call: Call<List<Order>>, t: Throwable) {
                 Toast.makeText(this@CustomerOrdersActivity, "Error: ${t.message}", Toast.LENGTH_SHORT).show()
                 Log.e("CustomerOrders", "Network error", t)
             }

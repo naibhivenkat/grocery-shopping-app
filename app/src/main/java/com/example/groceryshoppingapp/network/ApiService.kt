@@ -18,7 +18,6 @@ import retrofit2.http.PUT
 import retrofit2.http.Header
 
 
-
 interface ApiService {
     @PATCH("api/orders/{order_id}")
     fun updateOrder(
@@ -56,10 +55,6 @@ interface ApiService {
     fun getShopOrders(
         @Path("shop_id") shopId: String
     ): Call<List<Order>>
-
-    // New multi‑shop endpoint using query params
-//    @GET("api/orders/shopkeeper")
-//    fun getShopOrdersMulti(@Query("shop_id") shopIds: List<String>): Call<List<Order>>
 
 
     @POST("order/{order_id}/status")
@@ -108,12 +103,6 @@ interface ApiService {
 
     @DELETE("/delete_item/{item_id}")
     fun deleteItem(@Path("item_id") itemId: String): Call<Map<String, Boolean>>
-
-//    @GET("api/shops/{shop_id}/items")
-//    fun getItemsForShop(
-//        @Header("Authorization") token: String,
-//        @Path(value = "shop_id", encoded = true) shopId: String
-//    ): Call<GetItemsResponse>
 
     @POST("send_otp")
     fun sendOtp(@Body body: Map<String, String>): Call<Map<String, String>>

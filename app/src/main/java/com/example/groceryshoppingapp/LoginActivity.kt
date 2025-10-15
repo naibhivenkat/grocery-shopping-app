@@ -113,6 +113,67 @@ class LoginActivity : AppCompatActivity() {
                             errorText.text = getString(R.string.invalid_username_password)
                             errorText.visibility = View.VISIBLE
                         }
+//                        else -> {
+//                            val user = loginResponse.user
+//                            val loginRole = user?.role?.lowercase()?.trim()
+//
+//                            loginResponse.token?.let { token ->
+//                                SessionManager.setAuthToken(this@LoginActivity, token)
+//                            }
+//
+//                            if (loginRole != appRole) {
+//                                errorText.text = getString(R.string.role_mismatch, appRole.replaceFirstChar { it.uppercase() })
+//                                errorText.visibility = View.VISIBLE
+//                                return
+//                            }
+//
+//                            SessionManager.saveLogin(this@LoginActivity, user?.username ?: "", loginRole ?: "")
+//                            SessionManager.saveUserProfile(
+//                                this@LoginActivity,
+//                                user?.fullName ?: "",
+//                                user?.address ?: "",
+//                                user?.phone ?: "",
+//                                user?.email ?: "",
+//                                user?.location ?: "",
+//                                user?.photoBase64 ?: ""
+//                            )
+//                            user?.customerId?.let { SessionManager.setCustomerId(this@LoginActivity, it) }
+//                            user?.shopkeeperId?.let { SessionManager.setShopkeeperId(this@LoginActivity, it) }
+//
+//                            user?.shop?.id?.let { shopDocId ->
+//                                SessionManager.setShopId(this@LoginActivity, shopDocId)
+//                                SessionManager.setShopInfo(this@LoginActivity, shopDocId, user.shop?.name ?: "")
+//                            }
+//                            val hasItems = user?.hasItems ?: true
+//                            SessionManager.setHasItemsAdded(this@LoginActivity, hasItems)
+//
+//                            // ---------- Minimal change: preload shops + items for customers ----------
+//                            if (loginRole == "customer") {
+//                                preloadShopsAndItems()
+//                                preloadOrders("customer") // 🆕 preload customer orders in background
+//                            } else if (loginRole == "shopowner") {
+//                                preloadOrders("shopowner") // 🆕 preload shopkeeper orders in background
+//                            }
+//
+//
+//                            // Redirect based on role
+//                            when (loginRole) {
+//                                "customer" -> startActivity(Intent(this@LoginActivity, CustomerHomeActivity::class.java))
+//                                "shopowner" -> {
+//                                    if (SessionManager.hasShopWithItems(this@LoginActivity)) {
+//                                        startActivity(Intent(this@LoginActivity, ShopOwnerDashboardActivity::class.java))
+//                                    } else {
+//                                        startActivity(Intent(this@LoginActivity, AddItemsActivity::class.java))
+//                                    }
+//                                }
+//                                else -> {
+//                                    errorText.text = getString(R.string.unknown_user_role)
+//                                    errorText.visibility = View.VISIBLE
+//                                    return
+//                                }
+//                            }
+//                            finish()
+//                        }
                         else -> {
                             val user = loginResponse.user
                             val loginRole = user?.role?.lowercase()?.trim()
@@ -147,12 +208,29 @@ class LoginActivity : AppCompatActivity() {
                             val hasItems = user?.hasItems ?: true
                             SessionManager.setHasItemsAdded(this@LoginActivity, hasItems)
 
-                            // ---------- Minimal change: preload shops + items for customers ----------
+                            // ---------- ✅ Preload data ----------
                             if (loginRole == "customer") {
                                 preloadShopsAndItems()
+                                preloadOrders("customer")
+                            } else if (loginRole == "shopowner") {
+                                // 🔹 Start background preload for shopowner orders (non-blocking)
+                                CoroutineScope(Dispatchers.IO).launch {
+                                    try {
+                                        val shopId = SessionManager.getShopId(this@LoginActivity)
+                                        if (!shopId.isNullOrEmpty()) {
+                                            val resp = api.getShopOrders(shopId).execute()
+                                            if (resp.isSuccessful && resp.body() != null) {
+                                                SessionManager.cacheShopOrders(this@LoginActivity, resp.body()!!)
+                                                Log.d("PreloadOrders", "✅ Cached ${resp.body()!!.size} shop orders")
+                                            }
+                                        }
+                                    } catch (e: Exception) {
+                                        Log.w("PreloadOrders", "⚠️ Failed preload: ${e.message}")
+                                    }
+                                }
                             }
 
-                            // Redirect based on role
+                            // ---------- ✅ Redirect ----------
                             when (loginRole) {
                                 "customer" -> startActivity(Intent(this@LoginActivity, CustomerHomeActivity::class.java))
                                 "shopowner" -> {
@@ -170,6 +248,7 @@ class LoginActivity : AppCompatActivity() {
                             }
                             finish()
                         }
+
                     }
                 } catch (e: Exception) {
                     Log.e("LoginDebug", "Exception in onResponse", e)
@@ -224,6 +303,42 @@ class LoginActivity : AppCompatActivity() {
         }
     }
 
+    // ---------- 🆕 Preload orders in background ----------
+    private fun preloadOrders(loginRole: String) {
+        val api = RetrofitClient.getInstance(this).create(ApiService::class.java)
+
+        CoroutineScope(Dispatchers.IO).launch {
+            try {
+                when (loginRole) {
+                    "customer" -> {
+                        val customerId = SessionManager.getCustomerId(this@LoginActivity)
+                        if (!customerId.isNullOrEmpty()) {
+                            val resp = api.getCustomerOrders(customerId).execute()
+                            if (resp.isSuccessful && resp.body() != null) {
+                                val orders = resp.body()!!
+                                SessionManager.cacheCustomerOrders(this@LoginActivity, orders)
+                                Log.d("PreloadOrders", "✅ Cached ${orders.size} customer orders")
+                            }
+                        }
+                    }
+                    "shopowner" -> {
+                        val shopId = SessionManager.getShopId(this@LoginActivity)
+                        if (!shopId.isNullOrEmpty()) {
+                            val resp = api.getShopOrders(shopId).execute()
+                            if (resp.isSuccessful && resp.body() != null) {
+                                val orders = resp.body()!!
+                                SessionManager.cacheShopOrders(this@LoginActivity, orders)
+                                Log.d("PreloadOrders", "✅ Cached ${orders.size} shop orders")
+                            }
+                        }
+                    }
+
+                }
+            } catch (e: Exception) {
+                Log.w("PreloadOrders", "⚠️ Failed to preload orders: ${e.message}")
+            }
+        }
+    }
 
     private fun checkServerBeforeRegister() {
         val api = RetrofitClient.getInstance(this).create(ApiService::class.java)

@@ -7,13 +7,13 @@ import androidx.appcompat.app.AppCompatActivity
 import androidx.recyclerview.widget.LinearLayoutManager
 import com.example.groceryshoppingapp.databinding.ActivityShopkeeperOrdersBinding
 import com.example.groceryshoppingapp.models.Order
+import com.example.groceryshoppingapp.network.ApiResponse
 import com.example.groceryshoppingapp.network.ApiService
 import com.example.groceryshoppingapp.network.RetrofitClient
+import com.example.groceryshoppingapp.utils.SessionManager
 import retrofit2.Call
 import retrofit2.Callback
 import retrofit2.Response
-import com.example.groceryshoppingapp.network.ApiResponse
-
 
 class ShopkeeperOrdersActivity : AppCompatActivity() {
 
@@ -28,6 +28,8 @@ class ShopkeeperOrdersActivity : AppCompatActivity() {
         setContentView(binding.root)
 
         shopkeeperId = intent.getStringExtra("shopkeeper_id")
+            ?: SessionManager.getShopkeeperId(this)
+
         if (shopkeeperId.isNullOrEmpty()) {
             Toast.makeText(this, "Invalid shopkeeper ID", Toast.LENGTH_SHORT).show()
             finish()
@@ -41,7 +43,38 @@ class ShopkeeperOrdersActivity : AppCompatActivity() {
         binding.ordersRecyclerView.layoutManager = LinearLayoutManager(this)
         binding.ordersRecyclerView.adapter = orderAdapter
 
-        fetchOrders()
+        // 1️⃣ Show cached orders instantly
+        orders = SessionManager.getCachedShopOrders(this)
+        orderAdapter.updateOrders(orders)
+        binding.tvEmptyOrders.visibility = if (orders.isEmpty()) View.VISIBLE else View.GONE
+
+        // 2️⃣ Listen for background updates from preload
+        SessionManager.setShopOrdersListener { updatedOrders ->
+            runOnUiThread {
+                orders = updatedOrders
+                orderAdapter.updateOrders(orders)
+                binding.tvEmptyOrders.visibility = if (orders.isEmpty()) View.VISIBLE else View.GONE
+            }
+        }
+
+        // 3️⃣ Optional: fetch immediately if cache empty (first login)
+        if (orders.isEmpty()) fetchOrders()
+    }
+
+    override fun onResume() {
+        super.onResume()
+        // Refresh UI from cache (in case something changed while paused)
+        val cachedOrders = SessionManager.getCachedShopOrders(this)
+        if (cachedOrders != orders) {
+            orders = cachedOrders
+            orderAdapter.updateOrders(orders)
+            binding.tvEmptyOrders.visibility = if (orders.isEmpty()) View.VISIBLE else View.GONE
+        }
+    }
+
+    override fun onDestroy() {
+        super.onDestroy()
+        SessionManager.clearShopOrdersListener()
     }
 
     private fun fetchOrders() {
@@ -50,9 +83,7 @@ class ShopkeeperOrdersActivity : AppCompatActivity() {
             override fun onResponse(call: Call<List<Order>>, response: Response<List<Order>>) {
                 if (response.isSuccessful && response.body() != null) {
                     orders = response.body()!!
-                    orderAdapter.updateOrders(orders)
-
-                    binding.tvEmptyOrders.visibility = if (orders.isEmpty()) View.VISIBLE else View.GONE
+                    SessionManager.cacheShopOrders(this@ShopkeeperOrdersActivity, orders)
                 } else {
                     Toast.makeText(this@ShopkeeperOrdersActivity, "Failed to load orders", Toast.LENGTH_SHORT).show()
                 }
@@ -68,9 +99,9 @@ class ShopkeeperOrdersActivity : AppCompatActivity() {
         val api = RetrofitClient.getInstance(this).create(ApiService::class.java)
         api.updateOrderStatus(orderId, status).enqueue(object : Callback<ApiResponse> {
             override fun onResponse(call: Call<ApiResponse>, response: Response<ApiResponse>) {
-                val apiResponse = response.body()
-                if (response.isSuccessful && response.body()?.success == true)  {
+                if (response.isSuccessful && response.body()?.success == true) {
                     Toast.makeText(this@ShopkeeperOrdersActivity, "Order updated", Toast.LENGTH_SHORT).show()
+                    // Update cache/UI after successful update
                     fetchOrders()
                 } else {
                     Toast.makeText(this@ShopkeeperOrdersActivity, "Failed to update order", Toast.LENGTH_SHORT).show()
