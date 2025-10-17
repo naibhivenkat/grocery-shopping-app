@@ -2,7 +2,6 @@ package com.example.groceryshoppingapp.network
 
 import com.example.groceryshoppingapp.models.AddItemsRequest
 import com.example.groceryshoppingapp.models.*
-import okhttp3.RequestBody
 import retrofit2.Call
 import retrofit2.http.Body
 import retrofit2.http.GET
@@ -154,12 +153,12 @@ interface ApiService {
     ): Call<CreateShopResponse>  // no Header here, interceptor handles it
 
 
-
-    @PATCH("update_order_items/{order_id}")
+    @PATCH("api/update_order_items/{order_id}")
     fun updateOrderItems(
         @Path("order_id") orderId: String,
-        @Body payload: Map<String, Any>
+        @Body payload: UpdateOrderItemsRequest
     ): Call<Map<String, Any>>
+
 
 
 
@@ -177,3 +176,15 @@ interface ApiService {
     )
 
 }
+
+// ✅ Request data classes
+data class UpdateOrderItemsRequest(
+    val items: List<OrderItemPayload>
+)
+
+data class OrderItemPayload(
+    val item_id: String,
+    val quantity: Double,
+    val price: Double,
+    val comment: String
+)

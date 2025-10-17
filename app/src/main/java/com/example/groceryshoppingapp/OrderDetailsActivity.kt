@@ -38,6 +38,12 @@ class OrderDetailActivity : AppCompatActivity() {
 
     private lateinit var adapter: OrderItemAdapter
 
+    // ✅ Keep references to calls to cancel if needed
+    private var updateItemsCall: Call<Map<String, Any>>? = null
+    private var updateStatusCall: Call<Map<String, Any>>? = null
+    private var refreshOrderCall: Call<Order>? = null
+    private var loadShopCall: Call<Shop>? = null
+
     @RequiresApi(Build.VERSION_CODES.O)
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -56,7 +62,6 @@ class OrderDetailActivity : AppCompatActivity() {
         btnSaveItems = findViewById(R.id.btn_save_items)
         val btnBack = findViewById<Button>(R.id.btn_back)
 
-        // Get order
         order = intent.getParcelableExtra("order")!!
 
         setupUI()
@@ -65,8 +70,16 @@ class OrderDetailActivity : AppCompatActivity() {
         btnBack.setOnClickListener { finish() }
         btnRefresh.setOnClickListener { refreshOrder() }
         btnUpdateStatus.setOnClickListener { updateOrderStatus() }
-
         btnSaveItems.setOnClickListener { saveItemChanges() }
+    }
+
+    override fun onDestroy() {
+        super.onDestroy()
+        // Cancel all ongoing calls to prevent DeadObjectException
+        updateItemsCall?.cancel()
+        updateStatusCall?.cancel()
+        refreshOrderCall?.cancel()
+        loadShopCall?.cancel()
     }
 
     @RequiresApi(Build.VERSION_CODES.O)
@@ -136,26 +149,31 @@ class OrderDetailActivity : AppCompatActivity() {
         }
 
         order.shopId?.let {
-            RetrofitClient.getInstance(this).create(ApiService::class.java)
+            loadShopCall = RetrofitClient.getInstance(this).create(ApiService::class.java)
                 .getShop(it)
-                .enqueue(object : Callback<Shop> {
-                    override fun onResponse(call: Call<Shop>, response: Response<Shop>) {
+            loadShopCall?.enqueue(object : Callback<Shop> {
+                override fun onResponse(call: Call<Shop>, response: Response<Shop>) {
+                    if (!isFinishing && !isDestroyed) {
                         val shop = response.body()
                         textShopName.text = "Shop: ${shop?.name ?: "Unknown"}"
                     }
+                }
 
-                    override fun onFailure(call: Call<Shop>, t: Throwable) {
+                override fun onFailure(call: Call<Shop>, t: Throwable) {
+                    if (!isFinishing && !isDestroyed) {
                         textShopName.text = "Shop: Unknown"
                     }
-                })
+                }
+            })
         }
     }
 
     private fun refreshOrder() {
-        RetrofitClient.getInstance(this).create(ApiService::class.java)
+        refreshOrderCall = RetrofitClient.getInstance(this).create(ApiService::class.java)
             .getOrderById(order.orderUuid)
-            .enqueue(object : Callback<Order> {
-                override fun onResponse(call: Call<Order>, response: Response<Order>) {
+        refreshOrderCall?.enqueue(object : Callback<Order> {
+            override fun onResponse(call: Call<Order>, response: Response<Order>) {
+                if (!isFinishing && !isDestroyed) {
                     if (response.isSuccessful) {
                         order = response.body()!!
                         setupUI()
@@ -164,11 +182,14 @@ class OrderDetailActivity : AppCompatActivity() {
                         Toast.makeText(this@OrderDetailActivity, "Failed to refresh order", Toast.LENGTH_SHORT).show()
                     }
                 }
+            }
 
-                override fun onFailure(call: Call<Order>, t: Throwable) {
+            override fun onFailure(call: Call<Order>, t: Throwable) {
+                if (!isFinishing && !isDestroyed) {
                     Toast.makeText(this@OrderDetailActivity, "Error: ${t.message}", Toast.LENGTH_SHORT).show()
                 }
-            })
+            }
+        })
     }
 
     private fun updateOrderStatus() {
@@ -180,40 +201,55 @@ class OrderDetailActivity : AppCompatActivity() {
             updateMap["cancel_message"] = cancelMsg
         }
 
-        RetrofitClient.getInstance(this).create(ApiService::class.java)
+        updateStatusCall = RetrofitClient.getInstance(this).create(ApiService::class.java)
             .updateOrder(order.orderUuid, updateMap)
-            .enqueue(object : Callback<Map<String, Any>> {
-                override fun onResponse(call: Call<Map<String, Any>>, response: Response<Map<String, Any>>) {
+        updateStatusCall?.enqueue(object : Callback<Map<String, Any>> {
+            override fun onResponse(call: Call<Map<String, Any>>, response: Response<Map<String, Any>>) {
+                if (!isFinishing && !isDestroyed) {
                     Toast.makeText(this@OrderDetailActivity, "Order updated!", Toast.LENGTH_SHORT).show()
                     refreshOrder()
                 }
-                override fun onFailure(call: Call<Map<String, Any>>, t: Throwable) {
+            }
+
+            override fun onFailure(call: Call<Map<String, Any>>, t: Throwable) {
+                if (!isFinishing && !isDestroyed) {
                     Toast.makeText(this@OrderDetailActivity, "Failed to update", Toast.LENGTH_SHORT).show()
                 }
-            })
+            }
+        })
     }
 
     private fun saveItemChanges() {
         val updatedItems: List<ItemQuantity> = adapter.getUpdatedItems()
-
-        val payload = mapOf("items" to updatedItems.map {
-            mapOf(
-                "item_id" to it.itemId,
-                "quantity" to it.quantity,
-                "price" to it.price,
-                "comment" to (it.comment ?: "")
+        val itemsPayload = updatedItems.map {
+            com.example.groceryshoppingapp.network.OrderItemPayload(
+                item_id = it.itemId,
+                quantity = it.quantity.toDouble(),
+                price = it.price,
+                comment = it.comment ?: ""
             )
-        })
+        }
+        val payload = com.example.groceryshoppingapp.network.UpdateOrderItemsRequest(items = itemsPayload)
 
-        RetrofitClient.getInstance(this).create(ApiService::class.java)
+        updateItemsCall = RetrofitClient.getInstance(this).create(ApiService::class.java)
             .updateOrderItems(order.orderUuid, payload)
-            .enqueue(object : Callback<Map<String, Any>> {
-                override fun onResponse(call: Call<Map<String, Any>>, response: Response<Map<String, Any>>) {
-                    Toast.makeText(this@OrderDetailActivity, "Items updated successfully!", Toast.LENGTH_SHORT).show()
+        updateItemsCall?.enqueue(object : Callback<Map<String, Any>> {
+            override fun onResponse(call: Call<Map<String, Any>>, response: Response<Map<String, Any>>) {
+                if (!isFinishing && !isDestroyed) {
+                    if (response.isSuccessful) {
+                        Toast.makeText(this@OrderDetailActivity, "Items updated successfully!", Toast.LENGTH_SHORT).show()
+                        refreshOrder()
+                    } else {
+                        Toast.makeText(this@OrderDetailActivity, "Failed to update items", Toast.LENGTH_SHORT).show()
+                    }
                 }
-                override fun onFailure(call: Call<Map<String, Any>>, t: Throwable) {
-                    Toast.makeText(this@OrderDetailActivity, "Failed to save changes", Toast.LENGTH_SHORT).show()
+            }
+
+            override fun onFailure(call: Call<Map<String, Any>>, t: Throwable) {
+                if (!isFinishing && !isDestroyed) {
+                    Toast.makeText(this@OrderDetailActivity, "Failed to save changes: ${t.message}", Toast.LENGTH_SHORT).show()
                 }
-            })
+            }
+        })
     }
 }
