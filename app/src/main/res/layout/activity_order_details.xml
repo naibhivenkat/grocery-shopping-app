@@ -1,72 +1,40 @@
 <LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
     android:orientation="vertical"
-    android:padding="16dp"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
-    android:background="?attr/colorSurface">
+    android:padding="12dp">
 
-    <!-- Back & Refresh -->
-    <LinearLayout
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:orientation="horizontal"
-        android:gravity="end">
-
-        <Button
-            android:id="@+id/btn_back"
-            android:text="@string/ui_back_3"
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:layout_marginEnd="8dp" />
-
-        <Button
-            android:id="@+id/btn_refresh"
-            android:text="@string/ui_refresh_2"
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content" />
-    </LinearLayout>
-
+    <!-- Shop name -->
     <TextView
         android:id="@+id/text_shop_name"
-        android:textSize="20sp"
-        android:textStyle="bold"
-        android:layout_width="match_parent"
+        android:layout_width="wrap_content"
         android:layout_height="wrap_content"
-        android:layout_marginTop="8dp"
-        android:textColor="?attr/colorOnSurface"/>
+        android:text="Shop:"
+        android:textStyle="bold"
+        android:textSize="16sp" />
 
+    <!-- Order status -->
     <TextView
         android:id="@+id/text_status"
-        android:textSize="16sp"
-        android:layout_width="match_parent"
+        android:layout_width="wrap_content"
         android:layout_height="wrap_content"
-        android:textColor="?attr/colorOnSurface"/>
+        android:text="Status:" />
 
     <TextView
         android:id="@+id/text_created_at"
-        android:textSize="14sp"
-        android:layout_width="match_parent"
+        android:layout_width="wrap_content"
         android:layout_height="wrap_content"
-        android:textColor="?attr/colorOnSurface"/>
+        android:text="Created At:" />
 
-    <!-- 🔹 Payment info -->
+    <!-- Payment info -->
     <TextView
         android:id="@+id/text_payment_info"
-        android:textSize="16sp"
-        android:textColor="?attr/colorPrimary"
-        android:textStyle="bold"
-        android:layout_width="match_parent"
+        android:layout_width="wrap_content"
         android:layout_height="wrap_content"
-        android:layout_marginTop="8dp"
-        android:text="Payment: N/A" />
+        android:text="Payment:"
+        android:visibility="gone" />
 
-    <androidx.recyclerview.widget.RecyclerView
-        android:id="@+id/recycler_items"
-        android:layout_width="match_parent"
-        android:layout_height="0dp"
-        android:layout_marginTop="16dp"
-        android:layout_weight="1" />
-
+    <!-- Spinner + Cancel msg -->
     <Spinner
         android:id="@+id/spinner_status"
         android:layout_width="match_parent"
@@ -75,21 +43,54 @@
 
     <EditText
         android:id="@+id/edit_cancel_msg"
-        android:hint="Cancel reason"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:visibility="gone"
-        android:textColor="?attr/colorOnSurface"
-        android:textColorHint="?attr/colorOnSurface" />
+        android:hint="Enter cancel message"
+        android:visibility="gone" />
 
+    <!-- Recycler for items -->
+    <androidx.recyclerview.widget.RecyclerView
+        android:id="@+id/recycler_items"
+        android:layout_width="match_parent"
+        android:layout_height="0dp"
+        android:layout_weight="1"
+        android:paddingVertical="8dp" />
+
+    <!-- Buttons row -->
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:gravity="center"
+        android:orientation="horizontal">
+
+        <Button
+            android:id="@+id/btn_refresh"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="Refresh" />
+
+        <Button
+            android:id="@+id/btn_back"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="Back"
+            android:layout_marginStart="12dp" />
+    </LinearLayout>
+
+    <!-- 🔹 Save Changes Button for shopkeepers -->
+    <Button
+        android:id="@+id/btn_save_items"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:text="Save Changes"
+        android:layout_marginTop="8dp"
+        android:visibility="gone" />
 
     <Button
         android:id="@+id/btn_update_status"
-        android:text="@string/ui_update_status"
-        android:layout_width="wrap_content"
+        android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:visibility="gone"
-        android:backgroundTint="?attr/colorPrimary"
-        android:textColor="@android:color/white"/>
-
+        android:text="Update Status"
+        android:layout_marginTop="8dp"
+        android:visibility="gone" />
 </LinearLayout>

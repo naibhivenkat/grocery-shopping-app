@@ -1131,6 +1131,66 @@ def send_password_reset_email_otp(email, otp):
         print(f"[ERROR] Failed to send OTP email: {e}")
         return False
 
+@app.route("/api/update_order_items/<order_id>", methods=["PATCH"])
+def update_order_items(order_id):
+    """
+    Shopkeeper updates item details (price, quantity, comments) inside an order.
+    """
+
+    try:
+        data = request.json
+        updated_items = data.get("items", [])
+
+        if not updated_items:
+            return jsonify({"success": False, "message": "No items provided"}), 400
+
+        # 🔹 Step 1: Find order document by custom order_uuid field
+        order_query = firebase_db.db.collection("orders").where("order_uuid", "==", order_id).stream()
+        order_doc_ref = None
+        order_data = None
+        for doc in order_query:
+            order_doc_ref = doc.reference
+            order_data = doc.to_dict()
+            break
+
+        if not order_doc_ref or not order_data:
+            return jsonify({"success": False, "message": "Order not found"}), 404
+
+        # 🔹 Step 2: Update items (matching by item_id)
+        existing_items = order_data.get("items", [])
+        for upd in updated_items:
+            item_id = upd.get("item_id")
+            for existing in existing_items:
+                if existing.get("item_id") == item_id:
+                    if "price" in upd:
+                        existing["price"] = float(upd["price"])
+                    if "quantity" in upd:
+                        existing["quantity"] = float(upd["quantity"])
+                    if "comment" in upd:
+                        existing["comment"] = upd["comment"]
+                    break
+
+        # 🔹 Step 3: Recalculate total
+        total = sum(float(i.get("price", 0)) * float(i.get("quantity", 1)) for i in existing_items)
+
+        # 🔹 Step 4: Update order document
+        order_doc_ref.update({
+            "items": existing_items,
+            "total": total,
+            "last_updated": datetime.now().isoformat()
+        })
+
+        return jsonify({
+            "success": True,
+            "message": "Order items updated successfully",
+            "new_total": total
+        })
+
+    except Exception as e:
+        print("🔥 Error updating order:", str(e))
+        return jsonify({"success": False, "message": str(e)}), 500
+
+
 
 if __name__ == "__main__":
     print("Gunicorn setup complete, about to run...")

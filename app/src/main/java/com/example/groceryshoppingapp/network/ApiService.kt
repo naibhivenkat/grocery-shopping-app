@@ -153,6 +153,16 @@ interface ApiService {
         @Body request: CreateShopRequest
     ): Call<CreateShopResponse>  // no Header here, interceptor handles it
 
+
+
+    @PATCH("update_order_items/{order_id}")
+    fun updateOrderItems(
+        @Path("order_id") orderId: String,
+        @Body payload: Map<String, Any>
+    ): Call<Map<String, Any>>
+
+
+
     data class CreateShopRequest(
         val name: String,
         val address: String,

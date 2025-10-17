@@ -1,29 +1,73 @@
-<?xml version="1.0" encoding="utf-8"?>
 <LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
     android:layout_width="match_parent"
     android:layout_height="wrap_content"
     android:orientation="vertical"
-    android:padding="12dp">
+    android:padding="12dp"
+    android:layout_marginBottom="8dp"
+    android:background="@drawable/card_bg">
 
+    <!-- Item name -->
     <TextView
         android:id="@+id/tv_item_name"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:text="Item Name"
+        android:textSize="16sp"
+        android:textStyle="bold"
+        android:textColor="?attr/colorOnSurface" />
+
+    <!-- Editable section (for shopkeeper only) -->
+    <EditText
+        android:id="@+id/et_item_quantity"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:text="@string/ui_item_name_2"
-        android:textSize="16sp"
-        android:textStyle="bold" />
+        android:inputType="number"
+        android:hint="Quantity"
+        android:visibility="gone"
+        android:textColor="?attr/colorOnSurface"
+        android:textColorHint="?attr/colorOnSurface" />
 
+    <EditText
+        android:id="@+id/et_item_price"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:inputType="numberDecimal"
+        android:hint="Price (₹)"
+        android:visibility="gone"
+        android:textColor="?attr/colorOnSurface"
+        android:textColorHint="?attr/colorOnSurface" />
+
+    <EditText
+        android:id="@+id/et_item_comment"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:hint="Add comment (optional)"
+        android:visibility="gone"
+        android:textColor="?attr/colorOnSurface"
+        android:textColorHint="?attr/colorOnSurface" />
+
+    <!-- Read-only section (for customer only) -->
     <TextView
         android:id="@+id/tv_item_quantity"
-        android:layout_width="match_parent"
+        android:layout_width="wrap_content"
         android:layout_height="wrap_content"
-        android:text="@string/ui_qty_1"
-        android:textSize="14sp" />
+        android:text="Qty: 0"
+        android:textColor="?attr/colorOnSurface" />
 
     <TextView
         android:id="@+id/tv_item_price"
-        android:layout_width="match_parent"
+        android:layout_width="wrap_content"
         android:layout_height="wrap_content"
-        android:text="@string/ui__000"
-        android:textSize="14sp" />
+        android:text="₹ 0.00"
+        android:textColor="?attr/colorOnSurface" />
+
+    <!-- Optional comment display -->
+    <TextView
+        android:id="@+id/tv_item_comment"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:text="Comment: —"
+        android:textColor="?attr/colorOnSurface"
+        android:visibility="gone" />
+
 </LinearLayout>

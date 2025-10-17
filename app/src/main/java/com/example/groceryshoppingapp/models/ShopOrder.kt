@@ -1,5 +1,8 @@
 package com.example.groceryshoppingapp.models
 
+import android.os.Parcelable
+import kotlinx.parcelize.Parcelize
+
 data class ShopOrder(
     val orderId: Int,
     val customerName: String,
@@ -7,7 +10,10 @@ data class ShopOrder(
     val status: String
 )
 
+@Parcelize
 data class OrderItem(
     val name: String,
-    val quantity: Int
-)
+    var quantity: Int,
+    var price: Double,
+    var comment: String? = null
+) : Parcelable
