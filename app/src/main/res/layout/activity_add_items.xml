@@ -1,74 +1,84 @@
-<?xml version="1.0" encoding="utf-8"?>
-<ScrollView xmlns:android="http://schemas.android.com/apk/res/android"
-    android:id="@+id/layout_add_items"
+<LinearLayout
+    xmlns:android="http://schemas.android.com/apk/res/android"
+    android:orientation="vertical"
+    android:padding="16dp"
+    android:background="#f9f9f9"
     android:layout_width="match_parent"
-    android:layout_height="match_parent"
-    android:padding="24dp">
+    android:layout_height="match_parent">
 
-    <LinearLayout
+    <TextView
+        android:text="Select Category"
+        android:textSize="18sp"
+        android:textStyle="bold"
+        android:paddingBottom="8dp"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"/>
+
+    <Spinner
+        android:id="@+id/spinnerCategory"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:orientation="vertical"
-        android:gravity="center_horizontal">
+        android:background="@drawable/spinner_background"/>
 
-        <EditText
-            android:id="@+id/etItemName"
-            android:layout_width="match_parent"
+    <TextView
+        android:text="Select Item"
+        android:textSize="18sp"
+        android:textStyle="bold"
+        android:paddingTop="16dp"
+        android:paddingBottom="8dp"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"/>
+
+    <LinearLayout
+        android:orientation="horizontal"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content">
+
+        <Spinner
+            android:id="@+id/spinnerItem"
+            android:layout_weight="1"
+            android:layout_width="0dp"
             android:layout_height="wrap_content"
-            android:hint="Item Name"
-            android:inputType="text" />
+            android:background="@drawable/spinner_background"/>
 
-        <EditText
-            android:id="@+id/etItemPrice"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:hint="Price (₹)"
-            android:inputType="numberDecimal"
-            android:layout_marginTop="12dp" />
-
-        <EditText
-            android:id="@+id/etItemQuantity"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:hint="Quantity"
-            android:inputType="number"
-            android:layout_marginTop="12dp" />
-
-        <EditText
-            android:id="@+id/etItemDescription"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:hint="Description"
-            android:inputType="textMultiLine"
-            android:layout_marginTop="12dp"
-            android:minLines="2"
-            android:gravity="top" />
-
-        <Button
-            android:id="@+id/btnAddItem"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:text="@string/ui_add_item"
-            android:layout_marginTop="16dp" />
-
-        <TextView
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:text="@string/ui_added_items"
-            android:textStyle="bold"
-            android:layout_marginTop="24dp" />
-
-        <ListView
-            android:id="@+id/listViewItems"
-            android:layout_width="match_parent"
-            android:layout_height="200dp"
-            android:layout_marginTop="8dp" />
-
-        <Button
-            android:id="@+id/btnFinish"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:text="@string/ui_finish"
-            android:layout_marginTop="24dp" />
+        <ImageView
+            android:id="@+id/itemImage"
+            android:layout_width="80dp"
+            android:layout_height="80dp"
+            android:layout_marginStart="16dp"
+            android:scaleType="centerCrop"
+            android:visibility="gone"
+            android:contentDescription="Item Image"/>
     </LinearLayout>
-</ScrollView>
+
+    <EditText
+        android:id="@+id/etItemDescription"
+        android:hint="Item Description"
+        android:layout_marginTop="16dp"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:background="@drawable/edittext_background"
+        android:padding="8dp"
+        android:enabled="false"/>
+
+    <Button
+        android:id="@+id/btnAddItem"
+        android:text="Add Item"
+        android:layout_marginTop="16dp"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"/>
+
+    <androidx.recyclerview.widget.RecyclerView
+        android:id="@+id/recyclerViewItems"
+        android:layout_marginTop="16dp"
+        android:layout_width="match_parent"
+        android:layout_height="0dp"
+        android:layout_weight="1"/>
+
+    <Button
+        android:id="@+id/btnFinish"
+        android:text="Finish &amp; Save Items"
+        android:layout_marginTop="16dp"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"/>
+</LinearLayout>

@@ -934,6 +934,56 @@ def require_authentication():
         return jsonify({"message": "Invalid token", "code": "unauthorized"}), 401
 
 
+# @app.route('/shop/add_items', methods=['POST'])
+# def add_item():
+#     user = getattr(g, "current_user", None)
+#     if not user:
+#         return jsonify({'success': False, 'message': 'Unauthorized'}), 401
+#     if user.get('role') not in ['shopowner', 'shopkeeper']:
+#         return jsonify({'success': False, 'message': 'Unauthorized role'}), 403
+#
+#     data = request.get_json(silent=True) or {}
+#     raw_shop_id = (data.get("shop_id") or "").strip()
+#     items = data.get("items", [])
+#
+#     if not raw_shop_id or not items:
+#         return jsonify({'success': False, 'message': 'Missing shop_id or items'}), 400
+#
+#     # 🔁 Normalize shop_id: prefer doc.id; fall back to field match
+#     shop_ref = firebase_db.db.collection("shops").document(raw_shop_id).get()
+#     if shop_ref.exists:
+#         canonical_shop_id = shop_ref.id
+#         shop_doc = shop_ref.to_dict()
+#     else:
+#         # legacy path: client sent the old UUID stored inside the 'id' field
+#         q = firebase_db.db.collection("shops").where("id", "==", raw_shop_id).limit(1).stream()
+#         shop_doc = None
+#         canonical_shop_id = None
+#         for d in q:
+#             shop_doc = d.to_dict()
+#             canonical_shop_id = d.id  # ✅ translate to doc.id
+#             print(f"canonical_shop_id : {canonical_shop_id}")
+#             break
+#
+#     if not canonical_shop_id:
+#         return jsonify({'success': False, 'message': f'Shop not found for id={raw_shop_id}'}), 404
+#     IST = timezone(timedelta(hours=5, minutes=30))
+#     saved_items = []
+#     username = user.get('username')
+#     for it in items:
+#         item_dict = {
+#             "name": it.get("name"),
+#             "price": float(it.get("price") or 0),
+#             "quantity": int(it.get("stockQuantity") or 0),
+#             "description": it.get("description") or "",
+#             "shopId": canonical_shop_id,  # ✅ always store doc.id
+#             "createdAt": datetime.now(IST).replace(microsecond=0).isoformat(),
+#             "createdBy": username
+#         }
+#         saved_items.append(firebase_db.append_item(item_dict))
+#
+#     return jsonify(
+#         {'success': True, 'message': 'Items added successfully', 'items': saved_items}), 201
 @app.route('/shop/add_items', methods=['POST'])
 def add_item():
     user = getattr(g, "current_user", None)
@@ -955,35 +1005,43 @@ def add_item():
         canonical_shop_id = shop_ref.id
         shop_doc = shop_ref.to_dict()
     else:
-        # legacy path: client sent the old UUID stored inside the 'id' field
         q = firebase_db.db.collection("shops").where("id", "==", raw_shop_id).limit(1).stream()
         shop_doc = None
         canonical_shop_id = None
         for d in q:
             shop_doc = d.to_dict()
-            canonical_shop_id = d.id  # ✅ translate to doc.id
+            canonical_shop_id = d.id
             print(f"canonical_shop_id : {canonical_shop_id}")
             break
 
     if not canonical_shop_id:
         return jsonify({'success': False, 'message': f'Shop not found for id={raw_shop_id}'}), 404
+
     IST = timezone(timedelta(hours=5, minutes=30))
     saved_items = []
     username = user.get('username')
+
     for it in items:
         item_dict = {
             "name": it.get("name"),
             "price": float(it.get("price") or 0),
             "quantity": int(it.get("stockQuantity") or 0),
             "description": it.get("description") or "",
-            "shopId": canonical_shop_id,  # ✅ always store doc.id
+            "shopId": canonical_shop_id,
             "createdAt": datetime.now(IST).replace(microsecond=0).isoformat(),
-            "createdBy": username
+            "createdBy": username,
+
+            # ✅ ADD THIS LINE
+            "image": it.get("image") or it.get("imageUrl") or ""
         }
+
         saved_items.append(firebase_db.append_item(item_dict))
 
-    return jsonify(
-        {'success': True, 'message': 'Items added successfully', 'items': saved_items}), 201
+    return jsonify({
+        'success': True,
+        'message': 'Items added successfully',
+        'items': saved_items
+    }), 201
 
 
 @app.route('/get_shop_by_owner', methods=['GET'])

@@ -2,118 +2,165 @@ package com.example.groceryshoppingapp
 
 import android.content.Intent
 import android.os.Bundle
+import android.view.View
 import android.widget.*
 import androidx.appcompat.app.AppCompatActivity
-import com.example.groceryshoppingapp.models.AddItemsRequest
-import com.example.groceryshoppingapp.models.Item
+import androidx.recyclerview.widget.LinearLayoutManager
+import com.bumptech.glide.Glide
+import com.example.groceryshoppingapp.adapters.ShopkeeperItemAdapter
+import com.example.groceryshoppingapp.models.*
 import com.example.groceryshoppingapp.network.ApiClient
 import com.example.groceryshoppingapp.network.ApiResponse
 import com.example.groceryshoppingapp.utils.SessionManager
+import com.google.gson.Gson
+import java.io.InputStreamReader
 import retrofit2.Call
 import retrofit2.Callback
 import retrofit2.Response
 
 class AddItemsActivity : AppCompatActivity() {
 
-    private lateinit var etItemName: EditText
-    private lateinit var etItemPrice: EditText
-    private lateinit var etItemQuantity: EditText
+    private lateinit var spinnerCategory: Spinner
+    private lateinit var spinnerItem: Spinner
     private lateinit var etItemDescription: EditText
     private lateinit var btnAddItem: Button
     private lateinit var btnFinish: Button
-    private lateinit var listViewItems: ListView
+    private lateinit var recyclerViewItems: androidx.recyclerview.widget.RecyclerView
+    private lateinit var itemImage: ImageView
 
     private val itemDataList = mutableListOf<Item>()
+    private lateinit var groceryData: GroceryData
+    private lateinit var itemAdapter: ShopkeeperItemAdapter
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_add_items)
 
-        etItemName = findViewById(R.id.etItemName)
-        etItemPrice = findViewById(R.id.etItemPrice)
-        etItemQuantity = findViewById(R.id.etItemQuantity)
+        spinnerCategory = findViewById(R.id.spinnerCategory)
+        spinnerItem = findViewById(R.id.spinnerItem)
         etItemDescription = findViewById(R.id.etItemDescription)
         btnAddItem = findViewById(R.id.btnAddItem)
         btnFinish = findViewById(R.id.btnFinish)
-        listViewItems = findViewById(R.id.listViewItems)
+        recyclerViewItems = findViewById(R.id.recyclerViewItems)
+        itemImage = findViewById(R.id.itemImage)
 
-        btnAddItem.setOnClickListener { addItemToList() }
-        btnFinish.setOnClickListener { finishAddingItems() }
+        // RecyclerView setup
+        itemAdapter = ShopkeeperItemAdapter(itemDataList) {}
+        recyclerViewItems.layoutManager = LinearLayoutManager(this)
+        recyclerViewItems.adapter = itemAdapter
+
+        loadItemsFromAssets()
+        setupCategorySpinner()
+        setupAddButton()
+        setupFinishButton()
     }
 
-    private fun addItemToList() {
-        val name = etItemName.text.toString().trim()
-        val price = etItemPrice.text.toString().trim()
-        val stock = etItemQuantity.text.toString().trim()
-        val description = etItemDescription.text.toString().trim()
-
-        if (name.isEmpty() || price.isEmpty() || stock.isEmpty() || description.isEmpty()) {
-            Toast.makeText(this, "Please fill all fields", Toast.LENGTH_SHORT).show()
-            return
-        }
-
-        val shopId = SessionManager.getShopId(this)
-        if (shopId.isNullOrEmpty()) {
-            Toast.makeText(this, "Shop ID missing. Please login again.", Toast.LENGTH_SHORT).show()
-            startActivity(Intent(this, LoginActivity::class.java))
-            finish()
-            return
-        }
-
-        val item = Item(
-            id = "", // backend generates ID
-            name = name,
-            price = price.toDoubleOrNull() ?: 0.0,
-            stockQuantity = stock.toIntOrNull() ?: 0,
-            description = description,
-            shopid = shopId,
-            imageUrl = null
-        )
-
-        itemDataList.add(item)
-        val displayList = itemDataList.map {
-            "Name: ${it.name} | Price: ₹${it.price} | Stock: ${it.stockQuantity} | Desc: ${it.description}"
-        }
-        listViewItems.adapter = ArrayAdapter(this, android.R.layout.simple_list_item_1, displayList)
-
-        etItemName.text.clear()
-        etItemPrice.text.clear()
-        etItemQuantity.text.clear()
-        etItemDescription.text.clear()
+    private fun loadItemsFromAssets() {
+        val inputStream = assets.open("data/grocery_items.json")
+        val reader = InputStreamReader(inputStream)
+        groceryData = Gson().fromJson(reader, GroceryData::class.java)
+        reader.close()
     }
 
-    private fun finishAddingItems() {
-        if (itemDataList.isEmpty()) {
-            Toast.makeText(this, "No items to save", Toast.LENGTH_SHORT).show()
-            return
+    private fun setupCategorySpinner() {
+        val categories = groceryData.categories.map { it.name }
+        val categoryAdapter = ArrayAdapter(this, android.R.layout.simple_spinner_item, categories)
+        categoryAdapter.setDropDownViewResource(android.R.layout.simple_spinner_dropdown_item)
+        spinnerCategory.adapter = categoryAdapter
+
+        spinnerCategory.onItemSelectedListener = object : AdapterView.OnItemSelectedListener {
+            override fun onItemSelected(parent: AdapterView<*>?, view: View?, position: Int, id: Long) {
+                val selectedCategory = groceryData.categories[position]
+                setupItemSpinner(selectedCategory)
+            }
+            override fun onNothingSelected(parent: AdapterView<*>?) {}
         }
+    }
 
-        val shopId = SessionManager.getShopId(this)
-        if (shopId.isNullOrEmpty()) {
-            Toast.makeText(this, "Shop ID missing. Please login again.", Toast.LENGTH_SHORT).show()
-            startActivity(Intent(this, LoginActivity::class.java))
-            finish()
-            return
-        }
+    private fun setupItemSpinner(category: Category) {
+        val itemNames = category.items.map { it.name }
+        val itemAdapterSpinner = ArrayAdapter(this, android.R.layout.simple_spinner_item, itemNames)
+        itemAdapterSpinner.setDropDownViewResource(android.R.layout.simple_spinner_dropdown_item)
+        spinnerItem.adapter = itemAdapterSpinner
 
-        val request = AddItemsRequest(shopId, itemDataList)
+        spinnerItem.onItemSelectedListener = object : AdapterView.OnItemSelectedListener {
+            override fun onItemSelected(parent: AdapterView<*>?, view: View?, position: Int, id: Long) {
+                val selectedItem = category.items[position]
+                etItemDescription.setText(selectedItem.description)
 
-        val apiService = ApiClient.getApiService(this)
-        apiService.addItems(request).enqueue(object : Callback<ApiResponse> {
-            override fun onResponse(call: Call<ApiResponse>, response: Response<ApiResponse>) {
-                if (response.isSuccessful && response.body()?.success == true) {
-                    Toast.makeText(this@AddItemsActivity, "✅ Items added successfully!", Toast.LENGTH_SHORT).show()
-                    SessionManager.setHasItemsAdded(this@AddItemsActivity, true)
-                    startActivity(Intent(this@AddItemsActivity, ShopOwnerDashboardActivity::class.java))
-                    finish()
+                if (!selectedItem.image.isNullOrEmpty()) {
+                    itemImage.visibility = View.VISIBLE
+                    Glide.with(this@AddItemsActivity)
+                        .load("file:///android_asset/${selectedItem.image}")
+                        .centerCrop()
+                        .into(itemImage)
                 } else {
-                    Toast.makeText(this@AddItemsActivity, "❌ Failed: ${response.body()?.message ?: "Unknown error"}", Toast.LENGTH_SHORT).show()
+                    itemImage.visibility = View.GONE
                 }
             }
+            override fun onNothingSelected(parent: AdapterView<*>?) {}
+        }
+    }
 
-            override fun onFailure(call: Call<ApiResponse>, t: Throwable) {
-                Toast.makeText(this@AddItemsActivity, "⚠️ Error: ${t.message ?: "Unknown error"}", Toast.LENGTH_SHORT).show()
+    private fun setupAddButton() {
+        btnAddItem.setOnClickListener {
+            val name = spinnerItem.selectedItem?.toString()?.trim()
+            val description = etItemDescription.text.toString().trim()
+
+            if (name.isNullOrEmpty()) {
+                Toast.makeText(this, "Select an item", Toast.LENGTH_SHORT).show()
+                return@setOnClickListener
             }
-        })
+
+            val shopId = SessionManager.getShopId(this)
+            if (shopId.isNullOrEmpty()) {
+                Toast.makeText(this, "Shop ID missing", Toast.LENGTH_SHORT).show()
+                return@setOnClickListener
+            }
+
+            val selectedCategory = groceryData.categories[spinnerCategory.selectedItemPosition]
+            val selectedItem = selectedCategory.items[spinnerItem.selectedItemPosition]
+
+            val item = Item(
+                id = "",
+                name = name,
+                description = description,
+                price = 0.0,
+                stockQuantity = 0,
+                shopid = shopId,
+                imageUrl = selectedItem.image
+            )
+            itemDataList.add(item)
+            itemAdapter.notifyDataSetChanged()
+        }
+    }
+
+    private fun setupFinishButton() {
+        btnFinish.setOnClickListener {
+            if (itemDataList.isEmpty()) {
+                Toast.makeText(this, "No items to save", Toast.LENGTH_SHORT).show()
+                return@setOnClickListener
+            }
+
+            val shopId = SessionManager.getShopId(this)
+            val request = AddItemsRequest(shopId!!, itemDataList)
+
+            val apiService = ApiClient.getApiService(this)
+            apiService.addItems(request).enqueue(object : Callback<ApiResponse> {
+                override fun onResponse(call: Call<ApiResponse>, response: Response<ApiResponse>) {
+                    if (response.isSuccessful && response.body()?.success == true) {
+                        Toast.makeText(this@AddItemsActivity, "✅ Items added successfully!", Toast.LENGTH_SHORT).show()
+                        SessionManager.setHasItemsAdded(this@AddItemsActivity, true)
+                        startActivity(Intent(this@AddItemsActivity, ShopOwnerDashboardActivity::class.java))
+                        finish()
+                    } else {
+                        Toast.makeText(this@AddItemsActivity, "❌ Failed: ${response.body()?.message}", Toast.LENGTH_SHORT).show()
+                    }
+                }
+                override fun onFailure(call: Call<ApiResponse>, t: Throwable) {
+                    Toast.makeText(this@AddItemsActivity, "⚠️ Error: ${t.message}", Toast.LENGTH_SHORT).show()
+                }
+            })
+        }
     }
 }

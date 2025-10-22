@@ -26,19 +26,18 @@ import kotlinx.parcelize.Parcelize
 data class Item(
     val id: String,
     val name: String,
-
     val description: String? = null,
-
     val price: Double,
-
     @SerializedName("quantity")
     val stockQuantity: Int,
-
     val createdAt: String? = null,
     val createdBy: String? = null,
-
     @SerializedName("shopId")
     val shopid: String,
 
-    val imageUrl: String? = null
-) : Parcelable
+    // ✅ Support both possible keys
+    @SerializedName("image")
+    val imageUrl: String? = null,
+
+    ) : Parcelable
+

@@ -1,0 +1,60 @@
+{
+  "categories": [
+    {
+      "name": "Fruits",
+      "items": [
+        { "name": "Apple", "description": "Fresh red apples rich in fiber and vitamins.", "image": "images/fruits/apple.jpg" },
+        { "name": "Banana", "description": "Sweet ripe bananas full of potassium.", "image": "images/fruits/banana.jpg" },
+        { "name": "Mango", "description": "Juicy tropical mangoes perfect for summer.", "image": "images/fruits/mango.jpg" },
+        { "name": "Orange", "description": "Citrus fruit full of vitamin C.", "image": "images/fruits/oranges.jpg" },
+        { "name": "Grapes", "description": "Fresh seedless green and black grapes.", "image": "images/fruits/grapes.jpg" },
+        { "name": "Pineapple", "description": "Tropical fruit with tangy sweetness.", "image": "images/fruits/pineapple.jpg" },
+        { "name": "Papaya", "description": "Soft orange fruit rich in enzymes.", "image": "images/fruits/papaya.jpg" },
+        { "name": "Watermelon", "description": "Juicy and hydrating summer fruit.", "image": "images/fruits/watermelon.jpg" },
+        { "name": "Guava", "description": "Sweet and crunchy tropical guavas.", "image": "images/fruits/guava.jpg" },
+        { "name": "Strawberry", "description": "Fresh red strawberries rich in antioxidants.", "image": "images/fruits/strawberry.jpg" }
+      ]
+    },
+    {
+      "name": "Vegetables",
+      "items": [
+        { "name": "Carrot", "description": "Crunchy orange carrots rich in beta-carotene.", "image": "images/vegetables/carrots.jpg" },
+        { "name": "Tomato", "description": "Juicy red tomatoes used in salads and cooking.", "image": "images/vegetables/tomato.jpg" },
+        { "name": "Potato", "description": "Staple vegetable used in multiple dishes.", "image": "images/vegetables/potato.jpg" },
+        { "name": "Onion", "description": "Aromatic bulbs used in almost all cuisines.", "image": "images/vegetables/onion.jpg" },
+        { "name": "Spinach", "description": "Leafy green spinach full of iron.", "image": "images/vegetables/spinach.jpg" },
+        { "name": "Cabbage", "description": "Green or red cabbage used for salads and curries.", "image": "images/vegetables/cabbage.jpg" },
+        { "name": "Cauliflower", "description": "White florets vegetable high in fiber.", "image": "images/vegetables/cauliflower.jpg" },
+        { "name": "Broccoli", "description": "Green cruciferous vegetable rich in nutrients.", "image": "images/vegetables/broccoli.jpg" },
+        { "name": "Beans", "description": "Green beans perfect for stir-fries.", "image": "images/vegetables/beans.jpg" },
+        { "name": "Brinjal", "description": "Purple eggplants used in curries.", "image": "images/vegetables/brinjal.jpg" }
+      ]
+    },
+    {
+      "name": "Dairy Products",
+      "items": [
+        { "name": "Milk", "description": "Fresh cow milk rich in calcium and protein.", "image": "images/dairy/milk.jpg" },
+        { "name": "Curd", "description": "Natural yogurt made from fresh milk.", "image": "images/dairy/curd.jpg" },
+        { "name": "Butter", "description": "Creamy dairy butter perfect for spreading.", "image": "images/dairy/butter.jpg" },
+        { "name": "Cheese", "description": "Soft and hard cheese varieties.", "image": "images/dairy/cheese.jpg" },
+        { "name": "Ghee", "description": "Pure clarified butter used for cooking.", "image": "images/dairy/ghee.jpg" },
+        { "name": "Cream", "description": "Thick cream used for desserts and gravies.", "image": "images/dairy/cream.jpg" },
+        { "name": "Yogurt Drink", "description": "Flavored lassi and buttermilk varieties.", "image": "images/dairy/yogurt_drink.jpg" }
+      ]
+    },
+
+    {
+      "name": "Grains & Cereals",
+      "items": [
+        { "name": "Rice", "description": "Staple grain used in most Asian dishes.", "image": "images/grains/rice.jpg" },
+        { "name": "Wheat", "description": "Whole wheat grains for flour.", "image": "images/grains/wheat.jpg" },
+        { "name": "Oats", "description": "Healthy breakfast cereal rich in fiber.", "image": "images/grains/oats.jpg" },
+        { "name": "Corn", "description": "Maize kernels used in snacks and food.", "image": "images/grains/corn.jpg" },
+        { "name": "Barley", "description": "Whole barley grains rich in protein.", "image": "images/grains/barley.jpg" },
+        { "name": "Ragi", "description": "Millet grain high in calcium.", "image": "images/grains/ragi.jpg" },
+        { "name": "Bajra", "description": "Pearl millet used in traditional Indian rotis.", "image": "images/grains/bajra.jpg" },
+        { "name": "Maida", "description": "Refined wheat flour for baking.", "image": "images/grains/maida.jpg" }
+      ]
+    }
+  ]
+}

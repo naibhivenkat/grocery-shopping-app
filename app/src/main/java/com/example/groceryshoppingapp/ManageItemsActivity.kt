@@ -9,19 +9,19 @@ import android.widget.Toast
 import androidx.appcompat.app.AppCompatActivity
 import androidx.recyclerview.widget.LinearLayoutManager
 import androidx.recyclerview.widget.RecyclerView
-import com.example.groceryshoppingapp.adapters.ItemAdapter
+import com.example.groceryshoppingapp.adapters.ShopkeeperItemAdapter
 import com.example.groceryshoppingapp.models.GetItemsResponse
 import com.example.groceryshoppingapp.models.Item
-import com.example.groceryshoppingapp.utils.SessionManager
-import com.example.groceryshoppingapp.network.RetrofitClient
 import com.example.groceryshoppingapp.network.ApiService
+import com.example.groceryshoppingapp.network.RetrofitClient
+import com.example.groceryshoppingapp.utils.SessionManager
 import retrofit2.Call
 import retrofit2.Callback
 import retrofit2.Response
 
 class ManageItemsActivity : AppCompatActivity() {
 
-    private lateinit var itemAdapter: ItemAdapter
+    private lateinit var itemAdapter: ShopkeeperItemAdapter
     private lateinit var itemList: MutableList<Item>
     private lateinit var rvItems: RecyclerView
     private lateinit var btnAddItem: Button
@@ -40,12 +40,12 @@ class ManageItemsActivity : AppCompatActivity() {
         btnRefresh = findViewById(R.id.btn_refresh)
 
         itemList = mutableListOf()
-        itemAdapter = ItemAdapter(itemList) { selectedItem ->
+        itemAdapter = ShopkeeperItemAdapter(itemList) { selectedItem ->
+            // Long-click action: edit item
             val intent = Intent(this, UpdateItemActivity::class.java)
-            intent.putExtra("item", selectedItem)  // FIXED LINE
+            intent.putExtra("item", selectedItem)
             startActivity(intent)
         }
-
 
         rvItems.layoutManager = LinearLayoutManager(this)
         rvItems.adapter = itemAdapter
@@ -58,8 +58,7 @@ class ManageItemsActivity : AppCompatActivity() {
         }
 
         btnRefresh.setOnClickListener {
-            finish()
-            startActivity(intent) // Clean re-load
+            fetchItems() // Just fetch items again instead of restarting activity
         }
 
         btnBack.setOnClickListener {
@@ -70,40 +69,54 @@ class ManageItemsActivity : AppCompatActivity() {
     private fun fetchItems() {
         val shopId = SessionManager.getShopId(this)
         if (shopId.isNullOrEmpty()) {
-            Toast.makeText(this, "Shop ID not found. Please create a shop first.", Toast.LENGTH_SHORT).show()
+            Toast.makeText(
+                this,
+                "Shop ID not found. Please create a shop first.",
+                Toast.LENGTH_SHORT
+            ).show()
             return
         }
 
         val token = SessionManager.getAuthToken(this)
         if (token.isNullOrEmpty()) {
-            Toast.makeText(this, "Auth token missing. Please login again.", Toast.LENGTH_SHORT).show()
+            Toast.makeText(this, "Auth token missing. Please login again.", Toast.LENGTH_SHORT)
+                .show()
             return
         }
 
         Log.d("ManageItemsActivity", "Fetching items for shopId: $shopId with token: $token")
-        Log.d("Shop IDS", "Raw shopId='$shopId'")
-        Log.d("DEBUG", "Calling: https://grocery-shopping-app-yyqx.onrender.com/api/shops/$shopId/items")
+        Log.d(
+            "DEBUG",
+            "Calling: https://grocery-shopping-app-yyqx.onrender.com/api/shops/$shopId/items"
+        )
 
         api.getItems(shopId).enqueue(object : Callback<GetItemsResponse> {
-            override fun onResponse(call: Call<GetItemsResponse>, response: Response<GetItemsResponse>) {
+            override fun onResponse(
+                call: Call<GetItemsResponse>,
+                response: Response<GetItemsResponse>
+            ) {
                 if (response.isSuccessful) {
                     val items = response.body()?.items ?: emptyList()
                     itemList.clear()
                     itemList.addAll(items)
                     itemAdapter.notifyDataSetChanged()
                 } else {
-                    Toast.makeText(this@ManageItemsActivity, "Failed to load items: ${response.code()}", Toast.LENGTH_SHORT).show()
+                    Toast.makeText(
+                        this@ManageItemsActivity,
+                        "Failed to load items: ${response.code()}",
+                        Toast.LENGTH_SHORT
+                    ).show()
                     Log.e("ManageItemsActivity", "Error body: ${response.errorBody()?.string()}")
                 }
             }
 
             override fun onFailure(call: Call<GetItemsResponse>, t: Throwable) {
-                Toast.makeText(this@ManageItemsActivity, "Error: ${t.message}", Toast.LENGTH_SHORT).show()
+                Toast.makeText(this@ManageItemsActivity, "Error: ${t.message}", Toast.LENGTH_SHORT)
+                    .show()
             }
         })
-
     }
-    
+
     override fun onResume() {
         super.onResume()
         fetchItems()
