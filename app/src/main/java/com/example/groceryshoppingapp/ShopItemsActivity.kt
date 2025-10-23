@@ -58,10 +58,15 @@ class ShopItemsActivity : AppCompatActivity() {
 
         shopTitleText.text = "Items in $shopName"
 
-        adapter = ItemAdapter(items) { item ->
-            Log.d("ShopItemsActivity", "Adding item=${item.name}, id=${item.id}, shopId=$shopId")
-            CartManager.addToCart(item, shopId!!)
-            Toast.makeText(this, "${item.name} added to cart", Toast.LENGTH_SHORT).show()
+        // ⚡ Updated lambda to split quantityWithUnit into Double + unit
+        adapter = ItemAdapter(items) { item, quantityWithUnit ->
+            val parts = quantityWithUnit.split(" ")
+            val qty = parts.getOrNull(0)?.toDoubleOrNull() ?: 1.0
+            val unit = parts.getOrNull(1) ?: "pcs"
+
+            Log.d("ShopItemsActivity", "Adding item=${item.name}, qty=$qty, unit=$unit, shopId=$shopId")
+            CartManager.addToCart(item, shopId!!, qty, unit)
+            Toast.makeText(this, "${item.name} ($qty $unit) added to cart", Toast.LENGTH_SHORT).show()
         }
 
         itemsRecyclerView.layoutManager = LinearLayoutManager(this)

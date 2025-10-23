@@ -6,8 +6,8 @@ import android.widget.AdapterView
 import android.widget.Button
 import android.widget.ListView
 import android.widget.Toast
-import androidx.appcompat.app.AppCompatActivity
 import androidx.appcompat.app.AlertDialog
+import androidx.appcompat.app.AppCompatActivity
 import com.example.groceryshoppingapp.adapters.ShopAdapter
 import com.example.groceryshoppingapp.models.Shop
 import com.example.groceryshoppingapp.network.ApiService
@@ -46,15 +46,11 @@ class ShopSelectionActivity : AppCompatActivity() {
         val btnCart: Button = findViewById(R.id.btn_cart)
 
         btnHome.setOnClickListener {
-            val intent = Intent(this, CustomerHomeActivity::class.java)
-            intent.putExtra("customer_id", customerId)
-            startActivity(intent)
+            startActivity(Intent(this, CustomerHomeActivity::class.java))
             finish()
         }
 
-        btnBack.setOnClickListener {
-            finish()
-        }
+        btnBack.setOnClickListener { finish() }
 
         btnCart.setOnClickListener {
             val allCarts = CartManager.getAllCarts().filterValues { it.isNotEmpty() }
@@ -69,23 +65,19 @@ class ShopSelectionActivity : AppCompatActivity() {
                 shops.find { it.id == shopId }?.name ?: "Shop $shopId"
             }.toTypedArray()
 
-            // Show a dialog to pick one shop cart
-            val dialog = AlertDialog.Builder(this)
+            AlertDialog.Builder(this)
                 .setTitle("Select Cart (Shop)")
                 .setItems(shopNames) { _, index ->
                     val selectedShopId = shopIdList[index]
                     val selectedCartItems = allCarts[selectedShopId] ?: emptyList()
-
-                    val intent = Intent(this, CartActivity::class.java).apply {
+                    startActivity(Intent(this, CartActivity::class.java).apply {
                         putExtra("customer_id", customerId)
                         putExtra("shop_id", selectedShopId)
                         putParcelableArrayListExtra("cart_items", ArrayList(selectedCartItems))
-                    }
-                    startActivity(intent)
+                    })
                 }
                 .setNegativeButton("Cancel", null)
-                .create()
-            dialog.show()
+                .show()
         }
     }
 
@@ -100,48 +92,30 @@ class ShopSelectionActivity : AppCompatActivity() {
                     val adapter = ShopAdapter(this@ShopSelectionActivity, shops)
                     shopListView.adapter = adapter
 
-                    // Handle shop selection
-                    shopListView.onItemClickListener =
-                        AdapterView.OnItemClickListener { _, _, position, _ ->
-                            val selectedShop = shops[position]
+                    // ✅ Single click listener
+                    shopListView.onItemClickListener = AdapterView.OnItemClickListener { _, _, position, _ ->
+                        val selectedShop = shops[position]
 
-                            shopListView.onItemClickListener =
-                                AdapterView.OnItemClickListener { _, _, position, _ ->
-                                    val selectedShop = shops[position]
+                        AlertDialog.Builder(this@ShopSelectionActivity)
+                            .setTitle("Confirm Shop")
+                            .setMessage("Do you want to continue with '${selectedShop.name}'?")
+                            .setPositiveButton("OK") { _, _ ->
+                                // Save selected shop
+                                SessionManager.setShopId(this@ShopSelectionActivity, selectedShop.id)
+                                SessionManager.setShopInfo(this@ShopSelectionActivity, selectedShop.id, selectedShop.name)
 
-                                    val dialog = AlertDialog.Builder(this@ShopSelectionActivity)
-                                        .setTitle("Confirm Shop")
-                                        .setMessage("Do you want to continue with '${selectedShop.name}'?")
-                                        .setPositiveButton("OK") { _, _ ->
+                                // Navigate to shop items
+                                startActivity(Intent(this@ShopSelectionActivity, ShopItemsActivity::class.java).apply {
+                                    putExtra("SHOP_ID", selectedShop.id)
+                                    putExtra("SHOP_NAME", selectedShop.name)
+                                    putExtra("customer_id", customerId)
+                                })
+                            }
+                            .setNegativeButton("Cancel", null)
+                            .show()
+                    }
 
-                                            // ✅ Save selected shop in session
-                                            SessionManager.setShopId(
-                                                this@ShopSelectionActivity,
-                                                selectedShop.id
-                                            )
-                                            SessionManager.setShopInfo(
-                                                this@ShopSelectionActivity,
-                                                selectedShop.id,
-                                                selectedShop.name
-                                            )
-
-                                            val intent = Intent(
-                                                this@ShopSelectionActivity,
-                                                ShopItemsActivity::class.java
-                                            ).apply {
-                                                putExtra("SHOP_ID", selectedShop.id)
-                                                putExtra("SHOP_NAME", selectedShop.name)
-                                                putExtra("customer_id", customerId)
-                                            }
-                                            startActivity(intent)
-                                        }
-                                        .setNegativeButton("Cancel", null)
-                                        .create()
-                                    dialog.show()
-
-                                }
-                        }}
-                else {
+                } else {
                     Toast.makeText(this@ShopSelectionActivity, "Failed to load shops", Toast.LENGTH_SHORT).show()
                 }
             }

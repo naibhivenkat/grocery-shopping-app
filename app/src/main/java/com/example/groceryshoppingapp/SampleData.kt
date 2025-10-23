@@ -66,7 +66,7 @@ object SampleData {
                 price = price,
                 description = "Fresh and high-quality $itemName available at affordable price.",
                 shopid = shopId,
-                stockQuantity = (5..50).random()
+                stockQuantity = 0.0
             )
         }
     }

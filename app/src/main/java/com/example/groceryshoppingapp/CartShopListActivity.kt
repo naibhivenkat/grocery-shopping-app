@@ -7,10 +7,8 @@ import androidx.appcompat.app.AppCompatActivity
 import androidx.recyclerview.widget.LinearLayoutManager
 import com.example.groceryshoppingapp.adapters.ShopCartListAdapter
 import com.example.groceryshoppingapp.databinding.ActivityCartShopListBinding
-import com.example.groceryshoppingapp.models.CartItem
 import com.example.groceryshoppingapp.util.CartManager
 import com.example.groceryshoppingapp.utils.SessionManager
-import com.example.groceryshoppingapp.SampleData
 
 class CartShopListActivity : AppCompatActivity() {
 

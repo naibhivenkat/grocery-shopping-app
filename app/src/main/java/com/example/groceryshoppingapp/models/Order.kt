@@ -44,14 +44,14 @@ data class ItemQuantity(
 
     val name: String,
     var price: Double,
-    var quantity: Int,
+    var quantity: Double,
     var comment: String? = null
 
 ) : Parcelable
 
 data class OrderItemRequest(
     val item_id: String,
-    val quantity: Int
+    val quantity: Double
 )
 
 data class CreateOrderRequest(

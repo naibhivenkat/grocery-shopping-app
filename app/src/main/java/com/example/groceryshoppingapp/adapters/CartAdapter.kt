@@ -1,14 +1,16 @@
 package com.example.groceryshoppingapp.adapters
 
+import android.app.Activity
 import android.content.Context
+import android.view.Gravity
 import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
 import android.widget.*
 import androidx.recyclerview.widget.RecyclerView
+import com.bumptech.glide.Glide
 import com.example.groceryshoppingapp.R
 import com.example.groceryshoppingapp.models.CartItem
-import com.squareup.picasso.Picasso
 
 class CartAdapter(
     private val context: Context,
@@ -22,7 +24,8 @@ class CartAdapter(
         val plusButton: ImageButton = itemView.findViewById(R.id.buttonIncrement)
         val minusButton: ImageButton = itemView.findViewById(R.id.buttonDecrement)
         val priceTextView: TextView = itemView.findViewById(R.id.textViewItemPrice)
-        val itemImageView: ImageView = itemView.findViewById(R.id.imageViewItem)
+        // ✅ FIXED: match your XML ID
+        val itemImage: ImageView = itemView.findViewById(R.id.imageViewItem)
     }
 
     override fun onCreateViewHolder(parent: ViewGroup, viewType: Int): CartViewHolder {
@@ -36,19 +39,27 @@ class CartAdapter(
         holder.priceTextView.text = "₹%.2f".format(item.item.price)
         holder.quantityEditText.setText(item.quantity.toString())
 
-        // ✅ Theme-aware text colors
-        holder.nameTextView.setTextColor(context.getColorFromAttr(com.google.android.material.R.attr.colorOnBackground))
-        holder.priceTextView.setTextColor(context.getColorFromAttr(com.google.android.material.R.attr.colorOnBackground))
-        holder.quantityEditText.setTextColor(context.getColorFromAttr(com.google.android.material.R.attr.colorOnBackground))
+        // ✅ Fixed image loading with correct placeholder reference
+        val imageUrl = item.item.imageUrl?.trim()
+        if (!imageUrl.isNullOrEmpty()) {
+            val imageToLoad = when {
+                imageUrl.startsWith("http", true) -> imageUrl
+                imageUrl.startsWith("images/", true) -> "file:///android_asset/$imageUrl"
+                imageUrl.startsWith("/images/", true) -> "file:///android_asset$imageUrl"
+                else -> null
+            }
 
-        // Load image
-        if (!item.item.imageUrl.isNullOrEmpty()) {
-            Picasso.get().load(item.item.imageUrl).placeholder(R.drawable.placeholder).into(holder.itemImageView)
+            Glide.with(holder.itemView.context)
+                .load(imageToLoad ?: R.drawable.image_placeholder)
+                .placeholder(R.drawable.image_placeholder)
+                .error(R.drawable.image_placeholder)
+                .centerCrop()
+                .into(holder.itemImage)
         } else {
-            holder.itemImageView.setImageResource(R.drawable.placeholder)
+            holder.itemImage.setImageResource(R.drawable.image_placeholder)
         }
 
-        // Increment/Decrement buttons
+        // Increment / Decrement
         holder.plusButton.setOnClickListener {
             item.quantity++
             holder.quantityEditText.setText(item.quantity.toString())
@@ -69,9 +80,10 @@ class CartAdapter(
             }
         }
 
-        // Custom numeric keypad
         holder.quantityEditText.setOnClickListener {
-            showNumericKeypad(holder.quantityEditText, item, position)
+            if (context is Activity && !context.isFinishing) {
+                showNumericKeypad(holder.quantityEditText, item, position)
+            }
         }
     }
 
@@ -109,8 +121,6 @@ class CartAdapter(
         )
 
         numberButtons.forEach { btn ->
-            // ✅ Theme-aware text
-            btn.setTextColor(editText.context.getColorFromAttr(com.google.android.material.R.attr.colorOnBackground))
             btn.setOnClickListener {
                 input += btn.text
                 editText.setText(input)
@@ -127,7 +137,7 @@ class CartAdapter(
         }
 
         keypadView.findViewById<Button>(R.id.btnDone).setOnClickListener {
-            val newQty = input.toIntOrNull()
+            val newQty = input.toDoubleOrNull()
             if (newQty != null && newQty > 0) {
                 cartItem.quantity = newQty
                 notifyItemChanged(position)
@@ -139,15 +149,7 @@ class CartAdapter(
         }
 
         editText.post {
-            popupWindow.showAtLocation(editText, android.view.Gravity.BOTTOM, 0, 0)
+            popupWindow.showAtLocation(editText, Gravity.BOTTOM, 0, 0)
         }
     }
-}
-
-// Extension function to get theme colors
-fun Context.getColorFromAttr(attr: Int): Int {
-    val typedArray = obtainStyledAttributes(intArrayOf(attr))
-    val color = typedArray.getColor(0, 0)
-    typedArray.recycle()
-    return color
 }

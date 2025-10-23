@@ -126,7 +126,7 @@ class AddItemsActivity : AppCompatActivity() {
                 name = name,
                 description = description,
                 price = 0.0,
-                stockQuantity = 0,
+                stockQuantity = 0.0,
                 shopid = shopId,
                 imageUrl = selectedItem.image
             )

@@ -141,6 +141,10 @@
     <string name="login_failed">Login failed. Please try again</string>
 
     <string name="forgot_password">Forgot Password?</string>
+    <string name="ui_item_image">Item image</string>
+    <string name="item_image">Item image</string>
+    <string name="decrement">Decrement</string>
+    <string name="increment">Increment</string>
 
     <style name="KeypadButton" parent="Widget.MaterialComponents.Button.OutlinedButton">
         <item name="android:backgroundTint">?attr/colorPrimary</item>

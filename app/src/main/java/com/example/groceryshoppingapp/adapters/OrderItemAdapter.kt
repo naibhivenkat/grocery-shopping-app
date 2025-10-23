@@ -68,7 +68,7 @@ class OrderItemAdapter(
 
             holder.etItemQty.addTextChangedListener(object : TextWatcher {
                 override fun afterTextChanged(s: Editable?) {
-                    val newQty = s?.toString()?.toIntOrNull()
+                    val newQty = s?.toString()?.toDoubleOrNull()
                     if (newQty != null && newQty >= 0) item.quantity = newQty
                 }
                 override fun beforeTextChanged(s: CharSequence?, start: Int, count: Int, after: Int) {}
