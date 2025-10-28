@@ -17,6 +17,11 @@ from prometheus_client import Counter, Histogram, generate_latest, CONTENT_TYPE_
 import firebase_db
 
 app = Flask(__name__)
+
+@app.route("/healthz", methods=["GET"])
+def healthz():
+    return jsonify(status="Up and Running"), 200
+    
 CORS(app)
 logging.basicConfig(level=logging.INFO)
 SECRET_KEY = os.getenv("SECRET_KEY")  # keep secret and safe!
@@ -105,22 +110,24 @@ def generate_token(user):
     return token
 
 
-@app.get("/healthz")
-@limiter.exempt
-def healthz():
-    try:
-        # Example: check some real condition instead of random
-        service_ok = True  # replace with actual check, e.g., DB ping, cache, etc.
+# @app.get("/healthz")
+# @limiter.exempt
+# def healthz():
+#     try:
+#         # Example: check some real condition instead of random
+#         service_ok = True  # replace with actual check, e.g., DB ping, cache, etc.
 
-        if service_ok:
-            # logging.info("✅ Health check ping received")
-            return jsonify(status="Up and Running"), 200
-        else:
-            logging.error("❌ Health check failed!")
-            return jsonify(status="Service Down", error="Server unreachable"), 503
-    except Exception as e:
-        logging.error(f"❌ Health check exception: {e}")
-        return jsonify(status="Service Down", error=str(e)), 503
+#         if service_ok:
+#             # logging.info("✅ Health check ping received")
+#             return jsonify(status="Up and Running"), 200
+#         else:
+#             logging.error("❌ Health check failed!")
+#             return jsonify(status="Service Down", error="Server unreachable"), 503
+#     except Exception as e:
+#         logging.error(f"❌ Health check exception: {e}")
+#         return jsonify(status="Service Down", error=str(e)), 503
+
+
 
 @app.route("/metrics")
 def metrics():
