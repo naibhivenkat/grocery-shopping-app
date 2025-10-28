@@ -1,20 +1,20 @@
 # Use official Python image
 FROM python:3.11-slim
 
-# Set working directory inside container
-WORKDIR /app
+# Set working directory to backend folder
+WORKDIR /app/backend
 
-# Copy backend requirements first (so Docker caching works)
+# Copy requirements first
 COPY app/backend/requirements.txt .
 
-# Install Python dependencies
+# Install dependencies
 RUN pip install --no-cache-dir -r requirements.txt
 
-# Copy all backend source files into container
-COPY app/backend /app
+# Copy only backend code into container
+COPY app/backend /app/backend
 
-# Expose Cloud Run port
+# Expose the Cloud Run port
 EXPOSE 8080
 
-# Start Flask app using Gunicorn
+# Run Flask app via Gunicorn
 CMD ["gunicorn", "-b", "0.0.0.0:8080", "app:app"]
