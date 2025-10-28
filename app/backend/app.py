@@ -1252,4 +1252,5 @@ def update_order_items(order_id):
 
 if __name__ == "__main__":
     print("Gunicorn setup complete, about to run...")
-    app.run(host="0.0.0.0", port=5000, debug=True)
+    port = int(os.environ.get("PORT", 8080))
+    app.run(host="0.0.0.0", port=port)
