@@ -9,9 +9,11 @@ COPY requirements.txt .
 # Install dependencies
 RUN pip install --no-cache-dir -r requirements.txt
 
-# Copy backend code (everything in context)
+# Copy backend code
 COPY . .
 
-EXPOSE 5000
+# ✅ Cloud Run expects this port
+EXPOSE 8080
 
+# ✅ Start Flask on same port as Cloud Run ($PORT)
 CMD ["python", "app.py"]
