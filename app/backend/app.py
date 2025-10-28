@@ -1266,6 +1266,9 @@
 from flask import Flask, jsonify
 
 app = Flask(__name__)
+@app.route('/')
+def index():
+    return "Backend is running!"
 
 @app.route("/healthz", methods=["GET"])
 def healthz():
