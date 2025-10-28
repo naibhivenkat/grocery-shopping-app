@@ -1,4 +1,5 @@
 steps:
+  # Step 1: Build Docker image
   - name: 'gcr.io/cloud-builders/docker'
     args:
       [
@@ -7,8 +8,12 @@ steps:
         '-f', 'app/backend/Dockerfile',
         '.'
       ]
+
+  # Step 2: Push image to Google Container Registry (GCR)
   - name: 'gcr.io/cloud-builders/docker'
     args: ['push', 'gcr.io/$PROJECT_ID/grocery-backend']
+
+  # Step 3: Deploy to Cloud Run
   - name: 'gcr.io/google.com/cloudsdktool/cloud-sdk'
     entrypoint: gcloud
     args:
