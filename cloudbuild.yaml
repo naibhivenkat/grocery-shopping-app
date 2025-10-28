@@ -6,9 +6,9 @@ steps:
         'build',
         '-t', 'gcr.io/$PROJECT_ID/grocery-backend',
         '-f', 'app/backend/Dockerfile',
-        '.'
+        'app/backend'
       ]
-
+  
   # Step 2: Push image to Google Container Registry (GCR)
   - name: 'gcr.io/cloud-builders/docker'
     args: ['push', 'gcr.io/$PROJECT_ID/grocery-backend']
