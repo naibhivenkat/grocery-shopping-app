@@ -1,19 +1,14 @@
 steps:
-  # Step 1: Build Docker image from your backend Dockerfile
   - name: 'gcr.io/cloud-builders/docker'
     args:
       [
         'build',
         '-t', 'gcr.io/$PROJECT_ID/grocery-backend',
         '-f', 'app/backend/Dockerfile',
-        'app/backend'
+        '.'
       ]
-
-  # Step 2: Push image to GCR
   - name: 'gcr.io/cloud-builders/docker'
     args: ['push', 'gcr.io/$PROJECT_ID/grocery-backend']
-
-  # Step 3: Deploy to Cloud Run
   - name: 'gcr.io/google.com/cloudsdktool/cloud-sdk'
     entrypoint: gcloud
     args:
@@ -25,7 +20,6 @@ steps:
         '--allow-unauthenticated',
         '--port', '8080'
       ]
-
 images:
   - 'gcr.io/$PROJECT_ID/grocery-backend'
 
