@@ -1,0 +1,15 @@
+# Exclude Python virtual environment and other local artifacts
+venv/
+**/venv/
+.env
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+.env/
+*.db
+*.sqlite
+.git/
+.gitignore
+.gcloudignore
