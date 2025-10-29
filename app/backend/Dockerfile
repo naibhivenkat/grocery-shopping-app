@@ -4,14 +4,14 @@ FROM python:3.11-slim
 WORKDIR /app
 
 # Copy requirements and install dependencies
-COPY app/backend/requirements.txt requirements.txt
+COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
-# Copy only the backend source
-COPY app/backend/ .
+# Copy everything from the current directory (your backend)
+COPY . .
 
 # Expose port 8080 for Cloud Run
 EXPOSE 8080
 
-# Start the Flask app using Gunicorn
+# Start Flask app with Gunicorn
 CMD exec gunicorn --bind :$PORT --workers 1 --threads 8 --timeout 0 app:app
