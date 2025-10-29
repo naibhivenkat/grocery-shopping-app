@@ -1274,9 +1274,9 @@ def index():
 def healthz():
     return jsonify(status="Up and Running"), 200
 
-@app.route("/ping", methods=["GET"])
-def ping():
-    return jsonify(status="Up and Running"), 200
+@app.route("/internal-healthz")
+def internal_health():
+    return {"status": "ok"}, 200
 
 if __name__ == "__main__":
     import os
