@@ -1262,23 +1262,67 @@
 #     port = int(os.environ.get("PORT", 8080))
 #     app.run(host="0.0.0.0", port=port)
 
-
 from flask import Flask, jsonify
+from flask_limiter import Limiter
+from flask_limiter.util import get_remote_address
+import logging
+import os
+import time
 
+# ---------------------------------------------------
+# Flask App Setup
+# ---------------------------------------------------
 app = Flask(__name__)
-@app.route('/')
+
+# Configure logging
+logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
+
+# Flask-Limiter (for rate limiting)
+limiter = Limiter(
+    key_func=get_remote_address,
+    default_limits=["100 per minute"]  # adjust as needed
+)
+limiter.init_app(app)
+
+# ---------------------------------------------------
+# Routes
+# ---------------------------------------------------
+
+@app.route("/")
 def index():
     return "Backend is running!"
 
-@app.route("/healthz", methods=["GET"])
-def healthz():
-    return jsonify(status="Up and Running"), 200
+# ✅ Public health check (accessible from browser/Postman)
+@app.get("/healthz")
+@limiter.exempt
+def public_health():
+    try:
+        # Example: perform internal dependency checks here
+        service_ok = True  # Replace with real check (e.g., DB, cache)
+        if service_ok:
+            logging.info("✅ /healthz OK")
+            return jsonify(status="Up and Running"), 200
+        else:
+            logging.warning("⚠️ /healthz reports degraded service")
+            return jsonify(status="Degraded", error="Dependency unavailable"), 503
+    except Exception as e:
+        logging.error(f"❌ Health check exception: {e}")
+        return jsonify(status="Service Down", error=str(e)), 503
 
-@app.route("/internal-healthz")
+# ✅ Internal Cloud Run probe (not publicly used)
+@app.get("/internal-healthz")
+@limiter.exempt
 def internal_health():
-    return {"status": "ok"}, 200
+    return jsonify(status="ok"), 200
 
+# ---------------------------------------------------
+# Startup Info (Optional)
+# ---------------------------------------------------
+START_TIME = time.time()
+
+# ---------------------------------------------------
+# Entry Point
+# ---------------------------------------------------
 if __name__ == "__main__":
-    import os
     port = int(os.environ.get("PORT", 8080))
     app.run(host="0.0.0.0", port=port)
