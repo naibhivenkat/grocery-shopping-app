@@ -3,14 +3,15 @@ FROM python:3.11-slim
 
 WORKDIR /app
 
-# Copy requirements and install deps
-COPY app/backend/requirements.txt .
+# Copy requirements and install dependencies
+COPY app/backend/requirements.txt requirements.txt
 RUN pip install --no-cache-dir -r requirements.txt
 
-# ✅ Copy backend source directly to /app (not /app/backend)
-COPY app/backend /app
+# Copy only the backend source
+COPY app/backend/ .
 
+# Expose port 8080 for Cloud Run
 EXPOSE 8080
 
-# ✅ Run Flask app (since app.py is now directly inside /app)
-CMD ["gunicorn", "-b", "0.0.0.0:8080", "app:app"]
+# Start the Flask app using Gunicorn
+CMD exec gunicorn --bind :$PORT --workers 1 --threads 8 --timeout 0 app:app
