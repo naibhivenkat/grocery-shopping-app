@@ -9,4 +9,4 @@ COPY . /app
 EXPOSE 8080
 
 # 👇 Use the correct module path
-CMD ["gunicorn", "-b", "0.0.0.0:8080", "backend.main:app"]
+CMD ["gunicorn", "-b", "0.0.0.0:8080", "main:app"]
