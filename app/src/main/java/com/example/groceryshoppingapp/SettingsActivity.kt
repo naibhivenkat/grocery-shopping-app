@@ -158,7 +158,8 @@ class SettingsActivity : AppCompatActivity() {
     // Check for updates using your backend, show popup if update available
     private fun checkForUpdates(callback: (String, String, Long) -> Unit) {
         val request = Request.Builder()
-            .url("https://grocery-shopping-app-yyqx.onrender.com/check_update")
+            //.url("https://grocery-shopping-app-yyqx.onrender.com/check_update")
+            .url("https://grocery-backend-956424262985.asia-south1.run.app/check_update")
             .build()
         client.newCall(request).enqueue(object : Callback {
             override fun onFailure(call: Call, e: IOException) {

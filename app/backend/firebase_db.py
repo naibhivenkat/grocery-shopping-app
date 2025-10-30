@@ -6,21 +6,37 @@ import os
 import json
 
 
-# ✅ Initialize Firebase (serviceAccountKey.json must be in same folder)
+# Firebase initialization
 if not firebase_admin._apps:
-    cred_env = os.getenv("GOOGLE_APPLICATION_CREDENTIALS")
-    if cred_env and cred_env.strip().startswith("{"):  # JSON string
-        cred_dict = json.loads(cred_env)
-        cred = credentials.Certificate(cred_dict)
-    else:  # assume it's a file path
-        cred = credentials.Certificate(cred_env or "/etc/secrets/firebase.json")
+    cred_path = "/secrets/FIREBASE_CREDENTIALS_JSON"
+    cred_env = os.getenv("FIREBASE_CREDENTIALS_JSON")
 
-    firebase_admin.initialize_app(cred, {
-        "storageBucket": "groceryapp-fe2ec.appspot.com"
-    })
+    try:
+        if cred_env and cred_env.strip().startswith("{"):
+            print("🔹 Using FIREBASE_CREDENTIALS_JSON from environment variable (JSON string)")
+            cred_dict = json.loads(cred_env)
+            cred = credentials.Certificate(cred_dict)
+        elif os.path.exists(cred_path):
+            print(f"🔹 Using FIREBASE_CREDENTIALS_JSON secret file at {cred_path}")
+            cred = credentials.Certificate(cred_path)
+        elif os.path.exists("app/backend/firebase.json"):
+            print("🔹 Using local firebase.json file for development")
+            cred = credentials.Certificate("app/backend/firebase.json")
+        else:
+            raise FileNotFoundError("❌ No valid Firebase credentials found")
+
+        firebase_admin.initialize_app(cred, {
+            "storageBucket": "groceryapp-fe2ec.appspot.com"
+        })
+        print("✅ Firebase initialized successfully")
+
+    except Exception as e:
+        print(f"🔥 Firebase init failed: {e}")
+        raise
 
 db = firestore.client()
 bucket = fb_storage.bucket()
+
 
 # ---------------- USERS ----------------
 

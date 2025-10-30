@@ -86,7 +86,8 @@ class RegisterActivity : AppCompatActivity() {
 
         // Retrofit setup
         val retrofit = Retrofit.Builder()
-            .baseUrl("https://grocery-shopping-app-yyqx.onrender.com/")
+            //.baseUrl("https://grocery-shopping-app-yyqx.onrender.com/")
+            .baseUrl("https://grocery-backend-956424262985.asia-south1.run.app/")
             .addConverterFactory(GsonConverterFactory.create())
             .build()
 

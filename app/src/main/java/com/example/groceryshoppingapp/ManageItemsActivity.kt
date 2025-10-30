@@ -85,10 +85,10 @@ class ManageItemsActivity : AppCompatActivity() {
         }
 
         Log.d("ManageItemsActivity", "Fetching items for shopId: $shopId with token: $token")
-        Log.d(
-            "DEBUG",
-            "Calling: https://grocery-shopping-app-yyqx.onrender.com/api/shops/$shopId/items"
-        )
+        //Log.d(
+           // "DEBUG",
+            //"Calling: https://grocery-shopping-app-yyqx.onrender.com/api/shops/$shopId/items"
+        //)
 
         api.getItems(shopId).enqueue(object : Callback<GetItemsResponse> {
             override fun onResponse(

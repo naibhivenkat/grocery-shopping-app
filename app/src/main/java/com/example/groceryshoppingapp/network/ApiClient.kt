@@ -12,8 +12,8 @@ import retrofit2.converter.gson.GsonConverterFactory
 
 object ApiClient {
 
-    private const val BASE_URL = "https://grocery-shopping-app-yyqx.onrender.com/"
-
+    // private const val BASE_URL = "https://grocery-shopping-app-yyqx.onrender.com/"
+    private const val BASE_URL = "https://grocery-backend-956424262985.asia-south1.run.app/"
     fun getRetrofit(context: Context): Retrofit {
         val logging = HttpLoggingInterceptor().apply {
             level = HttpLoggingInterceptor.Level.BODY

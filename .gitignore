@@ -10,6 +10,7 @@ __pycache__/
 app/backend/grocery-credentials.json
 app/backend/serviceAccountKey.json
 app/google-services.json
+app/backend/firebase.json
 .idea/
 .Python
 build/

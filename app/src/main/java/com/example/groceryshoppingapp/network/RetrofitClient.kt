@@ -11,7 +11,8 @@ import retrofit2.converter.gson.GsonConverterFactory
 
 object RetrofitClient {
 
-    private const val BASE_URL = "https://grocery-shopping-app-yyqx.onrender.com/"
+    //private const val BASE_URL = "https://grocery-shopping-app-yyqx.onrender.com/"
+    private const val BASE_URL = "https://grocery-backend-956424262985.asia-south1.run.app/"
 
     // Call this with a Context so token can be read from SessionManager
     fun getInstance(context: Context): Retrofit {
