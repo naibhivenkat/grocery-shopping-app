@@ -109,7 +109,7 @@ def public_health():
         return jsonify(status="Service Down", error=str(e)), 503
 
 
->>>>>>> e4df96d (Test Google Cloud Run -  app test)
+
 @app.before_request
 def start_timer():
     g.start_time = time.time()
@@ -1024,7 +1024,7 @@ def require_authentication():
 #         return jsonify({"message": "Token expired", "code": "unauthorized"}), 401
 #     except jwt.InvalidTokenError:
 #         return jsonify({"message": "Invalid token", "code": "unauthorized"}), 401
->>>>>>> e4df96d (Test Google Cloud Run -  app test)
+
 
 
 # @app.route('/shop/add_items', methods=['POST'])
@@ -1283,75 +1283,67 @@ def send_password_reset_email_otp(email, otp):
         print(f"[ERROR] Failed to send OTP email: {e}")
         return False
 
-@app.route("/api/update_order_items/<order_id>", methods=["PATCH"])
-def update_order_items(order_id):
-    """
-    Shopkeeper updates item details (price, quantity, comments) inside an order.
-    """
-
-    try:
-        data = request.json
-        updated_items = data.get("items", [])
-
-        if not updated_items:
-            return jsonify({"success": False, "message": "No items provided"}), 400
-
-        # 🔹 Step 1: Find order document by custom order_uuid field
-        order_query = firebase_db.db.collection("orders").where("order_uuid", "==", order_id).stream()
-        order_doc_ref = None
-        order_data = None
-        for doc in order_query:
-            order_doc_ref = doc.reference
-            order_data = doc.to_dict()
-            break
-
-        if not order_doc_ref or not order_data:
-            return jsonify({"success": False, "message": "Order not found"}), 404
-
-        # 🔹 Step 2: Update items (matching by item_id)
-        existing_items = order_data.get("items", [])
-        for upd in updated_items:
-            item_id = upd.get("item_id")
-            for existing in existing_items:
-                if existing.get("item_id") == item_id:
-                    if "price" in upd:
-                        existing["price"] = float(upd["price"])
-                    if "quantity" in upd:
-                        existing["quantity"] = float(upd["quantity"])
-                    if "comment" in upd:
-                        existing["comment"] = upd["comment"]
-                    break
-
-        # 🔹 Step 3: Recalculate total
-        total = sum(float(i.get("price", 0)) * float(i.get("quantity", 1)) for i in existing_items)
-
-        # 🔹 Step 4: Update order document
-        order_doc_ref.update({
-            "items": existing_items,
-            "total": total,
-            "last_updated": datetime.now().isoformat()
-        })
-
-        return jsonify({
-            "success": True,
-            "message": "Order items updated successfully",
-            "new_total": total
-        })
-
-    except Exception as e:
-        print("🔥 Error updating order:", str(e))
-        return jsonify({"success": False, "message": str(e)}), 500
-
-
-
-if __name__ == "__main__":
-    print("Gunicorn setup complete, about to run...")
-    port = int(os.environ.get("PORT", 8080))
-    app.run(host="0.0.0.0", port=port)
+# @app.route("/api/update_order_items/<order_id>", methods=["PATCH"])
+# def update_order_items(order_id):
+#     """
+#     Shopkeeper updates item details (price, quantity, comments) inside an order.
+#     """
+#
+#     try:
+#         data = request.json
+#         updated_items = data.get("items", [])
+#
+#         if not updated_items:
+#             return jsonify({"success": False, "message": "No items provided"}), 400
+#
+#         # 🔹 Step 1: Find order document by custom order_uuid field
+#         order_query = firebase_db.db.collection("orders").where("order_uuid", "==", order_id).stream()
+#         order_doc_ref = None
+#         order_data = None
+#         for doc in order_query:
+#             order_doc_ref = doc.reference
+#             order_data = doc.to_dict()
+#             break
+#
+#         if not order_doc_ref or not order_data:
+#             return jsonify({"success": False, "message": "Order not found"}), 404
+#
+#         # 🔹 Step 2: Update items (matching by item_id)
+#         existing_items = order_data.get("items", [])
+#         for upd in updated_items:
+#             item_id = upd.get("item_id")
+#             for existing in existing_items:
+#                 if existing.get("item_id") == item_id:
+#                     if "price" in upd:
+#                         existing["price"] = float(upd["price"])
+#                     if "quantity" in upd:
+#                         existing["quantity"] = float(upd["quantity"])
+#                     if "comment" in upd:
+#                         existing["comment"] = upd["comment"]
+#                     break
+#
+#         # 🔹 Step 3: Recalculate total
+#         total = sum(float(i.get("price", 0)) * float(i.get("quantity", 1)) for i in existing_items)
+#
+#         # 🔹 Step 4: Update order document
+#         order_doc_ref.update({
+#             "items": existing_items,
+#             "total": total,
+#             "last_updated": datetime.now().isoformat()
+#         })
+#
+#         return jsonify({
+#             "success": True,
+#             "message": "Order items updated successfully",
+#             "new_total": total
+#         })
+#
+#     except Exception as e:
+#         print("🔥 Error updating order:", str(e))
+#         return jsonify({"success": False, "message": str(e)}), 500
 
 
 
-# ✅ Public health check (accessible from browser/Postman)
 
 
 @app.before_request
@@ -1542,51 +1534,51 @@ def update_password():
     return jsonify({"success": True, "message": "Password updated successfully"}), 200
 
 
-def send_password_reset_email_otp(email, otp):
-    try:
-        print(f"[DEBUG] Sending OTP email to {email}")
-        print(f"[DEBUG] Using FROM_EMAIL: {FROM_EMAIL}")
-
-        url = "https://api.sendinblue.com/v3/smtp/email"
-        headers = {
-            "api-key": SENDINBLUE_API_KEY,
-            "Content-Type": "application/json"
-        }
-
-        subject = "🔐 Grocery App – Password Reset Verification Code"
-        html_content = f"""
-        <div style="font-family: Arial, sans-serif; color: #333; padding: 20px;">
-            <h2 style="color:#4CAF50;">Grocery App Password Reset</h2>
-            <p>Hello,</p>
-            <p>We received a request to reset your password for your <b>Grocery App</b> account.</p>
-            <p style="font-size:16px;">
-                Please use the following One-Time Password (OTP) to reset your password:
-            </p>
-            <div style="background:#f4f4f4; padding:10px 20px; margin:20px 0; border-radius:8px; text-align:center;">
-                <h1 style="letter-spacing:5px; color:#2E7D32;">{otp}</h1>
-            </div>
-            <p>This OTP is valid for <b>2 minutes</b>. Do not share it with anyone.</p>
-            <p>If you didn’t request a password reset, you can safely ignore this email.</p>
-            <br/>
-            <p style="font-size:12px; color:#888;">– The Grocery App Team</p>
-        </div>
-        """
-
-        data = {
-            "sender": {"name": "Grocery App", "email": FROM_EMAIL},
-            "to": [{"email": email}],
-            "subject": subject,
-            "htmlContent": html_content
-        }
-
-        response = requests.post(url, headers=headers, json=data)
-        print(f"[DEBUG] Sendinblue response: {response.status_code}, {response.text}")
-
-        return response.status_code in (200, 201)
-
-    except Exception as e:
-        print(f"[ERROR] Failed to send OTP email: {e}")
-        return False
+# def send_password_reset_email_otp(email, otp):
+#     try:
+#         print(f"[DEBUG] Sending OTP email to {email}")
+#         print(f"[DEBUG] Using FROM_EMAIL: {FROM_EMAIL}")
+#
+#         url = "https://api.sendinblue.com/v3/smtp/email"
+#         headers = {
+#             "api-key": SENDINBLUE_API_KEY,
+#             "Content-Type": "application/json"
+#         }
+#
+#         subject = "🔐 Grocery App – Password Reset Verification Code"
+#         html_content = f"""
+#         <div style="font-family: Arial, sans-serif; color: #333; padding: 20px;">
+#             <h2 style="color:#4CAF50;">Grocery App Password Reset</h2>
+#             <p>Hello,</p>
+#             <p>We received a request to reset your password for your <b>Grocery App</b> account.</p>
+#             <p style="font-size:16px;">
+#                 Please use the following One-Time Password (OTP) to reset your password:
+#             </p>
+#             <div style="background:#f4f4f4; padding:10px 20px; margin:20px 0; border-radius:8px; text-align:center;">
+#                 <h1 style="letter-spacing:5px; color:#2E7D32;">{otp}</h1>
+#             </div>
+#             <p>This OTP is valid for <b>2 minutes</b>. Do not share it with anyone.</p>
+#             <p>If you didn’t request a password reset, you can safely ignore this email.</p>
+#             <br/>
+#             <p style="font-size:12px; color:#888;">– The Grocery App Team</p>
+#         </div>
+#         """
+#
+#         data = {
+#             "sender": {"name": "Grocery App", "email": FROM_EMAIL},
+#             "to": [{"email": email}],
+#             "subject": subject,
+#             "htmlContent": html_content
+#         }
+#
+#         response = requests.post(url, headers=headers, json=data)
+#         print(f"[DEBUG] Sendinblue response: {response.status_code}, {response.text}")
+#
+#         return response.status_code in (200, 201)
+#
+#     except Exception as e:
+#         print(f"[ERROR] Failed to send OTP email: {e}")
+#         return False
 
 @app.route("/api/update_order_items/<order_id>", methods=["PATCH"])
 def update_order_items(order_id):
@@ -1646,7 +1638,8 @@ def update_order_items(order_id):
     except Exception as e:
         print("🔥 Error updating order:", str(e))
         return jsonify({"success": False, "message": str(e)}), 500
->>>>>>> e4df96d (Test Google Cloud Run -  app test)
+
+
 
 
 
