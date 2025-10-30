@@ -50,8 +50,6 @@ def public_health():
         logging.error(f"❌ Health check exception: {e}")
         return jsonify(status="Service Down", error=str(e)), 503
 
-=======
->>>>>>> e4df96d (Test Google Cloud Run -  app test)
 CORS(app)
 logging.basicConfig(level=logging.INFO)
 SECRET_KEY = os.getenv("SECRET_KEY")  # keep secret and safe!
@@ -996,7 +994,7 @@ def require_authentication():
         return jsonify({"message": "Token expired", "code": "unauthorized"}), 401
     except jwt.InvalidTokenError:
         return jsonify({"message": "Invalid token", "code": "unauthorized"}), 401
-=======
+
 # @app.before_request
 # def require_authentication():
 #     public_paths = [
@@ -1354,8 +1352,6 @@ if __name__ == "__main__":
 
 
 # ✅ Public health check (accessible from browser/Postman)
-
-=======
 
 
 @app.before_request
