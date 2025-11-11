@@ -27,6 +27,8 @@ class AddItemsActivity : AppCompatActivity() {
     private lateinit var btnFinish: Button
     private lateinit var recyclerViewItems: androidx.recyclerview.widget.RecyclerView
     private lateinit var itemImage: ImageView
+    private lateinit var etItemPrice: EditText
+
 
     private val itemDataList = mutableListOf<Item>()
     private lateinit var groceryData: GroceryData
@@ -43,6 +45,8 @@ class AddItemsActivity : AppCompatActivity() {
         btnFinish = findViewById(R.id.btnFinish)
         recyclerViewItems = findViewById(R.id.recyclerViewItems)
         itemImage = findViewById(R.id.itemImage)
+        etItemPrice = findViewById(R.id.etItemPrice)
+
 
         // RecyclerView setup
         itemAdapter = ShopkeeperItemAdapter(itemDataList) {}
@@ -120,12 +124,15 @@ class AddItemsActivity : AppCompatActivity() {
 
             val selectedCategory = groceryData.categories[spinnerCategory.selectedItemPosition]
             val selectedItem = selectedCategory.items[spinnerItem.selectedItemPosition]
+            val priceText = etItemPrice.text.toString().trim()
+            val price = priceText.toDoubleOrNull() ?: 0.0
+
 
             val item = Item(
                 id = "",
                 name = name,
                 description = description,
-                price = 0.0,
+                price = price,
                 stockQuantity = 0.0,
                 shopid = shopId,
                 imageUrl = selectedItem.image

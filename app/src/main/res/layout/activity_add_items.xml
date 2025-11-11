@@ -61,6 +61,15 @@
         android:padding="8dp"
         android:enabled="false"/>
 
+    <EditText
+        android:id="@+id/etItemPrice"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:hint="Enter Price"
+        android:inputType="numberDecimal"
+        android:layout_marginTop="8dp" />
+
+
     <Button
         android:id="@+id/btnAddItem"
         android:text="Add Item"

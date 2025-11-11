@@ -93,4 +93,13 @@
         android:text="Update Status"
         android:layout_marginTop="8dp"
         android:visibility="gone" />
+
+    <Button
+        android:id="@+id/btn_invoice"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:text="View Invoice"
+        android:visibility="gone"
+        android:layout_marginTop="12dp"/>
+
 </LinearLayout>

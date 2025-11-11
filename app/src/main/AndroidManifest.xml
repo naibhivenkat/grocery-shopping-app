@@ -83,6 +83,7 @@
         <activity android:name="com.example.groceryshoppingapp.ShopSelectionActivity" />
         <activity android:name="com.example.groceryshoppingapp.ThankYouActivity" />
         <activity android:name="com.example.groceryshoppingapp.UpdateItemActivity"/>
+        <activity android:name="com.example.groceryshoppingapp.InvoiceViewActivity"/>
 
 
     </application>

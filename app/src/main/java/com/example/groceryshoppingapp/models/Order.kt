@@ -34,7 +34,11 @@ data class Order(
     val payment_method: String? = null,  // 🔹 new
 
     @SerializedName("transaction_id")
-    val transaction_id: String? = null   // 🔹 new optional
+    val transaction_id: String? = null,   // 🔹 new optional
+
+    @SerializedName("invoice_url")
+    val invoiceUrl: String? = null
+
 ) : Parcelable
 
 @Parcelize
@@ -58,7 +62,8 @@ data class CreateOrderRequest(
     val shopId: String,
     val payment_method: String,
     val items: List<OrderItemRequest>,
-    val transaction_id: String? = null // 🔹 optional
+    val transaction_id: String? = null, // 🔹 optional
+    val invoice_url: String? = null
 )
 
 @Parcelize

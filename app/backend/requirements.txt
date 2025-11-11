@@ -1,14 +1,27 @@
-Flask
-gunicorn
-flask-cors
-gspread
-google-auth
-google-auth-oauthlib
-google-auth-httplib2
-firebase_admin
-elasticsearch
-requests
-Flask-Limiter
-PyJWT
-razorpay
-prometheus-client
+# --- Web Framework ---
+setuptools>=75.1.0
+wheel
+Flask==3.0.3
+Flask-Cors==4.0.1
+Flask-Limiter==3.8.0
+
+# --- Server ---
+gunicorn==22.0.0
+
+# --- Google / Firebase ---
+gspread==6.0.2
+google-auth==2.35.0
+google-auth-oauthlib==1.2.1
+google-auth-httplib2==0.2.0
+firebase_admin==6.5.0
+
+# --- Payments / APIs ---
+razorpay==1.4.2
+requests==2.32.3
+PyJWT==2.9.0
+elasticsearch==8.15.1
+prometheus-client==0.21.0
+
+# --- PDF Generation ---
+weasyprint==62.3
+reportlab==4.2.2

@@ -40,6 +40,8 @@ class ShopkeeperOrdersActivity : AppCompatActivity() {
             updateOrderStatus(orderId, status)
         }
 
+
+
         binding.ordersRecyclerView.layoutManager = LinearLayoutManager(this)
         binding.ordersRecyclerView.adapter = orderAdapter
 
@@ -95,13 +97,36 @@ class ShopkeeperOrdersActivity : AppCompatActivity() {
         })
     }
 
+//    private fun updateOrderStatus(orderId: String, status: String) {
+//        val api = RetrofitClient.getInstance(this).create(ApiService::class.java)
+//        api.updateOrderStatus(orderId, status).enqueue(object : Callback<ApiResponse> {
+//            override fun onResponse(call: Call<ApiResponse>, response: Response<ApiResponse>) {
+//                if (response.isSuccessful && response.body()?.success == true) {
+//                    Toast.makeText(this@ShopkeeperOrdersActivity, "Order updated", Toast.LENGTH_SHORT).show()
+//                    // Update cache/UI after successful update
+//                    fetchOrders()
+//                } else {
+//                    Toast.makeText(this@ShopkeeperOrdersActivity, "Failed to update order", Toast.LENGTH_SHORT).show()
+//                }
+//            }
+//
+//            override fun onFailure(call: Call<ApiResponse>, t: Throwable) {
+//                Toast.makeText(this@ShopkeeperOrdersActivity, "Error: ${t.message}", Toast.LENGTH_SHORT).show()
+//            }
+//        })
+//    }
+
     private fun updateOrderStatus(orderId: String, status: String) {
         val api = RetrofitClient.getInstance(this).create(ApiService::class.java)
         api.updateOrderStatus(orderId, status).enqueue(object : Callback<ApiResponse> {
             override fun onResponse(call: Call<ApiResponse>, response: Response<ApiResponse>) {
                 if (response.isSuccessful && response.body()?.success == true) {
-                    Toast.makeText(this@ShopkeeperOrdersActivity, "Order updated", Toast.LENGTH_SHORT).show()
-                    // Update cache/UI after successful update
+                    val invoiceUrl = response.body()?.invoiceUrl
+                    if (!invoiceUrl.isNullOrEmpty()) {
+                        Toast.makeText(this@ShopkeeperOrdersActivity, "Invoice created: $invoiceUrl", Toast.LENGTH_LONG).show()
+                    } else {
+                        Toast.makeText(this@ShopkeeperOrdersActivity, "Order updated: $status", Toast.LENGTH_SHORT).show()
+                    }
                     fetchOrders()
                 } else {
                     Toast.makeText(this@ShopkeeperOrdersActivity, "Failed to update order", Toast.LENGTH_SHORT).show()
@@ -113,4 +138,9 @@ class ShopkeeperOrdersActivity : AppCompatActivity() {
             }
         })
     }
+
+
+
+
+
 }

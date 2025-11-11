@@ -24,6 +24,13 @@ interface ApiService {
         @Body body: Map<String, String>
     ): Call<Map<String, Any>>
 
+
+    @POST("api/update_order_status")
+    fun updateOrderStatusFinal(
+        @Body body: Map<String, String>
+    ): Call<Map<String, Any>>
+
+
     @GET("api/orders/{uuid}")
     fun getOrderById(@Path("uuid") uuid: String): Call<Order>
 
@@ -144,7 +151,7 @@ interface ApiService {
         @Path("shop_id") shopId: String
     ): Call<Shop>
 
-    @GET("healthz")
+    @GET("internal-healthz")
     fun healthCheck(): Call<Map<String, String>>
 
     @POST("/create_shop")
@@ -158,7 +165,6 @@ interface ApiService {
         @Path("order_id") orderId: String,
         @Body payload: UpdateOrderItemsRequest
     ): Call<Map<String, Any>>
-
 
 
 
