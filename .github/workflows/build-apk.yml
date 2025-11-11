@@ -108,21 +108,34 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
+#      - name: Build backend Docker image
+#        run: |
+#          IMAGE_NAME=ghcr.io/${{ github.repository }}/backend:${{ env.NEW_VERSION_NAME }}
+#          docker build -t $IMAGE_NAME -f app/backend/Dockerfile app/backend
+#          echo "IMAGE_NAME=$IMAGE_NAME" >> $GITHUB_ENV
+#
+#
+#      - name: Push backend Docker image
+#        run: |
+#          docker push $IMAGE_NAME
+#          docker tag $IMAGE_NAME ghcr.io/${{ github.repository }}/backend:latest
+#          docker push ghcr.io/${{ github.repository }}/backend:latest
+
       - name: Build backend Docker image
         run: |
-          IMAGE_NAME=ghcr.io/${{ github.repository }}/backend:${{ env.NEW_VERSION_NAME }}
+          IMAGE_NAME=gcr.io/${{ secrets.GCP_PROJECT_ID }}/backend:${{ env.NEW_VERSION_NAME }}
           docker build -t $IMAGE_NAME -f app/backend/Dockerfile app/backend
           echo "IMAGE_NAME=$IMAGE_NAME" >> $GITHUB_ENV
-
 
       - name: Push backend Docker image
         run: |
           docker push $IMAGE_NAME
-          docker tag $IMAGE_NAME ghcr.io/${{ github.repository }}/backend:latest
-          docker push ghcr.io/${{ github.repository }}/backend:latest
-
-
-            # -----------------------------
+          docker tag $IMAGE_NAME gcr.io/${{ secrets.GCP_PROJECT_ID }}/backend:latest
+          docker push gcr.io/${{ secrets.GCP_PROJECT_ID }}/backend:latest
+              
+              
+              
+              # -----------------------------
       # Authenticate to Google Cloud
       # -----------------------------
       - name: Authenticate to Google Cloud
