@@ -122,16 +122,23 @@ jobs:
           docker push ghcr.io/${{ github.repository }}/backend:latest
 
 
+            # -----------------------------
+      # Authenticate to Google Cloud
       # -----------------------------
-      # Deploy backend to Google Cloud Run
-      # -----------------------------
-      - name: Set up Google Cloud SDK
+      - name: Authenticate to Google Cloud
+        uses: google-github-actions/auth@v2
+        with:
+          credentials_json: ${{ secrets.GCP_SA_KEY }}
+
+      - name: Set up gcloud CLI
         uses: google-github-actions/setup-gcloud@v2
         with:
           project_id: ${{ secrets.GCP_PROJECT_ID }}
-          service_account_key: ${{ secrets.GCP_SA_KEY }}
-          export_default_credentials: true
+          install_components: 'beta,run'
 
+      # -----------------------------
+      # Deploy backend to Cloud Run
+      # -----------------------------
       - name: Deploy backend to Cloud Run
         run: |
           echo "🚀 Deploying $IMAGE_NAME to Cloud Run..."
