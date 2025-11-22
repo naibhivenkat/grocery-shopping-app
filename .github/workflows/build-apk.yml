@@ -158,6 +158,8 @@
 #            --port 8080 \
 #            --set-env-vars FLASK_ENV=production,SECRET_KEY="super-secret-key-change-this" \
 #            --update-secrets=FIREBASE_CREDENTIALS_JSON=FIREBASE_CREDENTIALS_JSON:latest,SENDINBLUE_API_KEY=SENDINBLUE_API_KEY:latest,FROM_EMAIL=FROM_EMAIL:latest
+
+
 name: Android CI + Backend Deploy
 
 on:
@@ -183,7 +185,7 @@ jobs:
           token: ${{ secrets.GITHUB_TOKEN }}
 
       # -----------------------------
-      # Setup JDK for Android build
+      # Setup JDK
       # -----------------------------
       - name: Set up JDK 17
         uses: actions/setup-java@v3
@@ -205,30 +207,34 @@ jobs:
             gradle-${{ runner.os }}-
 
       # -----------------------------
-      # Version bump (auto)
+      # Auto version bump
       # -----------------------------
       - name: Bump version
         run: |
           PROPS_FILE=version.properties
           VERSION_CODE=$(grep VERSION_CODE $PROPS_FILE | cut -d'=' -f2)
           VERSION_NAME=$(grep VERSION_NAME $PROPS_FILE | cut -d'=' -f2)
+          
           NEW_VERSION_CODE=$((VERSION_CODE + 1))
           VERSION_MAJOR=$(echo $VERSION_NAME | cut -d'.' -f1)
           VERSION_MINOR=$(echo $VERSION_NAME | cut -d'.' -f2)
           NEW_VERSION_MINOR=$((VERSION_MINOR + 1))
           NEW_VERSION_NAME="$VERSION_MAJOR.$NEW_VERSION_MINOR"
+          
           sed -i "s/VERSION_CODE=$VERSION_CODE/VERSION_CODE=$NEW_VERSION_CODE/" $PROPS_FILE
           sed -i "s/VERSION_NAME=$VERSION_NAME/VERSION_NAME=$NEW_VERSION_NAME/" $PROPS_FILE
+          
           git config user.name "github-actions"
           git config user.email "actions@github.com"
           git add $PROPS_FILE
           git commit -m "CI: bump to $NEW_VERSION_NAME ($NEW_VERSION_CODE)" || echo "No changes to commit"
           git push origin HEAD:${GITHUB_REF}
+          
           echo "NEW_VERSION_NAME=$NEW_VERSION_NAME" >> $GITHUB_ENV
           echo "NEW_VERSION_CODE=$NEW_VERSION_CODE" >> $GITHUB_ENV
 
       # -----------------------------
-      # Restore keys and configs
+      # Restore keys
       # -----------------------------
       - name: Restore debug.keystore
         run: |
@@ -244,7 +250,7 @@ jobs:
           GOOGLE_SERVICES_JSON: ${{ secrets.GOOGLE_SERVICES_JSON }}
 
       # -----------------------------
-      # Build Android apps
+      # Build Android
       # -----------------------------
       - name: Build Shopowner APK
         run: ./gradlew assembleShopownerDebug
@@ -287,45 +293,35 @@ jobs:
         with:
           project_id: ${{ secrets.GCP_PROJECT_ID }}
 
-      # -----------------------------
-      # Configure Docker authentication for GCR
-      # -----------------------------
       - name: Configure Docker authentication for GCR
         run: gcloud auth configure-docker gcr.io --quiet
 
+      # ==========================================================
+      # IAM VALIDATION (NEW - Prevents _cloudbuild errors)
+      # ==========================================================
+      - name: Check IAM Roles
+        run: |
+          echo "Checking IAM roles for service account..."
+          gcloud projects get-iam-policy "${{ secrets.GCP_PROJECT_ID }}" \
+            --flatten="bindings[].members" \
+            --filter="bindings.members:serviceAccount:${{ fromJson(secrets.GCP_SA_KEY).client_email }}" \
+            --format="table(bindings.role)"
+          
+          echo "If Cloud Build fails next step, add required roles: storage.admin, cloudbuild.builds.editor, serviceusage.serviceUsageConsumer"
 
       # ==========================================================
-      # 🔥🔥 MINIMAL CHANGE BELOW — USE CLOUD BUILD (shows in Build History)
+      # CLOUD BUILD (appears in Cloud Run build history)
       # ==========================================================
-
-      # ❌ COMMENTED OUT: LOCAL docker build (does NOT appear in Cloud Run history)
-      # - name: Build backend Docker image
-      #   run: |
-      #     IMAGE_NAME=gcr.io/${{ secrets.GCP_PROJECT_ID }}/backend:${{ env.NEW_VERSION_NAME }}
-      #     docker build -t $IMAGE_NAME -f app/backend/Dockerfile app/backend
-      #     echo "IMAGE_NAME=$IMAGE_NAME" >> $GITHUB_ENV
-
-      # ❌ COMMENTED OUT: docker push (Cloud Build does this automatically)
-      # - name: Push backend Docker image
-      #   run: |
-      #     docker push $IMAGE_NAME
-      #     docker tag $IMAGE_NAME gcr.io/${{ secrets.GCP_PROJECT_ID }}/backend:latest
-      #     docker push gcr.io/${{ secrets.GCP_PROJECT_ID }}/backend:latest
-
-
-      # ✅ NEW STEP: Build backend using Cloud Build (WILL SHOW in Cloud Run Build History)
       - name: Build backend with Cloud Build
         run: |
           IMAGE_NAME=gcr.io/${{ secrets.GCP_PROJECT_ID }}/backend:${{ env.NEW_VERSION_NAME }}
           echo "IMAGE_NAME=$IMAGE_NAME" >> $GITHUB_ENV
-
-          # 🔥 Build using Cloud Build (same as your local command)
+          
           gcloud builds submit app/backend \
             --tag $IMAGE_NAME
 
-
       # -----------------------------
-      # Deploy backend to Cloud Run
+      # Deploy to Cloud Run
       # -----------------------------
       - name: Deploy backend to Cloud Run
         run: |
