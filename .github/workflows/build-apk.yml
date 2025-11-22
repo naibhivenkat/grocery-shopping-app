@@ -301,13 +301,19 @@ jobs:
       # ==========================================================
       - name: Check IAM Roles
         run: |
-          echo "Checking IAM roles for service account..."
+          echo "$GCP_SA_KEY" > sa.json
+          SA_EMAIL=$(jq -r '.client_email' sa.json)
+
+          echo "Using service account: $SA_EMAIL"
+
           gcloud projects get-iam-policy "${{ secrets.GCP_PROJECT_ID }}" \
             --flatten="bindings[].members" \
-            --filter="bindings.members:serviceAccount:${{ fromJson(secrets.GCP_SA_KEY).client_email }}" \
+            --filter="bindings.members:serviceAccount:$SA_EMAIL" \
             --format="table(bindings.role)"
-          
-          echo "If Cloud Build fails next step, add required roles: storage.admin, cloudbuild.builds.editor, serviceusage.serviceUsageConsumer"
+
+          echo "If roles above DO NOT include: storage.admin, cloudbuild.builds.editor, serviceusage.serviceUsageConsumer, then Cloud Build will fail."
+        env:
+          GCP_SA_KEY: ${{ secrets.GCP_SA_KEY }}
 
       # ==========================================================
       # CLOUD BUILD (appears in Cloud Run build history)
