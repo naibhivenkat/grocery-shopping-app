@@ -303,15 +303,16 @@ jobs:
         run: |
           echo "$GCP_SA_KEY" > sa.json
           SA_EMAIL=$(jq -r '.client_email' sa.json)
-
+          
           echo "Using service account: $SA_EMAIL"
-
+          
           gcloud projects get-iam-policy "${{ secrets.GCP_PROJECT_ID }}" \
             --flatten="bindings[].members" \
             --filter="bindings.members:serviceAccount:$SA_EMAIL" \
             --format="table(bindings.role)"
         env:
           GCP_SA_KEY: ${{ secrets.GCP_SA_KEY }}
+
 
 
       # ==========================================================
