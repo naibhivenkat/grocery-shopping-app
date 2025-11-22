@@ -708,14 +708,19 @@ def save_fcm_token_for_user(user_id: str, token: str, role: str) -> bool:
         user_ref = users_ref.document(user_doc_id)
         data = user_ref.get().to_dict() or {}
 
-        tokens = set(data.get("fcm_tokens", []))
-        tokens.add(token)
+        # tokens = set(data.get("fcm_tokens", []))
+        # tokens.add(token)
 
-        user_ref.update({"fcm_tokens": list(tokens)})
+        #user_ref.update({"fcm_tokens": list(tokens)})
+        user_ref.update({"fcm_tokens": [token]})
+        # logger.info(
+        #     f"✅ FCM token saved for user_id={user_id}, doc={user_doc_id}, "
+        #     f"total_tokens={len(tokens)}"
+        # )
+
 
         logger.info(
-            f"✅ FCM token saved for user_id={user_id}, doc={user_doc_id}, "
-            f"total_tokens={len(tokens)}"
+            f"✅ FCM token replaced for user_id={user_id}, doc={user_doc_id}, token={token[:15]}..."
         )
         return True
 
@@ -846,8 +851,13 @@ def send_fcm_notification_to_tokens(tokens, title, body, data_payload=None):
             results["success"] += 1
 
         except Exception as e:
-            logger.error(f"[ERROR] FCM send failed → token={token[:15]}... error={e}")
-            results["failure"] += 1
+            logger.error(f"[ERROR] FCM failed → token={token[:15]}... error={e}")
+
+        if "Requested entity was not found" in str(e):
+            remove_fcm_token_for_user(user_id, token)
+
+    results["failure"] += 1
+
 
     logger.info(f"📲 FCM Summary: {results['success']} success | {results['failure']} failed")
     return results
