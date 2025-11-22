@@ -299,9 +299,10 @@ jobs:
       # ==========================================================
       # IAM VALIDATION (NEW - Prevents _cloudbuild errors)
       # ==========================================================
+
       - name: Check IAM Roles
         run: |
-          echo "$GCP_SA_KEY" | base64 --decode > sa.json
+          echo "$GCP_SA_KEY_JSON" > sa.json
           SA_EMAIL=$(jq -r '.client_email' sa.json)
 
           echo "Using service account: $SA_EMAIL"
@@ -311,7 +312,8 @@ jobs:
             --filter="bindings.members:serviceAccount:$SA_EMAIL" \
             --format="table(bindings.role)"
         env:
-          GCP_SA_KEY: ${{ secrets.GCP_SA_KEY }}
+          GCP_SA_KEY: ${{ secrets.GCP_SA_KEY_JSON }}
+
 
 
 
