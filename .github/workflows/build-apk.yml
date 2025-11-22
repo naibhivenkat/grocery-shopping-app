@@ -252,29 +252,29 @@ jobs:
       # -----------------------------
       # Build Android
       # -----------------------------
-      - name: Build Shopowner APK
-        run: ./gradlew assembleShopownerDebug
-        env:
-          SENDINBLUE_API_KEY: ${{ secrets.SENDINBLUE_API_KEY }}
-          FROM_EMAIL: ${{ secrets.FROM_EMAIL }}
-
-      - name: Build Customer APK
-        run: ./gradlew assembleCustomerDebug
-        env:
-          SENDINBLUE_API_KEY: ${{ secrets.SENDINBLUE_API_KEY }}
-          FROM_EMAIL: ${{ secrets.FROM_EMAIL }}
-
-      # -----------------------------
-      # Release APKs
-      # -----------------------------
-      - name: Upload APKs to Release
-        uses: softprops/action-gh-release@v1
-        with:
-          tag_name: v${{ env.NEW_VERSION_NAME }}
-          name: Release v${{ env.NEW_VERSION_NAME }}
-          files: |
-            app/build/outputs/apk/shopowner/debug/app-shopowner-debug.apk
-            app/build/outputs/apk/customer/debug/app-customer-debug.apk
+#      - name: Build Shopowner APK
+#        run: ./gradlew assembleShopownerDebug
+#        env:
+#          SENDINBLUE_API_KEY: ${{ secrets.SENDINBLUE_API_KEY }}
+#          FROM_EMAIL: ${{ secrets.FROM_EMAIL }}
+#
+#      - name: Build Customer APK
+#        run: ./gradlew assembleCustomerDebug
+#        env:
+#          SENDINBLUE_API_KEY: ${{ secrets.SENDINBLUE_API_KEY }}
+#          FROM_EMAIL: ${{ secrets.FROM_EMAIL }}
+#
+#      # -----------------------------
+#      # Release APKs
+#      # -----------------------------
+#      - name: Upload APKs to Release
+#        uses: softprops/action-gh-release@v1
+#        with:
+#          tag_name: v${{ env.NEW_VERSION_NAME }}
+#          name: Release v${{ env.NEW_VERSION_NAME }}
+#          files: |
+#            app/build/outputs/apk/shopowner/debug/app-shopowner-debug.apk
+#            app/build/outputs/apk/customer/debug/app-customer-debug.apk
 
       # ==========================================================
       # BACKEND DEPLOYMENT TO GOOGLE CLOUD RUN
@@ -301,17 +301,17 @@ jobs:
       # ==========================================================
       - name: Check IAM Roles
         run: |
-          echo "$GCP_SA_KEY_B64" | base64 --decode > sa.json
+          echo "$GCP_SA_KEY" > sa.json
           SA_EMAIL=$(jq -r '.client_email' sa.json)
-          
+
           echo "Using service account: $SA_EMAIL"
-          
+
           gcloud projects get-iam-policy "${{ secrets.GCP_PROJECT_ID }}" \
             --flatten="bindings[].members" \
             --filter="bindings.members:serviceAccount:$SA_EMAIL" \
             --format="table(bindings.role)"
         env:
-          GCP_SA_KEY_B64: ${{ secrets.GCP_SA_KEY_B64 }}
+          GCP_SA_KEY: ${{ secrets.GCP_SA_KEY }}
 
 
       # ==========================================================
