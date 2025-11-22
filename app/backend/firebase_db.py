@@ -826,10 +826,49 @@ def remove_fcm_token_for_user(user_id: str, token: str):
 #
 #     print(f"📲 Notification summary: success={results['success']}, failure={results['failure']}")
 #     return results
-def send_fcm_notification_to_tokens(tokens, title, body, data_payload=None):
+# def send_fcm_notification_to_tokens(tokens, title, body, data_payload=None):
+#     """
+#     Send FCM notifications to a list of tokens.
+#     Uses Firebase Admin SDK v1 (individual send).
+#     """
+#     if not tokens:
+#         logger.warning("⚠️ FCM: No tokens to send notification")
+#         return {"success": 0, "failure": 0}
+#
+#     results = {"success": 0, "failure": 0}
+#
+#     for token in tokens:
+#         try:
+#             message = messaging.Message(
+#                 notification=messaging.Notification(title=title, body=body),
+#                 token=token,
+#                 data=data_payload or {}
+#             )
+#
+#             response = messaging.send(message)
+#
+#             logger.info(f"📩 FCM sent → token={token[:15]}... response={response}")
+#             results["success"] += 1
+#
+#         except Exception as e:
+#             logger.error(f"[ERROR] FCM failed → token={token[:15]}... error={e}")
+#
+#         if "Requested entity was not found" in str(e):
+#             remove_fcm_token_for_user(user_id, token)
+#
+#     results["failure"] += 1
+#
+#
+#     logger.info(f"📲 FCM Summary: {results['success']} success | {results['failure']} failed")
+#     return results
+
+def send_fcm_notification_to_tokens(tokens, title, body, user_id=None, data_payload=None):
     """
-    Send FCM notifications to a list of tokens.
+    Sends FCM notifications to a list of tokens.
     Uses Firebase Admin SDK v1 (individual send).
+
+    Automatically removes invalid tokens if "Requested entity was not found".
+    Returns a summary: {"success": int, "failure": int}
     """
     if not tokens:
         logger.warning("⚠️ FCM: No tokens to send notification")
@@ -846,18 +885,17 @@ def send_fcm_notification_to_tokens(tokens, title, body, data_payload=None):
             )
 
             response = messaging.send(message)
-
             logger.info(f"📩 FCM sent → token={token[:15]}... response={response}")
             results["success"] += 1
 
         except Exception as e:
-            logger.error(f"[ERROR] FCM failed → token={token[:15]}... error={e}")
+            logger.error(f"[ERROR] FCM send failed → token={token[:15]}... error={e}")
+            results["failure"] += 1
 
-        if "Requested entity was not found" in str(e):
-            remove_fcm_token_for_user(user_id, token)
-
-    results["failure"] += 1
-
+            # Remove invalid token automatically
+            if user_id and "Requested entity was not found" in str(e):
+                remove_fcm_token_for_user(user_id, token)
+                logger.info(f"🗑️ Removed invalid FCM token for user_id={user_id}")
 
     logger.info(f"📲 FCM Summary: {results['success']} success | {results['failure']} failed")
     return results
