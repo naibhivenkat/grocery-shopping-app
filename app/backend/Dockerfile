@@ -29,10 +29,7 @@ COPY . /app
 RUN pip install --no-cache-dir -r requirements.txt
 
 
-#Test Build
-#again testing
-# 3rd rd rfdewaa
-#@@# %%$$
+
 
 # Environment variable for WeasyPrint headless mode
 ENV WEASYPRINT_VISIBLE_HEADLESS=True

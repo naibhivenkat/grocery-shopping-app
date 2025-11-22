@@ -889,13 +889,14 @@ def send_fcm_notification_to_tokens(tokens, title, body, user_id=None, data_payl
             results["success"] += 1
 
         except Exception as e:
+            # ✅ Everything related to 'e' must be inside this block
             logger.error(f"[ERROR] FCM send failed → token={token[:15]}... error={e}")
             results["failure"] += 1
 
-            # Remove invalid token automatically
             if user_id and "Requested entity was not found" in str(e):
                 remove_fcm_token_for_user(user_id, token)
                 logger.info(f"🗑️ Removed invalid FCM token for user_id={user_id}")
 
     logger.info(f"📲 FCM Summary: {results['success']} success | {results['failure']} failed")
     return results
+
