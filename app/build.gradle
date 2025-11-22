@@ -119,4 +119,7 @@ dependencies {
 
     implementation 'com.razorpay:checkout:1.6.33'
 
+    implementation "com.google.firebase:firebase-messaging:23.3.1"
+
+
 }

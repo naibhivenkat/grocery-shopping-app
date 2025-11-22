@@ -26,7 +26,7 @@ from reportlab.pdfbase.ttfonts import TTFont
 from reportlab.pdfgen import canvas
 from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle, Image
 from weasyprint import HTML, CSS
-
+from firebase_admin import messaging
 import firebase_db
 
 app = Flask(__name__)
@@ -38,6 +38,9 @@ limiter.init_app(app)
 CORS(app)
 logging.basicConfig(level=logging.INFO)
 SECRET_KEY = os.getenv("SECRET_KEY")  # keep secret and safe!
+
+logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
+logger = logging.getLogger("order_api")
 
 SENDINBLUE_API_KEY = os.getenv("SENDINBLUE_API_KEY")
 FROM_EMAIL = os.getenv("FROM_EMAIL")
@@ -159,39 +162,75 @@ def metrics():
     return generate_latest(), 200, {"Content-Type": CONTENT_TYPE_LATEST}
 
 
+
+
 @app.route("/login", methods=["POST"])
 def login():
     data = request.get_json()
     username = data.get("username")
     password = data.get("password")
 
+    logger.info(f"🔵 LOGIN: Attempt username={username}")
+
+    # ----------------------------------------------------------
+    # Fetch user
+    # ----------------------------------------------------------
     user = firebase_db.get_user_by_username(username)
     if not user:
+        logger.warning(f"⚠️ LOGIN FAILED: User not found: {username}")
         return jsonify({"success": False, "message": "User not found"}), 404
 
     if user.get("password") != password:
+        logger.warning(f"⚠️ LOGIN FAILED: Wrong password for {username}")
         return jsonify({"success": False, "message": "Invalid password"}), 401
 
-    # Default
+    logger.info(f"🔵 LOGIN: User authenticated: {username}")
+
+    # ----------------------------------------------------------
+    # SHOP INFO (for shopowner)
+    # ----------------------------------------------------------
     shop_info = None
 
-    # 🔎 If shopkeeper/shopowner → fetch shop
     if user.get("role") in ["shopkeeper", "shopowner"]:
-        shop_query = firebase_db.db.collection("shops").where(
-            "shopkeeper_id", "==", user.get("shopkeeperId")
-        ).stream()
+        sk_id = user.get("shopkeeperId")
+        logger.info(f"🔵 LOGIN: Fetching shop for shopkeeperId={sk_id}")
+
+        shop_query = (
+            firebase_db.db.collection("shops")
+            .where("shopkeeper_id", "==", sk_id)
+            .stream()
+        )
+
         for doc in shop_query:
             shop_data = doc.to_dict()
             shop_info = {
-                "id": doc.id,  # ✅ Firestore docId (not UUID)
+                "id": doc.id,
                 "name": shop_data.get("name"),
                 "address": shop_data.get("address"),
                 "location": shop_data.get("location"),
                 "contact": shop_data.get("contact"),
                 "shopkeeper_id": shop_data.get("shopkeeper_id"),
             }
+            logger.info(f"🔵 LOGIN: Shop found: {shop_info}")
             break
 
+    # ----------------------------------------------------------
+    # FIX: CUSTOMER & SHOPKEEPER IDS (ensure always present)
+    # ----------------------------------------------------------
+    customer_id = user.get("customerId") or user.get("customer_id")
+    shopkeeper_id = user.get("shopkeeperId") or user.get("shopkeeper_id")
+
+    if user.get("role") == "customer" and not customer_id:
+        logger.warning(f"⚠️ LOGIN FIX: customerId missing → using user.id")
+        customer_id = user.get("id")
+
+    if user.get("role") in ["shopkeeper", "shopowner"] and not shopkeeper_id:
+        logger.warning(f"⚠️ LOGIN FIX: shopkeeperId missing → using user.id")
+        shopkeeper_id = user.get("id")
+
+    # ----------------------------------------------------------
+    # Build response user object
+    # ----------------------------------------------------------
     response_user = {
         "id": user.get("id"),
         "username": user.get("username"),
@@ -199,8 +238,8 @@ def login():
         "email": user.get("email", ""),
         "phone": user.get("phone", ""),
         "role": user.get("role", ""),
-        "customerId": user.get("customerId") or user.get("customer_id"),
-        "shopkeeperId": user.get("shopkeeperId") or user.get("shopkeeper_id"),
+        "customerId": customer_id,
+        "shopkeeperId": shopkeeper_id,
         "address": user.get("address", ""),
         "location": user.get("location", ""),
         "photoUrl": user.get("photoUrl") or user.get("photo_url", ""),
@@ -209,9 +248,17 @@ def login():
         "shopExists": shop_info is not None
     }
 
-    # ✅ Generate JWT token
-    # token = generate_token(user)
+    logger.info(f"🔵 LOGIN: Final response_user = {response_user}")
+
+    # ----------------------------------------------------------
+    # Generate JWT Token
+    # ----------------------------------------------------------
     token = generate_token(response_user)
+
+    logger.info(
+        f"✅ LOGIN SUCCESS: username={username}, role={user.get('role')}, "
+        f"userId={response_user.get('customerId') or response_user.get('shopkeeperId')}"
+    )
 
     return jsonify({
         "success": True,
@@ -554,21 +601,33 @@ def delete_item(item_id):
     return jsonify({'success': True, 'message': 'Item deleted'})
 
 
+
+
+
 @app.route("/api/orders", methods=["POST"])
 def create_order():
-    data = request.json
+    logger.info("🟦 DEBUG: /api/orders endpoint hit")
 
-    # 1️⃣ Compute total from items
+    data = request.json
+    logger.info(f"🟦 DEBUG: Incoming order data = {data}")
+
+    # 1️⃣ Compute total
     items = data.get("items", [])
     total = 0
     detailed_items = []
     ist = timezone(timedelta(hours=5, minutes=30))
+
+    logger.info("🟦 DEBUG: Starting item price calculation")
+
     for entry in items:
+        logger.info(f"🟦 DEBUG: Processing item entry = {entry}")
         item_id = entry.get("item_id")
         quantity = float(entry.get("quantity", 1))
         item_doc = firebase_db.db.collection("items").document(item_id).get()
+
         if item_doc.exists:
             item = item_doc.to_dict()
+            logger.info(f"🟦 DEBUG: Found item in DB: {item}")
             item_price = float(item.get("price", 0))
             total += item_price * quantity
             detailed_items.append({
@@ -577,14 +636,25 @@ def create_order():
                 "price": item_price,
                 "quantity": quantity
             })
+        else:
+            logger.warning(f"⚠️ WARNING: Item not found in Firestore: {item_id}")
 
-    # 2️⃣ Get current user
+    logger.info(f"🟦 DEBUG: Total computed = {total}")
+    logger.info(f"🟦 DEBUG: Detailed items = {detailed_items}")
+
+    # 2️⃣ Current user
     user = getattr(g, "current_user", None)
+    logger.info(f"🟦 DEBUG: Current user = {user}")
+
     if not user:
+        logger.error("❌ ERROR: No current user")
         return jsonify({"success": False, "message": "User not logged in"}), 401
 
-    # 🔹 (NEW) Fetch full user details from Firestore to include email/name
+    # Fetch full user details
+    logger.info("🟦 DEBUG: Fetching full user details")
     user_details = firebase_db.get_user_by_username(user.get("username"))
+    logger.info(f"🟦 DEBUG: User details = {user_details}")
+
     if user_details:
         user.update({
             "fullName": user_details.get("fullName"),
@@ -592,58 +662,50 @@ def create_order():
             "phone": user_details.get("phone"),
         })
 
-    # 3️⃣ Resolve shop doc ID and fetch shop name
-    print(f"DATA {data}")
+    # 3️⃣ Convert incoming shopId → Firestore shop doc ID
     input_shop_id = data["shopId"]
-    invoice_url = data.get("invoice_url")
-    if not invoice_url:
-        data["invoice_url"] = ""
-        invoice_url = ""
+    logger.info(f"🟦 DEBUG: Incoming shopId = {input_shop_id}")
+
+    invoice_url = data.get("invoice_url", "")
+    data["invoice_url"] = invoice_url
+
+    logger.info("🟦 DEBUG: Looking up shop using where(id == input_shop_id)")
 
     shop_query = firebase_db.db.collection("shops").where("id", "==", input_shop_id).stream()
+
     shop_doc_id = None
     shop_name = ""
+
     for doc in shop_query:
         shop_doc_id = doc.id
         shop_data = doc.to_dict()
         shop_name = shop_data.get("name", "")
+        logger.info(f"🟦 DEBUG: Matched shop docId={shop_doc_id}, name={shop_name}")
         break
+
     if not shop_doc_id:
+        logger.error("❌ ERROR: Invalid shopId passed")
         return jsonify({"success": False, "message": "Invalid shopId"}), 400
 
-    # 4️⃣ Decide based on payment method
+    # 4️⃣ Payment logic
     payment_method = data.get("payment_method", "Razorpay")
+    logger.info(f"🟦 DEBUG: Payment method = {payment_method}")
     razorpay_order_id = None
 
     if payment_method == "Razorpay":
-        # Create Razorpay order
+        logger.info("🟦 DEBUG: Creating Razorpay order")
         razorpay_order = razorpay_client.order.create({
-            "amount": int(total * 100),  # in paise
+            "amount": int(total * 100),
             "currency": "INR",
             "receipt": f"order_{datetime.now(ist).replace(microsecond=0).isoformat()}",
             "payment_capture": 1
         })
         razorpay_order_id = razorpay_order["id"]
+        logger.info(f"🟦 DEBUG: Razorpay order created = {razorpay_order_id}")
 
-    # 5️⃣ Store order in Firestore including shopName
-    # order_dict = {
-    #     "shopId": shop_doc_id,
-    #     "shopName": shop_name,
-    #     "customer": {
-    #         "id": user.get("id"),
-    #         "username": user.get("username"),
-    #         "fullName": user.get("fullName") or "",
-    #         "email": user.get("email") or "",
-    #         "phone": user.get("phone") or "",
-    #     },
-    #     "items": detailed_items,
-    #     "total": total,
-    #     "payment_method": payment_method,
-    #     "transaction_id": "" if payment_method == "Razorpay" else "Cash",
-    #     "razorpay_order_id": razorpay_order_id if razorpay_order_id else "",
-    #     "status": "Pending" if payment_method == "Razorpay" else "Confirmed",
-    #     "created_at": datetime.now(ist).replace(microsecond=0).isoformat(),
-    # }
+    # 5️⃣ Store order in Firestore
+    logger.info("🟦 DEBUG: Preparing order_dict")
+
     order_dict = {
         "shopId": shop_doc_id,
         "shopName": shop_name,
@@ -660,15 +722,72 @@ def create_order():
         "transaction_id": "" if payment_method == "Razorpay" else "Cash",
         "razorpay_order_id": razorpay_order_id if razorpay_order_id else "",
         "status": "Pending" if payment_method == "Razorpay" else "Confirmed",
-        "invoice_url": invoice_url,  # ✅ add this
+        "invoice_url": invoice_url,
         "created_at": datetime.now(ist).replace(microsecond=0).isoformat(),
     }
 
-    new_order = firebase_db.append_order(order_dict)
-    print(
-        f"[DEBUG] Created order for {user.get('username')} with email: {order_dict['customer'].get('email')}")
+    logger.info(f"🟦 DEBUG: order_dict = {order_dict}")
 
-    # 6️⃣ Return response based on method
+    logger.info("🟦 DEBUG: Calling append_order()")
+    new_order = firebase_db.append_order(order_dict)
+    logger.info(f"🟦 DEBUG: append_order() returned: {new_order}")
+
+    logger.info(f"🟦 DEBUG: Order created for user = {user.get('username')}")
+
+    # ⭐⭐⭐ NEW ORDER NOTIFICATION ⭐⭐⭐
+    logger.info("🟦 DEBUG: Entering NEW ORDER notification section")
+
+    try:
+        logger.info(f"🟦 DEBUG: Fetching shop document for docId = {shop_doc_id}")
+        shop_doc = firebase_db.db.collection("shops").document(shop_doc_id).get()
+
+        if shop_doc.exists:
+            shop_data = shop_doc.to_dict()
+
+            # ⭐ FIX — support both fields
+            shopkeeper_id = (
+                    shop_data.get("shopkeeper_id")
+                    or shop_data.get("shopkeeperId")
+            )
+
+            logger.info(f"🟦 DEBUG: shopkeeper_id (resolved) = {shopkeeper_id}")
+
+            if shopkeeper_id:
+                logger.info("🟦 DEBUG: Fetching FCM tokens for shopkeeper")
+                tokens = firebase_db.get_fcm_tokens_for_user(shopkeeper_id)
+                logger.info(f"🟦 DEBUG: Found tokens = {tokens}")
+
+                if tokens:
+                    logger.info("🟦 DEBUG: Sending FCM new order notification")
+
+                    title = "New Order Received"
+                    body = f"You have a new order from {user.get('fullName') or user.get('username')}"
+
+                    data_payload = {
+                        "order_id": new_order.get("order_uuid"),
+                        "type": "new_order"
+                    }
+
+                    firebase_db.send_fcm_notification_to_tokens(
+                        tokens, title, body, data_payload
+                    )
+
+                    logger.info("📢 DEBUG: NEW ORDER notification sent successfully")
+                else:
+                    logger.warning(
+                        f"⚠️ WARNING: No FCM tokens found for shopkeeper {shopkeeper_id}"
+                    )
+            else:
+                logger.warning("⚠️ WARNING: shopkeeper_id missing in shop document")
+        else:
+            logger.error("❌ ERROR: Shop document not found in Firestore")
+
+    except Exception as e:
+        logger.error(f"❌ [ERROR] Exception during new-order notification: {e}")
+
+    # 6️⃣ Response
+    logger.info("🟦 DEBUG: Sending response back to client")
+
     if payment_method == "Razorpay":
         return jsonify({
             "success": True,
@@ -677,14 +796,14 @@ def create_order():
             "amount": total,
             "shopName": shop_name
         })
-    else:
-        return jsonify({
-            "success": True,
-            "order_id": new_order["order_uuid"],
-            "amount": total,
-            "message": "Cash order placed successfully",
-            "shopName": shop_name
-        })
+
+    return jsonify({
+        "success": True,
+        "order_id": new_order["order_uuid"],
+        "amount": total,
+        "message": "Cash order placed successfully",
+        "shopName": shop_name
+    })
 
 
 @app.route("/api/verify_payment", methods=["POST"])
@@ -725,6 +844,7 @@ def verify_payment():
     return jsonify({"success": True, "message": f"{message} successfully"})
 
 
+
 @app.route("/api/update_order_status", methods=["POST"])
 def update_order_status():
     data = request.json or {}
@@ -738,21 +858,46 @@ def update_order_status():
     if not order_doc:
         return jsonify({"success": False, "message": "Order not found"}), 404
 
+    # ✅ Update Firestore
     firebase_db.update_order_status(order_uuid, new_status)
     print(f"✅ Order {order_uuid} status updated to {new_status}")
 
-    # 🧾 Send invoice only once after delivery
-    # 🧾 Send invoice only once after delivery (case-insensitive)
+    # 🧾 Send invoice if delivered
     if new_status.strip().lower() == "delivered":
         try:
             print(f"📦 Generating final delivery invoice for order {order_uuid}...")
             success = process_and_send_invoice(order_doc, logo_url=logo_url)
             if success:
                 print("✅ Invoice generated, emailed, and uploaded to Firestore.")
-            else:
-                print("⚠️ Invoice generation function returned False.")
         except Exception as e:
             print(f"[ERROR] Failed to send delivery invoice: {e}")
+
+    # ✅ Send push notification to customer
+    try:
+        customer = order_doc.get("customer", {})
+        customer_id = customer.get("id") or order_doc.get("customer_id")
+
+        if not customer_id:
+            print("⚠️ Could not determine customer_id for notification")
+            return jsonify({"success": True, "message": "Order updated, no customer ID found"})
+
+        tokens = firebase_db.get_fcm_tokens_for_user(customer_id)
+        if tokens:
+            title = "Order Status Updated"
+            body = f"Your order #{order_uuid[:8]} is now {new_status}."
+            data_payload = {
+                "order_id": order_uuid,
+                "status": new_status,
+                "click_action": "FLUTTER_NOTIFICATION_CLICK"
+            }
+
+            response = firebase_db.send_fcm_notification_to_tokens(tokens, title, body, data_payload)
+            print(f"📲 Notification sent: success={response['success']}, failure={response['failure']}")
+        else:
+            print(f"⚠️ No FCM tokens found for user {customer_id}")
+
+    except Exception as e:
+        print(f"[ERROR] Failed to send push notification: {e}")
 
     return jsonify({"success": True, "message": f"Order updated to {new_status}"})
 
@@ -2004,6 +2149,23 @@ def get_invoice_html(order_id):
 
     except Exception as e:
         return jsonify({"error": str(e)}), 500
+
+@app.route("/api/register_fcm_token", methods=["POST"])
+def register_fcm_token():
+    data = request.json
+    user_id = data.get("user_id")
+    role = data.get("role")
+    token = data.get("token")
+
+    if not user_id or not token:
+        return jsonify({"success": False, "message": "Missing user_id or token"}), 400
+
+    ok = firebase_db.save_fcm_token_for_user(user_id, token, role)
+    if ok:
+        return jsonify({"success": True, "message": "Token updated"}), 200
+    else:
+        return jsonify({"success": False, "message": "User not found"}), 404
+
 
 
 if __name__ == "__main__":

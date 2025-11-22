@@ -28,6 +28,9 @@ object SessionManager {
     private const val PREFS_NAME = "grocery_app_prefs"
     private const val KEY_CACHED_SHOPS = "cached_shops"
     private const val KEY_CACHED_ITEMS = "cached_items_by_shop"
+
+    private const val KEY_FCM_TOKEN = "fcm_token"
+
     private var shopOrdersListener: ((List<Order>) -> Unit)? = null
 
 
@@ -211,5 +214,14 @@ object SessionManager {
         val json = gson.toJson(orders)
         prefs.edit().putString("cached_shop_orders", json).apply()
         shopOrdersListener?.invoke(orders) // notify listener
+    }
+
+    fun saveFcmToken(context: Context, token: String) {
+        prefs(context).edit { putString(KEY_FCM_TOKEN, token) }
+        Log.d("SessionManager", "✅ FCM token saved: $token")
+    }
+
+    fun getFcmToken(context: Context): String? {
+        return prefs(context).getString(KEY_FCM_TOKEN, null)
     }
 }

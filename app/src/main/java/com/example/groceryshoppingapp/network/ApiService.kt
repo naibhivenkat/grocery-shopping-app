@@ -166,6 +166,9 @@ interface ApiService {
         @Body payload: UpdateOrderItemsRequest
     ): Call<Map<String, Any>>
 
+    @POST("/api/register_fcm_token")
+    fun registerFcmToken(@Body tokenData: Map<String, String>): Call<Map<String, Any>>
+
 
 
     data class CreateShopRequest(

@@ -51,6 +51,15 @@
             </intent-filter>
         </activity>
 
+        <!-- Firebase Messaging Service -->
+        <service
+            android:name="com.example.groceryshoppingapp.MyFirebaseMessagingService"
+            android:exported="false">
+            <intent-filter>
+                <action android:name="com.google.firebase.MESSAGING_EVENT" />
+            </intent-filter>
+        </service>
+
         <!-- Other Activities -->
         <activity android:name="com.example.groceryshoppingapp.AddItemsActivity"/>
         <activity android:name="com.example.groceryshoppingapp.CartActivity" />
