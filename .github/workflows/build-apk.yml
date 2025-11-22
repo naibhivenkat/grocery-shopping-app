@@ -302,22 +302,17 @@ jobs:
       - name: Check IAM Roles
         run: |
           echo "$GCP_SA_KEY_B64" | base64 --decode > sa.json
-
-          echo "Service account JSON decoded:"
-          cat sa.json | head
-
           SA_EMAIL=$(jq -r '.client_email' sa.json)
-
+          
           echo "Using service account: $SA_EMAIL"
-
+          
           gcloud projects get-iam-policy "${{ secrets.GCP_PROJECT_ID }}" \
             --flatten="bindings[].members" \
             --filter="bindings.members:serviceAccount:$SA_EMAIL" \
             --format="table(bindings.role)"
-
-          echo "If roles above DO NOT include: storage.admin, cloudbuild.builds.editor, serviceusage.serviceUsageConsumer, then Cloud Build will fail."
         env:
           GCP_SA_KEY_B64: ${{ secrets.GCP_SA_KEY_B64 }}
+
 
       # ==========================================================
       # CLOUD BUILD (appears in Cloud Run build history)
