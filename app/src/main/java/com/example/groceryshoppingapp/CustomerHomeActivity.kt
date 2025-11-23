@@ -61,6 +61,10 @@ class CustomerHomeActivity : AppCompatActivity() {
                 R.id.nav_settings -> {
                     startActivity(Intent(this, SettingsActivity::class.java))
                 }
+
+                R.id.nav_wallet -> {    // 🔹 NEW: Wallet button
+                    startActivity(Intent(this, WalletActivity::class.java))
+                }
                 R.id.nav_logout -> {
                     SessionManager.logout(this)
                     val intent = Intent(this, LoginActivity::class.java)

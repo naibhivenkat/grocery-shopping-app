@@ -93,6 +93,7 @@
         <activity android:name="com.example.groceryshoppingapp.ThankYouActivity" />
         <activity android:name="com.example.groceryshoppingapp.UpdateItemActivity"/>
         <activity android:name="com.example.groceryshoppingapp.InvoiceViewActivity"/>
+        <activity android:name="com.example.groceryshoppingapp.WalletActivity"/>
 
 
     </application>

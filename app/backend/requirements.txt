@@ -25,3 +25,6 @@ prometheus-client==0.21.0
 # --- PDF Generation ---
 weasyprint==62.3
 reportlab==4.2.2
+
+python-dotenv==1.0.0
+

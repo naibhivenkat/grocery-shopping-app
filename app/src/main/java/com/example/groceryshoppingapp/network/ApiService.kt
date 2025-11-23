@@ -15,8 +15,10 @@ import okhttp3.ResponseBody
 import retrofit2.http.DELETE
 import retrofit2.http.PUT
 import retrofit2.http.Header
-
-
+import com.example.groceryshoppingapp.models.WalletTransaction
+import com.example.groceryshoppingapp.models.WalletActionResponse
+import com.example.groceryshoppingapp.models.WalletActionRequest
+import com.example.groceryshoppingapp.models.WalletBalanceResponse
 interface ApiService {
     @PATCH("api/orders/{order_id}")
     fun updateOrder(
@@ -97,6 +99,7 @@ interface ApiService {
     fun getItems(
         @Path("shop_id") shopId: String
     ): Call<GetItemsResponse>
+
     @POST("/shop/add_items")
     fun addItems(@Body request: AddItemsRequest): Call<ApiResponse>
 
@@ -170,6 +173,22 @@ interface ApiService {
     fun registerFcmToken(@Body tokenData: Map<String, String>): Call<Map<String, Any>>
 
 
+    // 🔹 Add these wallet endpoints to your existing ApiService interface
+    @GET("/wallet/{user_id}")
+    fun getWalletBalance(@Path("user_id") userId: String): Call<WalletBalanceResponse>
+
+    @POST("/wallet/add")
+    fun addMoney(@Body request: WalletActionRequest): Call<WalletActionResponse>
+
+    @POST("/wallet/pay")
+    fun payOrder(@Body request: WalletActionRequest): Call<WalletActionResponse>
+
+    @POST("/wallet/refund")
+    fun refundOrder(@Body request: WalletActionRequest): Call<WalletActionResponse>
+
+    @GET("/wallet/transactions/{user_id}")
+    fun getWalletTransactions(@Path("user_id") userId: String): Call<List<WalletTransaction>>
+
 
     data class CreateShopRequest(
         val name: String,
@@ -183,7 +202,6 @@ interface ApiService {
         val message: String?,
         val shop: Shop?
     )
-
 }
 
 // ✅ Request data classes
