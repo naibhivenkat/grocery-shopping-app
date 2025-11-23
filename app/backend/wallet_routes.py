@@ -1,5 +1,5 @@
 from flask import Blueprint, request, jsonify
-from firebase_config import db
+from firebase_db import db
 from datetime import datetime
 import uuid
 from google.cloud import firestore
