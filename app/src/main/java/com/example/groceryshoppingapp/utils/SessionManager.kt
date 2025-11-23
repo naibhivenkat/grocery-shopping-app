@@ -224,4 +224,14 @@ object SessionManager {
     fun getFcmToken(context: Context): String? {
         return prefs(context).getString(KEY_FCM_TOKEN, null)
     }
+
+    fun setFirebaseId(context: Context, id: String) {
+        prefs(context).edit {
+            putString("firebase_id", id)
+        }
+    }
+    fun getFirebaseId(context: Context): String {
+        return prefs(context).getString("firebase_id", "") ?: ""
+    }
+
 }

@@ -190,6 +190,15 @@ interface ApiService {
     fun getWalletTransactions(@Path("user_id") userId: String): Call<List<WalletTransaction>>
 
 
+    @POST("/create_wallet_order")
+    fun createWalletOrder(
+        @Body request: WalletOrderRequest
+    ): Call<WalletOrderResponse>
+    @POST("/verify_wallet_payment")
+
+    fun verifyWalletPayment(@Body data: Map<String, Any>): Call<Map<String, Any>>
+
+
     data class CreateShopRequest(
         val name: String,
         val address: String,
@@ -214,4 +223,14 @@ data class OrderItemPayload(
     val quantity: Double,
     val price: Double,
     val comment: String
+)
+
+data class WalletOrderRequest(
+    val user_id: String,
+    val amount: Double
+)
+
+data class WalletOrderResponse(
+    val backend_order_id: String,
+    val razorpay_order_id: String
 )

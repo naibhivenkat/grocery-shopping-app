@@ -1164,6 +1164,9 @@ class LoginActivity : AppCompatActivity() {
                                 // Save user IDs depending on role
                                 user?.customerId?.let { SessionManager.setCustomerId(this@LoginActivity, it) }
                                 user?.shopkeeperId?.let { SessionManager.setShopkeeperId(this@LoginActivity, it) }
+                                // ⭐ NEW — save Firestore real user ID (for wallet)
+                                user?.firebaseId?.let { SessionManager.setFirebaseId(this@LoginActivity, it) }
+
 
                                 // Save shop info for shopowner
                                 user?.shop?.id?.let { shopDocId ->

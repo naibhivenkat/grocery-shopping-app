@@ -9,6 +9,7 @@ data class LoginResponse(
 )
 
 data class UserData(
+    @SerializedName("id") val firebaseId: String? = null,
     val username: String = "",
     val role: String = "",
 
