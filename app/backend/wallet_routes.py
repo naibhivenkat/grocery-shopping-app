@@ -133,7 +133,8 @@ def create_wallet_order():
     order = razorpay_client.order.create({
         "amount": razorpay_amount,
         "currency": "INR",
-        "receipt": f"wallet_{user_id}_{uuid.uuid4()}"
+        # FIXED RECEIPT (must be ≤ 40 characters)
+        "receipt": f"w_{user_id[:8]}_{str(uuid.uuid4())[:10]}"
     })
 
     backend_order_id = str(uuid.uuid4())
@@ -151,6 +152,7 @@ def create_wallet_order():
         "backend_order_id": backend_order_id,
         "razorpay_order_id": order["id"]
     })
+
 
 
 @wallet_bp.route("/verify_wallet_payment", methods=["POST"])
