@@ -12,6 +12,7 @@ import uuid
 from datetime import datetime
 from datetime import datetime, timedelta, timezone
 from firebase_admin import credentials, auth, db
+from firebase_admin import messaging
 from flask import Flask, request, jsonify, g, Response
 from flask_cors import CORS
 from flask_limiter import Limiter
@@ -26,10 +27,9 @@ from reportlab.pdfbase.ttfonts import TTFont
 from reportlab.pdfgen import canvas
 from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle, Image
 from weasyprint import HTML, CSS
-from firebase_admin import messaging
+
 import firebase_db
 from wallet_routes import wallet_bp
-
 
 app = Flask(__name__)
 app.register_blueprint(wallet_bp)
@@ -39,9 +39,9 @@ limiter = Limiter(key_func=get_remote_address)
 limiter.init_app(app)
 
 CORS(app)
-logging.basicConfig(level=logging.INFO)
 SECRET_KEY = os.getenv("SECRET_KEY")  # keep secret and safe!
 
+# logging.basicConfig(level=logging.INFO)
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
 logger = logging.getLogger("order_api")
 
@@ -163,8 +163,6 @@ def favicon():
 @app.route("/metrics")
 def metrics():
     return generate_latest(), 200, {"Content-Type": CONTENT_TYPE_LATEST}
-
-
 
 
 @app.route("/login", methods=["POST"])
@@ -422,7 +420,7 @@ def register_after_otp():
 def change_password():
     try:
         data = request.get_json(force=True)
-        print(f"Request JSON: {data}")  # debug
+        logger.info(f"Request JSON: {data}")  # debug
         username = data.get('username', '').strip()
         old_password = data.get('old_password', '').strip()
         new_password = data.get('new_password', '').strip()
@@ -475,7 +473,7 @@ def get_shop_by_id(shop_id):
             return jsonify({"error": "Shop not found"}), 404
         return jsonify(shop.to_dict()), 200
     except Exception as e:
-        print(f"[ERROR] Failed to fetch shop {shop_id}: {e}")
+        logger.info(f"[ERROR] Failed to fetch shop {shop_id}: {e}")
         return jsonify({"error": str(e)}), 500
 
 
@@ -604,9 +602,6 @@ def delete_item(item_id):
     return jsonify({'success': True, 'message': 'Item deleted'})
 
 
-
-
-
 # @app.route("/api/orders", methods=["POST"])
 # def create_order():
 #     logger.info("🟦 DEBUG: /api/orders endpoint hit")
@@ -620,17 +615,13 @@ def delete_item(item_id):
 #     detailed_items = []
 #     ist = timezone(timedelta(hours=5, minutes=30))
 #
-#     logger.info("🟦 DEBUG: Starting item price calculation")
-#
 #     for entry in items:
-#         logger.info(f"🟦 DEBUG: Processing item entry = {entry}")
 #         item_id = entry.get("item_id")
 #         quantity = float(entry.get("quantity", 1))
 #         item_doc = firebase_db.db.collection("items").document(item_id).get()
 #
 #         if item_doc.exists:
 #             item = item_doc.to_dict()
-#             logger.info(f"🟦 DEBUG: Found item in DB: {item}")
 #             item_price = float(item.get("price", 0))
 #             total += item_price * quantity
 #             detailed_items.append({
@@ -639,64 +630,64 @@ def delete_item(item_id):
 #                 "price": item_price,
 #                 "quantity": quantity
 #             })
-#         else:
-#             logger.warning(f"⚠️ WARNING: Item not found in Firestore: {item_id}")
 #
-#     logger.info(f"🟦 DEBUG: Total computed = {total}")
-#     logger.info(f"🟦 DEBUG: Detailed items = {detailed_items}")
-#
-#     # 2️⃣ Current user
+#     # 2️⃣ Current logged-in user
 #     user = getattr(g, "current_user", None)
-#     logger.info(f"🟦 DEBUG: Current user = {user}")
-#
 #     if not user:
-#         logger.error("❌ ERROR: No current user")
 #         return jsonify({"success": False, "message": "User not logged in"}), 401
 #
-#     # Fetch full user details
-#     logger.info("🟦 DEBUG: Fetching full user details")
-#     user_details = firebase_db.get_user_by_username(user.get("username"))
-#     logger.info(f"🟦 DEBUG: User details = {user_details}")
+#     user_ref = firebase_db.db.collection("users").document(user["id"])
+#     user_doc = user_ref.get()
 #
-#     if user_details:
-#         user.update({
-#             "fullName": user_details.get("fullName"),
-#             "email": user_details.get("email"),
-#             "phone": user_details.get("phone"),
-#         })
+#     # Fallback for users where Firestore ID != customerId
+#     if not user_doc.exists:
+#         fallback = firebase_db.db.collection("users").where("customerId", "==", user["id"]).get()
 #
-#     # 3️⃣ Convert incoming shopId → Firestore shop doc ID
+#         if len(fallback) == 0:
+#             return jsonify({"success": False, "message": "User not found"}), 404
+#
+#         user_doc = fallback[0]
+#         user_ref = user_doc.reference
+#         user_doc = user_doc.to_dict()
+#
+#     else:
+#         user_doc = user_doc.to_dict()
+#
+#     # 3️⃣ Resolve shop docId from shopId
 #     input_shop_id = data["shopId"]
-#     logger.info(f"🟦 DEBUG: Incoming shopId = {input_shop_id}")
-#
 #     invoice_url = data.get("invoice_url", "")
-#     data["invoice_url"] = invoice_url
-#
-#     logger.info("🟦 DEBUG: Looking up shop using where(id == input_shop_id)")
 #
 #     shop_query = firebase_db.db.collection("shops").where("id", "==", input_shop_id).stream()
-#
 #     shop_doc_id = None
 #     shop_name = ""
 #
 #     for doc in shop_query:
 #         shop_doc_id = doc.id
-#         shop_data = doc.to_dict()
-#         shop_name = shop_data.get("name", "")
-#         logger.info(f"🟦 DEBUG: Matched shop docId={shop_doc_id}, name={shop_name}")
+#         shop_name = doc.to_dict().get("name", "")
 #         break
 #
 #     if not shop_doc_id:
-#         logger.error("❌ ERROR: Invalid shopId passed")
 #         return jsonify({"success": False, "message": "Invalid shopId"}), 400
 #
 #     # 4️⃣ Payment logic
 #     payment_method = data.get("payment_method", "Razorpay")
-#     logger.info(f"🟦 DEBUG: Payment method = {payment_method}")
 #     razorpay_order_id = None
 #
-#     if payment_method == "Razorpay":
-#         logger.info("🟦 DEBUG: Creating Razorpay order")
+#     # ⭐ WALLET PAYMENT FLOW (corrected)
+#     if payment_method.lower() == "wallet":
+#
+#         wallet_balance = float(user_doc.get("wallet_balance", 0.0))
+#
+#         if wallet_balance < total:
+#             return jsonify({"success": False, "message": "Insufficient wallet balance"}), 400
+#
+#         new_balance = wallet_balance - total
+#         user_ref.update({"wallet_balance": new_balance})
+#
+#         logger.info(f"🟦 Wallet deduction: {wallet_balance} → {new_balance}")
+#
+#     # ⭐ RAZORPAY FLOW (unchanged)
+#     elif payment_method == "Razorpay":
 #         razorpay_order = razorpay_client.order.create({
 #             "amount": int(total * 100),
 #             "currency": "INR",
@@ -704,93 +695,64 @@ def delete_item(item_id):
 #             "payment_capture": 1
 #         })
 #         razorpay_order_id = razorpay_order["id"]
-#         logger.info(f"🟦 DEBUG: Razorpay order created = {razorpay_order_id}")
 #
-#     # 5️⃣ Store order in Firestore
-#     logger.info("🟦 DEBUG: Preparing order_dict")
-#
+#     # 5️⃣ Save the order
 #     order_dict = {
 #         "shopId": shop_doc_id,
 #         "shopName": shop_name,
+#         "customer_id": user["id"],
 #         "customer": {
-#             "id": user.get("id"),
-#             "username": user.get("username"),
-#             "fullName": user.get("fullName") or "",
-#             "email": user.get("email") or "",
-#             "phone": user.get("phone") or "",
+#             "id": user["id"],
+#             "username": user["username"],
+#             "fullName": user_doc.get("fullName", ""),
+#             "email": user_doc.get("email", ""),
+#             "phone": user_doc.get("phone", "")
 #         },
 #         "items": detailed_items,
 #         "total": total,
 #         "payment_method": payment_method,
-#         "transaction_id": "" if payment_method == "Razorpay" else "Cash",
-#         "razorpay_order_id": razorpay_order_id if razorpay_order_id else "",
+#         "transaction_id": (
+#             "" if payment_method == "Razorpay"
+#             else "Wallet" if payment_method.lower() == "wallet"
+#             else "Cash"
+#         ),
+#         "razorpay_order_id": razorpay_order_id or "",
 #         "status": "Pending" if payment_method == "Razorpay" else "Confirmed",
 #         "invoice_url": invoice_url,
 #         "created_at": datetime.now(ist).replace(microsecond=0).isoformat(),
 #     }
 #
-#     logger.info(f"🟦 DEBUG: order_dict = {order_dict}")
-#
-#     logger.info("🟦 DEBUG: Calling append_order()")
 #     new_order = firebase_db.append_order(order_dict)
-#     logger.info(f"🟦 DEBUG: append_order() returned: {new_order}")
 #
-#     logger.info(f"🟦 DEBUG: Order created for user = {user.get('username')}")
+#     # 6️⃣ If wallet payment, create transaction now
+#     if payment_method.lower() == "wallet":
+#         tx_id = str(uuid.uuid4())
+#         firebase_db.db.collection("transactions").document(tx_id).set({
+#             "userId": user["id"],
+#             "type": "Payment",
+#             "amount": total,
+#             "dateTime": datetime.utcnow(),
+#             "orderId": new_order["order_uuid"]
+#         })
 #
-#     # ⭐⭐⭐ NEW ORDER NOTIFICATION ⭐⭐⭐
-#     logger.info("🟦 DEBUG: Entering NEW ORDER notification section")
-#
+#     # 🔔 Send notification to shopkeeper
 #     try:
-#         logger.info(f"🟦 DEBUG: Fetching shop document for docId = {shop_doc_id}")
 #         shop_doc = firebase_db.db.collection("shops").document(shop_doc_id).get()
-#
 #         if shop_doc.exists:
-#             shop_data = shop_doc.to_dict()
-#
-#             # ⭐ FIX — support both fields
-#             shopkeeper_id = (
-#                     shop_data.get("shopkeeper_id")
-#                     or shop_data.get("shopkeeperId")
-#             )
-#
-#             logger.info(f"🟦 DEBUG: shopkeeper_id (resolved) = {shopkeeper_id}")
-#
+#             shopkeeper_id = shop_doc.to_dict().get("shopkeeper_id")
 #             if shopkeeper_id:
-#                 logger.info("🟦 DEBUG: Fetching FCM tokens for shopkeeper")
 #                 tokens = firebase_db.get_fcm_tokens_for_user(shopkeeper_id)
-#                 logger.info(f"🟦 DEBUG: Found tokens = {tokens}")
-#
 #                 if tokens:
-#                     logger.info("🟦 DEBUG: Sending FCM new order notification")
-#
-#                     title = "New Order Received"
-#                     body = f"You have a new order from {user.get('fullName') or user.get('username')}"
-#
-#                     data_payload = {
-#                         "order_id": new_order.get("order_uuid"),
-#                         "type": "new_order"
-#                     }
-#
 #                     firebase_db.send_fcm_notification_to_tokens(
-#                         tokens, title, body, data_payload
+#                         tokens,
+#                         "New Order Received",
+#                         f"New order from {user_doc.get('fullName') or user['username']}",
+#                         {"order_id": new_order["order_uuid"], "type": "new_order"}
 #                     )
-#
-#                     logger.info("📢 DEBUG: NEW ORDER notification sent successfully")
-#                 else:
-#                     logger.warning(
-#                         f"⚠️ WARNING: No FCM tokens found for shopkeeper {shopkeeper_id}"
-#                     )
-#             else:
-#                 logger.warning("⚠️ WARNING: shopkeeper_id missing in shop document")
-#         else:
-#             logger.error("❌ ERROR: Shop document not found in Firestore")
-#
 #     except Exception as e:
-#         logger.error(f"❌ [ERROR] Exception during new-order notification: {e}")
+#         logger.error(f"❌ Notification error: {e}")
 #
-#     # 6️⃣ Response
-#     logger.info("🟦 DEBUG: Sending response back to client")
-#
+#     # 7️⃣ Final response
 #     if payment_method == "Razorpay":
 #         return jsonify({
 #             "success": True,
@@ -804,11 +766,48 @@ def delete_item(item_id):
 #         "success": True,
 #         "order_id": new_order["order_uuid"],
 #         "amount": total,
-#         "message": "Cash order placed successfully",
+#         "message": f"{payment_method} order placed successfully",
 #         "shopName": shop_name
 #     })
-
-
+#
+#
+# @app.route("/api/verify_payment", methods=["POST"])
+# def verify_payment():
+#     data = request.json or {}
+#     order_uuid = data.get("order_id")
+#     razorpay_payment_id = data.get("razorpay_payment_id")
+#     razorpay_order_id = data.get("razorpay_order_id")
+#     razorpay_signature = data.get("razorpay_signature")
+#
+#     if not order_uuid:
+#         return jsonify({"success": False, "message": "Missing order_id"}), 400
+#
+#     order_doc = firebase_db.get_order_by_uuid(order_uuid)
+#     if not order_doc:
+#         return jsonify({"success": False,
+#                         "message": "Order not found - Verify Payment"}), 404  ##TODO: NEED TO CHANGE MSG
+#
+#     payment_method = order_doc.get("payment_method", "Razorpay")
+#
+#     if payment_method != "Cash":
+#         if not razorpay_payment_id or not razorpay_order_id or not razorpay_signature:
+#             return jsonify({"success": False, "message": "Missing Razorpay payment details"}), 400
+#         try:
+#             razorpay_client.utility.verify_payment_signature({
+#                 "razorpay_order_id": razorpay_order_id,
+#                 "razorpay_payment_id": razorpay_payment_id,
+#                 "razorpay_signature": razorpay_signature
+#             })
+#         except razorpay.errors.SignatureVerificationError:
+#             return jsonify({"success": False, "message": "Payment verification failed"}), 400
+#         firebase_db.update_order_status(order_uuid, "Paid",
+#                                         extra_fields={"transaction_id": razorpay_payment_id})
+#         message = "Payment verified"
+#     else:
+#         firebase_db.update_order_status(order_uuid, "Confirmed")
+#         message = "Cash order confirmed"
+#
+#     return jsonify({"success": True, "message": f"{message} successfully"})
 
 @app.route("/api/orders", methods=["POST"])
 def create_order():
@@ -839,32 +838,41 @@ def create_order():
                 "quantity": quantity
             })
 
-    # 2️⃣ Current user
+    # 2️⃣ Current logged-in user
     user = getattr(g, "current_user", None)
     if not user:
         return jsonify({"success": False, "message": "User not logged in"}), 401
 
-    user_details = firebase_db.get_user_by_username(user.get("username"))
-    if user_details:
-        user.update({
-            "fullName": user_details.get("fullName"),
-            "email": user_details.get("email"),
-            "phone": user_details.get("phone"),
-        })
+    user_ref = firebase_db.db.collection("users").document(user["id"])
+    user_doc = user_ref.get()
 
-    # 3️⃣ Convert shopId → Firestore doc
+    # Fallback for users where Firestore ID != customerId
+    if not user_doc.exists:
+        fallback = firebase_db.db.collection("users").where("customerId", "==", user["id"]).get()
+
+        if len(fallback) == 0:
+            return jsonify({"success": False, "message": "User not found"}), 404
+
+        user_doc = fallback[0]
+        user_ref = user_doc.reference
+        user_doc = user_doc.to_dict()
+
+    else:
+        user_doc = user_doc.to_dict()
+
+    # 3️⃣ Resolve shop docId from shopId
     input_shop_id = data["shopId"]
     invoice_url = data.get("invoice_url", "")
-    data["invoice_url"] = invoice_url
 
     shop_query = firebase_db.db.collection("shops").where("id", "==", input_shop_id).stream()
     shop_doc_id = None
     shop_name = ""
+
     for doc in shop_query:
         shop_doc_id = doc.id
-        shop_data = doc.to_dict()
-        shop_name = shop_data.get("name", "")
+        shop_name = doc.to_dict().get("name", "")
         break
+
     if not shop_doc_id:
         return jsonify({"success": False, "message": "Invalid shopId"}), 400
 
@@ -872,29 +880,19 @@ def create_order():
     payment_method = data.get("payment_method", "Razorpay")
     razorpay_order_id = None
 
-    # 🔹 NEW: Handle wallet payment
+    # ⭐ WALLET FLOW
     if payment_method.lower() == "wallet":
-        wallet_balance = user.get("wallet_balance", 0.0)  # make sure frontend sends updated wallet_balance
+
+        wallet_balance = float(user_doc.get("wallet_balance", 0.0))
+
         if wallet_balance < total:
             return jsonify({"success": False, "message": "Insufficient wallet balance"}), 400
 
-        # Deduct wallet
         new_balance = wallet_balance - total
-        user_ref = firebase_db.db.collection("users").document(user.get("id"))
         user_ref.update({"wallet_balance": new_balance})
+        logger.info(f"🟦 Wallet deduction: {wallet_balance} → {new_balance}")
 
-        # Record wallet transaction
-        tx_id = str(uuid.uuid4())
-        firebase_db.db.collection("transactions").document(tx_id).set({
-            "userId": user.get("id"),
-            "type": "Payment",
-            "amount": total,
-            "dateTime": datetime.utcnow(),
-            "orderId": None
-        })
-
-        logger.info(f"🟦 DEBUG: Wallet payment done. New balance = {new_balance}")
-
+    # ⭐ RAZORPAY FLOW
     elif payment_method == "Razorpay":
         razorpay_order = razorpay_client.order.create({
             "amount": int(total * 100),
@@ -904,46 +902,66 @@ def create_order():
         })
         razorpay_order_id = razorpay_order["id"]
 
-    # 5️⃣ Store order in Firestore
+    # 5️⃣ Save the order
     order_dict = {
         "shopId": shop_doc_id,
         "shopName": shop_name,
+        "customer_id": user["id"],
         "customer": {
-            "id": user.get("id"),
-            "username": user.get("username"),
-            "fullName": user.get("fullName") or "",
-            "email": user.get("email") or "",
-            "phone": user.get("phone") or "",
+            "id": user["id"],
+            "username": user["username"],
+            "fullName": user_doc.get("fullName", ""),
+            "email": user_doc.get("email", ""),
+            "phone": user_doc.get("phone", "")
         },
         "items": detailed_items,
         "total": total,
         "payment_method": payment_method,
-        "transaction_id": "" if payment_method == "Razorpay" else "Wallet" if payment_method.lower() == "wallet" else "Cash",  # 🔹 changed line
-        "razorpay_order_id": razorpay_order_id if razorpay_order_id else "",
-        "status": "Pending" if payment_method == "Razorpay" else "Confirmed",  # wallet treated like Cash: confirmed immediately
+        "transaction_id": (
+            "" if payment_method == "Razorpay"
+            else "Wallet" if payment_method.lower() == "wallet"
+            else "Cash"
+        ),
+        "razorpay_order_id": razorpay_order_id or "",
+        "status": "Pending" if payment_method == "Razorpay" else "Confirmed",
         "invoice_url": invoice_url,
         "created_at": datetime.now(ist).replace(microsecond=0).isoformat(),
     }
 
     new_order = firebase_db.append_order(order_dict)
 
-    # ⭐ NEW ORDER NOTIFICATION (unchanged)
-    try:
-        shop_doc = firebase_db.db.collection("shops").document(shop_doc_id).get()
-        if shop_doc.exists:
-            shop_data = shop_doc.to_dict()
-            shopkeeper_id = shop_data.get("shopkeeper_id") or shop_data.get("shopkeeperId")
-            if shopkeeper_id:
-                tokens = firebase_db.get_fcm_tokens_for_user(shopkeeper_id)
-                if tokens:
-                    title = "New Order Received"
-                    body = f"You have a new order from {user.get('fullName') or user.get('username')}"
-                    data_payload = {"order_id": new_order.get("order_uuid"), "type": "new_order"}
-                    firebase_db.send_fcm_notification_to_tokens(tokens, title, body, data_payload)
-    except Exception as e:
-        logger.error(f"❌ [ERROR] Exception during new-order notification: {e}")
+    # 6️⃣ Wallet transaction record
+    if payment_method.lower() == "wallet":
+        tx_id = str(uuid.uuid4())
+        firebase_db.db.collection("transactions").document(tx_id).set({
+            "userId": user["id"],
+            "type": "Payment",
+            "amount": total,
+            "dateTime": datetime.utcnow(),
+            "orderId": new_order["order_uuid"]
+        })
 
-    # 6️⃣ Response
+    # 🧊 REMOVED (Old notification block for Razorpay)
+    # 🔥 CHANGE: Now notify ONLY for CASH & WALLET
+
+    if payment_method.lower() in ["wallet", "cash"]:
+        try:
+            shop_doc = firebase_db.db.collection("shops").document(shop_doc_id).get()
+            if shop_doc.exists:
+                shopkeeper_id = shop_doc.to_dict().get("shopkeeper_id")
+                if shopkeeper_id:
+                    tokens = firebase_db.get_fcm_tokens_for_user(shopkeeper_id)
+                    if tokens:
+                        firebase_db.send_fcm_notification_to_tokens(
+                            tokens,
+                            "New Order Received",
+                            f"New order from {user_doc.get('fullName') or user['username']}",
+                            {"order_id": new_order["order_uuid"], "type": "new_order"}
+                        )
+        except Exception as e:
+            logger.error(f"❌ Notification error: {e}")
+
+    # 7️⃣ Final response
     if payment_method == "Razorpay":
         return jsonify({
             "success": True,
@@ -962,7 +980,6 @@ def create_order():
     })
 
 
-
 @app.route("/api/verify_payment", methods=["POST"])
 def verify_payment():
     data = request.json or {}
@@ -976,13 +993,17 @@ def verify_payment():
 
     order_doc = firebase_db.get_order_by_uuid(order_uuid)
     if not order_doc:
-        return jsonify({"success": False, "message": "Order not found"}), 404
+        return jsonify({"success": False, "message": "Order not found - Verify Payment"}), 404
 
     payment_method = order_doc.get("payment_method", "Razorpay")
 
+    # ------------------ RAZORPAY PAYMENT ------------------
     if payment_method != "Cash":
+
         if not razorpay_payment_id or not razorpay_order_id or not razorpay_signature:
             return jsonify({"success": False, "message": "Missing Razorpay payment details"}), 400
+
+        # Verify Signature
         try:
             razorpay_client.utility.verify_payment_signature({
                 "razorpay_order_id": razorpay_order_id,
@@ -991,72 +1012,59 @@ def verify_payment():
             })
         except razorpay.errors.SignatureVerificationError:
             return jsonify({"success": False, "message": "Payment verification failed"}), 400
+
+        # Update order status
         firebase_db.update_order_status(order_uuid, "Paid",
                                         extra_fields={"transaction_id": razorpay_payment_id})
         message = "Payment verified"
+
+        # 🔥 ADDED — SEND NOTIFICATION AFTER SUCCESSFUL PAYMENT
+        try:
+            shop_id = order_doc.get("shopId")
+            shop_doc = firebase_db.db.collection("shops").document(shop_id).get()
+
+            if shop_doc.exists:
+                shopkeeper_id = shop_doc.to_dict().get("shopkeeper_id")
+
+                if shopkeeper_id:
+                    tokens = firebase_db.get_fcm_tokens_for_user(shopkeeper_id)
+
+                    if tokens:
+                        firebase_db.send_fcm_notification_to_tokens(
+                            tokens,
+                            "New Paid Order",
+                            f"New paid order from {order_doc['customer'].get('fullName')}",
+                            {"order_id": order_uuid, "type": "new_order"}
+                        )
+        except Exception as e:
+            logger.error(f"❌ Notification error (Razorpay): {e}")
+
+    # ------------------ CASH PAYMENT ------------------
     else:
         firebase_db.update_order_status(order_uuid, "Confirmed")
         message = "Cash order confirmed"
 
+        # 🔥 ADDED — Notify after cash confirmation
+        try:
+            shop_id = order_doc.get("shopId")
+            shop_doc = firebase_db.db.collection("shops").document(shop_id).get()
+
+            if shop_doc.exists:
+                shopkeeper_id = shop_doc.to_dict().get("shopkeeper_id")
+
+                if shopkeeper_id:
+                    tokens = firebase_db.get_fcm_tokens_for_user(shopkeeper_id)
+                    if tokens:
+                        firebase_db.send_fcm_notification_to_tokens(
+                            tokens,
+                            "New Cash Order",
+                            f"New cash order from {order_doc['customer'].get('fullName')}",
+                            {"order_id": order_uuid, "type": "new_order"}
+                        )
+        except Exception as e:
+            logger.error(f"❌ Notification error (Cash): {e}")
+
     return jsonify({"success": True, "message": f"{message} successfully"})
-
-
-
-# @app.route("/api/update_order_status", methods=["POST"])
-# def update_order_status():
-#     data = request.json or {}
-#     order_uuid = data.get("order_id")
-#     new_status = data.get("status")
-#
-#     if not order_uuid or not new_status:
-#         return jsonify({"success": False, "message": "Missing data"}), 400
-#
-#     order_doc = firebase_db.get_order_by_uuid(order_uuid)
-#     if not order_doc:
-#         return jsonify({"success": False, "message": "Order not found"}), 404
-#
-#     # ✅ Update Firestore
-#     firebase_db.update_order_status(order_uuid, new_status)
-#     print(f"✅ Order {order_uuid} status updated to {new_status}")
-#
-#     # 🧾 Send invoice if delivered
-#     if new_status.strip().lower() == "delivered":
-#         try:
-#             print(f"📦 Generating final delivery invoice for order {order_uuid}...")
-#             success = process_and_send_invoice(order_doc, logo_url=logo_url)
-#             if success:
-#                 print("✅ Invoice generated, emailed, and uploaded to Firestore.")
-#         except Exception as e:
-#             print(f"[ERROR] Failed to send delivery invoice: {e}")
-#
-#     # ✅ Send push notification to customer
-#     try:
-#         customer = order_doc.get("customer", {})
-#         customer_id = customer.get("id") or order_doc.get("customer_id")
-#
-#         if not customer_id:
-#             print("⚠️ Could not determine customer_id for notification")
-#             return jsonify({"success": True, "message": "Order updated, no customer ID found"})
-#
-#         tokens = firebase_db.get_fcm_tokens_for_user(customer_id)
-#         if tokens:
-#             title = "Order Status Updated"
-#             body = f"Your order #{order_uuid[:8]} is now {new_status}."
-#             data_payload = {
-#                 "order_id": order_uuid,
-#                 "status": new_status,
-#                 "click_action": "FLUTTER_NOTIFICATION_CLICK"
-#             }
-#
-#             response = firebase_db.send_fcm_notification_to_tokens(tokens, title, body, data_payload)
-#             print(f"📲 Notification sent: success={response['success']}, failure={response['failure']}")
-#         else:
-#             print(f"⚠️ No FCM tokens found for user {customer_id}")
-#
-#     except Exception as e:
-#         print(f"[ERROR] Failed to send push notification: {e}")
-#
-#     return jsonify({"success": True, "message": f"Order updated to {new_status}"})
 
 @app.route("/api/update_order_status", methods=["POST"])
 def update_order_status():
@@ -1067,82 +1075,118 @@ def update_order_status():
     if not order_uuid or not new_status:
         return jsonify({"success": False, "message": "Missing data"}), 400
 
+    normalized_status = new_status.strip().lower()
+
+    # -----------------------------------------
+    #  FETCH ORDER (includes correct doc_id)
+    # -----------------------------------------
     order_doc = firebase_db.get_order_by_uuid(order_uuid)
     if not order_doc:
         return jsonify({"success": False, "message": "Order not found"}), 404
 
-    # ✅ Update Firestore
-    firebase_db.update_order_status(order_uuid, new_status)
-    print(f"✅ Order {order_uuid} status updated to {new_status}")
+    order_firestore_id = order_doc["doc_id"]
+    customerId = order_doc.get("customer", {}).get("id") or order_doc.get("customer_id")
+    total = float(order_doc["total"])
 
-    # 🔹 WALLET REFUND LOGIC (Added)
+    # -----------------------------------------
+    #  IDEMPOTENT REFUND CHECK
+    # -----------------------------------------
+    if normalized_status.startswith("cancel") and order_doc.get("refund_processed"):
+        logger.info(f"♻️ Refund already processed for order {order_uuid}")
+        return jsonify({"success": True, "message": "Refund already processed"}), 200
+
+    # -----------------------------------------
+    #  UPDATE ORDER STATUS
+    # -----------------------------------------
+    firebase_db.db.collection("orders").document(order_firestore_id).update({
+        "status": new_status
+    })
+    logger.info(f"✅ Order {order_uuid} updated → {new_status}")
+
+    # -----------------------------------------
+    #  REFUND SECTION
+    # -----------------------------------------
     try:
-        if new_status.strip().lower() == "cancelled":
+        if normalized_status.startswith("cancel"):
+            logger.info("==== REFUND DEBUG START ====")
+            logger.info(f"order_uuid = {order_uuid}")
+            logger.info(f"doc_id = {order_firestore_id}")
+            logger.info(f"payment_method = {order_doc.get('payment_method')}")
+            logger.info(f"amount = {total}")
+            logger.info(f"customerId = {customerId}")
+            logger.info("==== REFUND DEBUG END ====")
+
             payment_method = order_doc.get("payment_method", "").lower()
-            if payment_method == "wallet":
-                user_id = order_doc.get("customer", {}).get("id") or order_doc.get("customer_id")
-                amount = order_doc.get("total", 0.0)
-                if user_id:
-                    # Update wallet balance
-                    user_ref = firebase_db.db.collection("users").document(user_id)
-                    user = user_ref.get()
-                    if user.exists:
-                        new_balance = user.to_dict().get("wallet_balance", 0.0) + amount
-                        user_ref.update({"wallet_balance": new_balance})
-                        # Add transaction record
-                        import uuid
-                        from datetime import datetime
-                        tx_id = str(uuid.uuid4())
-                        firebase_db.db.collection("transactions").document(tx_id).set({
-                            "userId": user_id,
-                            "type": "Refund",
-                            "amount": amount,
-                            "dateTime": datetime.utcnow(),
-                            "orderId": order_uuid
-                        })
-                        print(f"💰 Wallet refunded ₹{amount} to user {user_id}")
+
+            if payment_method == "cash":
+                logger.info("⛔ Cash order cancelled → no refund needed")
+                return jsonify({"success": True, "message": "Order cancelled (cash)"}), 200
+
+            # Wallet or Razorpay → Refund to WALLET
+            process_wallet_refund(customerId, total, order_uuid, order_firestore_id)
+
+        if normalized_status.lower() == "delivered":
+            try:
+                logger.info(f"📦 Generating final delivery invoice for order {order_uuid}...")
+                success = process_and_send_invoice(order_doc, logo_url=logo_url)
+                if success:
+                    logger.info("✅ Invoice generated, emailed, and uploaded to Firestore.")
+            except Exception as e:
+                logger.info(f"[ERROR] Failed to send delivery invoice: {e}")
+
     except Exception as e:
-        print(f"[ERROR] Wallet refund failed: {e}")
-    # 🔹 END WALLET REFUND LOGIC
+        logger.info(f"[ERROR] Refund failed: {e}")
 
-    # 🧾 Send invoice if delivered
-    if new_status.strip().lower() == "delivered":
-        try:
-            print(f"📦 Generating final delivery invoice for order {order_uuid}...")
-            success = process_and_send_invoice(order_doc, logo_url=logo_url)
-            if success:
-                print("✅ Invoice generated, emailed, and uploaded to Firestore.")
-        except Exception as e:
-            print(f"[ERROR] Failed to send delivery invoice: {e}")
+    return jsonify({"success": True, "message": f"Order updated to {new_status}"}), 200
 
-    # ✅ Send push notification to customer
+
+def process_wallet_refund(customerId, amount, order_uuid, order_firestore_id):
+    """Refund ANY payment method into wallet (Wallet + Razorpay refunded to wallet)."""
+
     try:
-        customer = order_doc.get("customer", {})
-        customer_id = customer.get("id") or order_doc.get("customer_id")
+        # Resolve Firestore user doc
+        user_ref, snap = firebase_db.get_user_firestore_ref(customerId)
 
-        if not customer_id:
-            print("⚠️ Could not determine customer_id for notification")
-            return jsonify({"success": True, "message": "Order updated, no customer ID found"})
+        if not snap:
+            logger.info(f"❌ Refund failed — user not found for {customerId}")
+            return
 
-        tokens = firebase_db.get_fcm_tokens_for_user(customer_id)
-        if tokens:
-            title = "Order Status Updated"
-            body = f"Your order #{order_uuid[:8]} is now {new_status}."
-            data_payload = {
-                "order_id": order_uuid,
-                "status": new_status,
-                "click_action": "FLUTTER_NOTIFICATION_CLICK"
-            }
+        firestore_user_id = user_ref.id  # REAL doc ID
 
-            response = firebase_db.send_fcm_notification_to_tokens(tokens, title, body, data_payload)
-            print(f"📲 Notification sent: success={response['success']}, failure={response['failure']}")
-        else:
-            print(f"⚠️ No FCM tokens found for user {customer_id}")
+        # -----------------------------------------
+        #  CALL INTERNAL /wallet/refund API
+        # -----------------------------------------
+        payload = {
+            "user_id": firestore_user_id,
+            "customerId": customerId,
+            "amount": amount,
+            "order_id": order_uuid
+        }
+
+        resp = requests.post(
+            url="https://grocery-backend-956424262985.asia-south1.run.app/wallet/refund",
+            json=payload,
+            timeout=5
+        )
+
+        logger.info(f"🔁 /wallet/refund response: {resp.status_code} {resp.text}")
+
+        if resp.status_code != 200:
+            logger.info(f"❌ Wallet refund API failed: {resp.text}")
+            return
+
+        # -----------------------------------------
+        #  MARK ORDER AS REFUNDED
+        # -----------------------------------------
+        firebase_db.db.collection("orders").document(order_firestore_id).update({
+            "refund_processed": True
+        })
+
+        logger.info(f"💰 WALLET REFUND (API) → +₹{amount} added for {firestore_user_id}")
 
     except Exception as e:
-        print(f"[ERROR] Failed to send push notification: {e}")
+        logger.info(f"[ERROR] process_wallet_refund failed: {e}")
 
-    return jsonify({"success": True, "message": f"Order updated to {new_status}"})
 
 @app.route("/api/orders/shopkeeper/<shop_id>", methods=["GET"])
 def get_shop_orders(shop_id):
@@ -1165,12 +1209,6 @@ def get_shop_orders(shop_id):
     return jsonify(enriched_orders)
 
 
-#
-# @app.route("/api/orders/customer/<customer_id>", methods=["GET"])
-# def get_customer_orders(customer_id):
-#     orders = firebase_db.get_orders_by_customer(customer_id)
-#     return jsonify(orders)
-
 @app.route("/api/orders/customer/<customer_id>", methods=["GET"])
 def get_customer_orders(customer_id):
     orders = firebase_db.get_orders_by_customer(customer_id)
@@ -1181,32 +1219,37 @@ def get_customer_orders(customer_id):
 
 @app.route('/api/orders/<order_uuid>', methods=['GET'])
 def get_order_details(order_uuid):
-    order_doc = firebase_db.db.collection("orders").document(order_uuid).get()
-    if not order_doc.exists:
-        return jsonify({'error': 'Order not found'}), 404
+    orders_ref = firebase_db.db.collection("orders")
 
-    order_data = order_doc.to_dict()
+    # 1️⃣ Try direct Firestore doc ID
+    doc = orders_ref.document(order_uuid).get()
+    if doc.exists:
+        data = doc.to_dict()
+        data["order_uuid"] = doc.id
+        data["doc_id"] = doc.id
+        return jsonify(data)
 
-    # 🔹 Always include Firestore doc ID
-    order_data["order_uuid"] = order_uuid
+    # 2️⃣ Try order_uuid field (YOUR REAL FIELD)
+    query = orders_ref.where("order_uuid", "==", order_uuid).limit(1).stream()
+    order_list = list(query)
+    if order_list:
+        order_doc = order_list[0]
+        data = order_doc.to_dict()
+        data["order_uuid"] = order_doc.id
+        data["doc_id"] = order_doc.id
+        return jsonify(data)
 
-    # 🔹 Ensure shopName is always included
-    if "shopName" not in order_data or not order_data["shopName"]:
-        shop_id = order_data.get("shopId")
-        if shop_id:
-            shop_doc = firebase_db.db.collection("shops").document(shop_id).get()
-            if shop_doc.exists:
-                shop_data = shop_doc.to_dict()
-                order_data["shopName"] = shop_data.get("name", "Unknown")
-            else:
-                order_data["shopName"] = "Unknown"
-        else:
-            order_data["shopName"] = "Unknown"
+    # 3️⃣ Try id field (optional)
+    query = orders_ref.where("id", "==", order_uuid).limit(1).stream()
+    order_list = list(query)
+    if order_list:
+        order_doc = order_list[0]
+        data = order_doc.to_dict()
+        data["order_uuid"] = order_doc.id
+        data["doc_id"] = order_doc.id
+        return jsonify(data)
 
-    # ✅ Ensure invoice_url is included even if missing
-    order_data["invoice_url"] = order_data.get("invoice_url", "")
-
-    return jsonify(order_data)
+    return jsonify({'error': 'Order not found - Get Order Details'}), 404
 
 
 @app.route("/api/orders/<order_uuid>", methods=["PATCH"])
@@ -1222,7 +1265,8 @@ def patch_order_by_uuid(order_uuid):
             firebase_db.db.collection("orders").document(order_uuid).update(
                 {"cancel_message": cancel_message})
         return jsonify({"success": True, "message": "Order updated successfully"})
-    return jsonify({"success": False, "message": "Order not found"}), 404
+    return jsonify({"success": False,
+                    "message": "Order not found -Patch order"}), 404  ##TODO: NEED TO CHANGE MSG
 
 
 @app.route("/api/orders/shopkeeper", methods=["GET"])
@@ -1287,8 +1331,8 @@ def check_update():
 
 def send_email_otp(email, otp):
     try:
-        print(f"SENDINBLUE_API_KEY {SENDINBLUE_API_KEY}")
-        print(f"FROM_EMAIL : {FROM_EMAIL}")
+        logger.info(f"SENDINBLUE_API_KEY {SENDINBLUE_API_KEY}")
+        logger.info(f"FROM_EMAIL : {FROM_EMAIL}")
 
         url = "https://api.sendinblue.com/v3/smtp/email"
         headers = {
@@ -1322,51 +1366,78 @@ def send_email_otp(email, otp):
         }
 
         response = requests.post(url, headers=headers, json=data)
-        print(f"[DEBUG] Sendinblue response: {response.status_code}, {response.text}")
+        logger.info(f"[DEBUG] Sendinblue response: {response.status_code}, {response.text}")
 
         return response.status_code in (200, 201)
 
     except Exception as e:
-        print(f"[ERROR] Failed to send OTP email: {e}")
+        logger.info(f"[ERROR] Failed to send OTP email: {e}")
         return False
+
 
 
 @app.route("/send_otp", methods=["POST"])
 def send_otp():
     data = request.get_json()
     email = data.get("email")
+
     if not email:
         return jsonify({"status": "error", "message": "Email required"}), 400
 
     otp = random.randint(100000, 999999)
-    expiry = int(time.time()) + 120  # 2 minutes expiry
-    otp_store[email] = {"otp": otp, "expiry": expiry, "attempts": 0}
+    expiry = int(time.time()) + 120  # 2 minutes
+
+    # 🔥 SAVE OTP IN FIRESTORE INSTEAD OF RAM
+    firebase_db.db.collection("otp").document(email).set({
+        "otp": str(otp),
+        "expiry": expiry,
+        "attempts": 0
+    })
 
     if send_email_otp(email, otp):
+        logger.info(f"Send OTP to {email} | OTP={otp}")
         return jsonify({"status": "success", "message": "OTP sent"}), 200
+
     return jsonify({"status": "error", "message": "Failed to send OTP"}), 500
 
 
-# ---------------- 2️⃣ Verify OTP ----------------
 @app.route("/verify_otp", methods=["POST"])
 def verify_otp():
     data = request.get_json()
     email = data.get("email")
-    otp_input = data.get("otp")
-    record = otp_store.get(email)
+    otp_input = str(data.get("otp"))
 
-    if not record:
+    logger.info(f"Verify OTP | EMAIL={email} | OTP_ENTERED={otp_input}")
+
+    # 🔥 FETCH OTP DOCUMENT FROM FIRESTORE
+    otp_doc = firebase_db.db.collection("otp").document(email).get()
+
+    if not otp_doc.exists:
         return jsonify({"status": "error", "message": "No OTP sent for this email"}), 400
+
+    record = otp_doc.to_dict()
+
+    # attempt limit
+    if record.get("attempts", 0) >= 5:
+        return jsonify({"status": "error", "message": "Too many attempts. Request new OTP"}), 400
 
     current_time = int(time.time())
     if current_time > record["expiry"]:
         return jsonify({"status": "error", "message": "OTP expired"}), 400
 
-    if str(record["otp"]) == str(otp_input):
+    # OTP MATCH SUCCESS
+    if str(record["otp"]) == otp_input:
+        # delete after success
+        firebase_db.db.collection("otp").document(email).delete()
+        logger.info("OTP DELETED SUCCESSFULLY FROM FIREBASE STORAGE")
         return jsonify({"status": "success", "message": "OTP verified"}), 200
 
-    return jsonify({"status": "error", "message": "Invalid OTP"}), 400
+    # increment attempts count
+    firebase_db.db.collection("otp").document(email).update({
+        "attempts": record.get("attempts", 0) + 1
+    })
 
+    return jsonify({"status": "error", "message": "Invalid OTP"}), 400
 
 def send_welcome_email(email, name):
     url = "https://api.sendinblue.com/v3/smtp/email"
@@ -1387,7 +1458,7 @@ def send_welcome_email(email, name):
         """
     }
     response = requests.post(url, headers=headers, json=data)
-    print("Welcome email response:", response.status_code, response.text)
+    logger.info(f"Welcome email response: {response.status_code} | {response.text}")
     return response.status_code in [200, 201]
 
 
@@ -1418,7 +1489,7 @@ def add_item():
         for d in q:
             shop_doc = d.to_dict()
             canonical_shop_id = d.id
-            print(f"canonical_shop_id : {canonical_shop_id}")
+            logger.info(f"canonical_shop_id : {canonical_shop_id}")
             break
 
     if not canonical_shop_id:
@@ -1461,7 +1532,7 @@ def get_shop_by_owner():
     if not shopkeeper_id:
         return jsonify({'success': False, 'shop': None, 'message': 'Missing shopkeeperId'}), 400
 
-    shop = firebase_db.get_shop_by_owner(shopkeeper_id)
+    shop = firebase_db.get_shop_by_shopkeeper(shopkeeper_id)
     if shop:
         return jsonify({'success': True, 'shop': shop})
     else:
@@ -1472,14 +1543,14 @@ def get_shop_by_owner():
 def send_password_reset_otp():
     data = request.get_json()
     email = data.get("email")
-    print("DEBUG: Looking for email:", email)
+    logger.info(f"DEBUG: Looking for email: {email}")
     if not email:
         return jsonify({"success": False, "message": "Email required"}), 400
 
     # Check if user exists in Firestore
     users_ref = firebase_db.db.collection("users")
     query = users_ref.where("email", "==", email).limit(1).get()
-    print("DEBUG: Query result:", query)
+    logger.info(f"DEBUG: Query result : {query}")
     if not query:
         return jsonify({"success": False, "message": "Email not registered"}), 404
 
@@ -1552,8 +1623,8 @@ def update_password():
 
 def send_password_reset_email_otp(email, otp):
     try:
-        print(f"[DEBUG] Sending OTP email to {email}")
-        print(f"[DEBUG] Using FROM_EMAIL: {FROM_EMAIL}")
+        logger.info(f"[DEBUG] Sending OTP email to {email}")
+        logger.info(f"[DEBUG] Using FROM_EMAIL: {FROM_EMAIL}")
 
         url = "https://api.sendinblue.com/v3/smtp/email"
         headers = {
@@ -1588,12 +1659,12 @@ def send_password_reset_email_otp(email, otp):
         }
 
         response = requests.post(url, headers=headers, json=data)
-        print(f"[DEBUG] Sendinblue response: {response.status_code}, {response.text}")
+        logger.info(f"[DEBUG] Sendinblue response: {response.status_code}, {response.text}")
 
         return response.status_code in (200, 201)
 
     except Exception as e:
-        print(f"[ERROR] Failed to send OTP email: {e}")
+        logger.info(f"[ERROR] Failed to send OTP email: {e}")
         return False
 
 
@@ -1651,7 +1722,8 @@ def update_order_items(order_id):
             break
 
         if not order_doc_ref or not order_data:
-            return jsonify({"success": False, "message": "Order not found"}), 404
+            return jsonify(
+                {"success": False, "message": "Order not found-in Database- Update status"}), 404
 
         # 🔹 Step 2: Update items (matching by item_id)
         existing_items = order_data.get("items", [])
@@ -1684,7 +1756,7 @@ def update_order_items(order_id):
         })
 
     except Exception as e:
-        print("🔥 Error updating order:", str(e))
+        logger.info("🔥 Error updating order:", str(e))
         return jsonify({"success": False, "message": str(e)}), 500
 
 
@@ -1842,7 +1914,8 @@ def generate_invoice_html(order_data, logo_url=None):
 def send_invoice_email(email, order_data, pdf_buffer, logo_url=None):
     try:
         if not email:
-            print(f"[ERROR] send_invoice_email() called with empty email! order_data={order_data}")
+            logger.error(
+                f"[ERROR] send_invoice_email() called with empty email! order_data={order_data}")
             return False
 
         pdf_base64 = base64.b64encode(pdf_buffer.getvalue()).decode('utf-8')
@@ -1864,11 +1937,11 @@ def send_invoice_email(email, order_data, pdf_buffer, logo_url=None):
         headers = {"api-key": SENDINBLUE_API_KEY, "Content-Type": "application/json"}
         response = requests.post("https://api.sendinblue.com/v3/smtp/email", headers=headers,
                                  json=data)
-        print(f"[DEBUG] Invoice email response: {response.status_code}, {response.text}")
+        logger.info(f"[DEBUG] Invoice email response: {response.status_code}, {response.text}")
         return response.status_code in (200, 201, 202)
 
     except Exception as e:
-        print(f"[ERROR] Failed to send invoice email: {e}")
+        logger.error(f"[ERROR] Failed to send invoice email: {e}")
         return False
 
 
@@ -2137,11 +2210,11 @@ def process_and_send_invoice(order_doc, logo_url=None):
             "payment_method": order_doc.get("payment_method", "Razorpay"),
         }
 
-        print("[DEBUG] 🧾 Order data for invoice:", order_data)
+        logger.info(f"[DEBUG] 🧾 Order data for invoice: {order_data}")
 
         # --- Generate PDF ---
         pdf_buffer = generate_invoice_pdf(order_data, logo_url=logo_url)
-        print(f"[DEBUG] ✅ PDF generated ({len(pdf_buffer.getvalue())} bytes)")
+        logger.info(f"[DEBUG] ✅ PDF generated ({len(pdf_buffer.getvalue())} bytes)")
 
         # --- Send Email (as before) ---
         send_invoice_email(
@@ -2158,16 +2231,16 @@ def process_and_send_invoice(order_doc, logo_url=None):
         )
 
         if invoice_url:
-            print(f"✅ Invoice uploaded for {customer_id}")
+            logger.info(f"✅ Invoice uploaded for {customer_id}")
             firebase_db.update_order_status(order_data["order_id"], "delivered", {
                 "invoice_url": invoice_url
             })
-            print("🔗 Invoice URL stored in Firestore")
+            logger.info("🔗 Invoice URL stored in Firestore")
 
         return True
 
     except Exception as e:
-        print(f"[ERROR] ❌ Failed in process_and_send_invoice: {e}")
+        logger.error(f"[ERROR] ❌ Failed in process_and_send_invoice: {e}")
         return False
 
 
@@ -2373,7 +2446,7 @@ def get_invoice_html(order_id):
     try:
         order_doc = firebase_db.get_order_by_uuid(order_id)
         if not order_doc:
-            return jsonify({"error": "Order not found"}), 404
+            return jsonify({"error": "Order not found -- Invoice"}), 404  ##TODO: NEED TO CHANGE MSG
 
         order_data = {
             "order_id": order_doc["order_uuid"],
@@ -2392,6 +2465,7 @@ def get_invoice_html(order_id):
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
+
 @app.route("/api/register_fcm_token", methods=["POST"])
 def register_fcm_token():
     data = request.json
@@ -2409,8 +2483,7 @@ def register_fcm_token():
         return jsonify({"success": False, "message": "User not found"}), 404
 
 
-
 if __name__ == "__main__":
-    print("Gunicorn setup complete, about to run...")
+    logger.info("Gunicorn setup complete, about to run...")
     port = int(os.environ.get("PORT", 8080))
     app.run(host="0.0.0.0", port=port)

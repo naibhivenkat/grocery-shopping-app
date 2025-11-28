@@ -1,389 +1,12 @@
-//package com.example.groceryshoppingapp
-//
-//import android.os.Bundle
-//import android.widget.Button
-//import android.widget.TextView
-//import android.widget.Toast
-//import androidx.appcompat.app.AppCompatActivity
-//import androidx.recyclerview.widget.LinearLayoutManager
-//import androidx.recyclerview.widget.RecyclerView
-//import com.example.groceryshoppingapp.adapters.WalletTransactionAdapter
-//import com.example.groceryshoppingapp.models.WalletActionRequest
-//import com.example.groceryshoppingapp.models.WalletActionResponse
-//import com.example.groceryshoppingapp.models.WalletBalanceResponse
-//import com.example.groceryshoppingapp.models.WalletTransaction
-//import com.example.groceryshoppingapp.network.ApiService
-//import com.example.groceryshoppingapp.network.RetrofitClient
-//import com.example.groceryshoppingapp.utils.SessionManager
-//import retrofit2.Call
-//import retrofit2.Callback
-//import retrofit2.Response
-//
-//class WalletActivity : AppCompatActivity() {
-//
-//    private lateinit var tvBalance: TextView
-//    private lateinit var rvTransactions: RecyclerView
-//    private lateinit var btnAddMoney: Button
-//    private val transactions = mutableListOf<WalletTransaction>()
-//    private lateinit var adapter: WalletTransactionAdapter
-//
-//    private lateinit var api: ApiService
-//    private var userId: String? = null // ⚠ move initialization to onCreate
-//
-//    override fun onCreate(savedInstanceState: Bundle?) {
-//        super.onCreate(savedInstanceState)
-//        setContentView(R.layout.activity_wallet)
-//
-//        // ⚡ Initialize userId here
-//        userId = SessionManager.getFirebaseId(this)
-//
-//
-//        tvBalance = findViewById(R.id.tvBalance)
-//        rvTransactions = findViewById(R.id.rvTransactions)
-//        btnAddMoney = findViewById(R.id.btnAddMoney)
-//
-//        adapter = WalletTransactionAdapter(transactions)
-//        rvTransactions.layoutManager = LinearLayoutManager(this)
-//        rvTransactions.adapter = adapter
-//
-//        api = RetrofitClient.getInstance(this).create(ApiService::class.java)
-//
-//        fetchWalletBalance()
-//        fetchTransactions()
-//
-//        btnAddMoney.setOnClickListener {
-//            // Replace 100.0 with user input amount
-//            addMoney(100.0)
-//        }
-//    }
-//
-//    private fun fetchWalletBalance() {
-//        if (userId != null) {
-//            api.getWalletBalance(userId!!).enqueue(object : Callback<WalletBalanceResponse> {
-//                override fun onResponse(
-//                    call: Call<WalletBalanceResponse>,
-//                    response: Response<WalletBalanceResponse>
-//                ) {
-//                    if (response.isSuccessful) {
-//                        val balance = response.body()?.balance ?: 0.0
-//                        tvBalance.text = "Wallet Balance: ₹$balance"
-//                    } else {
-//                        Toast.makeText(this@WalletActivity, "Failed to fetch balance", Toast.LENGTH_SHORT).show()
-//                    }
-//                }
-//
-//                override fun onFailure(call: Call<WalletBalanceResponse>, t: Throwable) {
-//                    t.printStackTrace()
-//                    Toast.makeText(this@WalletActivity, "Error fetching balance", Toast.LENGTH_SHORT).show()
-//                }
-//            })
-//        }
-//    }
-//
-//    private fun fetchTransactions() {
-//        if (userId != null) {
-//            api.getWalletTransactions(userId!!).enqueue(object : Callback<List<WalletTransaction>> {
-//                override fun onResponse(
-//                    call: Call<List<WalletTransaction>>,
-//                    response: Response<List<WalletTransaction>>
-//                ) {
-//                    if (response.isSuccessful) {
-//                        transactions.clear()
-//                        response.body()?.let { transactions.addAll(it) }
-//                        adapter.notifyDataSetChanged()
-//                    }
-//                }
-//
-//                override fun onFailure(call: Call<List<WalletTransaction>>, t: Throwable) {
-//                    t.printStackTrace()
-//                    Toast.makeText(this@WalletActivity, "Error fetching transactions", Toast.LENGTH_SHORT).show()
-//                }
-//            })
-//        }
-//    }
-//
-//    private fun addMoney(amount: Double) {
-//        val request = userId?.let { WalletActionRequest(user_id = it, amount = amount) }
-//        if (request != null) {
-//            api.addMoney(request).enqueue(object : Callback<WalletActionResponse> {
-//                override fun onResponse(
-//                    call: Call<WalletActionResponse>,
-//                    response: Response<WalletActionResponse>
-//                ) {
-//                    if (response.isSuccessful) {
-//                        val newBalance = response.body()?.balance ?: 0.0
-//                        tvBalance.text = "Wallet Balance: ₹$newBalance"
-//                        fetchTransactions()
-//                        Toast.makeText(this@WalletActivity, "Money added successfully", Toast.LENGTH_SHORT).show()
-//                    } else {
-//                        Toast.makeText(this@WalletActivity, "Failed to add money", Toast.LENGTH_SHORT).show()
-//                    }
-//                }
-//
-//                override fun onFailure(call: Call<WalletActionResponse>, t: Throwable) {
-//                    t.printStackTrace()
-//                    Toast.makeText(this@WalletActivity, "Error adding money", Toast.LENGTH_SHORT).show()
-//                }
-//            })
-//        }
-//    }
-//
-//    fun payOrder(amount: Double, orderId: String) {
-//        val request = userId?.let { WalletActionRequest(user_id = it, amount = amount, order_id = orderId) }
-//        if (request != null) {
-//            api.payOrder(request).enqueue(object : Callback<WalletActionResponse> {
-//                override fun onResponse(
-//                    call: Call<WalletActionResponse>,
-//                    response: Response<WalletActionResponse>
-//                ) {
-//                    if (response.isSuccessful) {
-//                        val newBalance = response.body()?.balance ?: 0.0
-//                        tvBalance.text = "Wallet Balance: ₹$newBalance"
-//                        fetchTransactions()
-//                        Toast.makeText(this@WalletActivity, "Payment successful", Toast.LENGTH_SHORT).show()
-//                    } else {
-//                        Toast.makeText(this@WalletActivity, "Payment failed", Toast.LENGTH_SHORT).show()
-//                    }
-//                }
-//
-//                override fun onFailure(call: Call<WalletActionResponse>, t: Throwable) {
-//                    t.printStackTrace()
-//                    Toast.makeText(this@WalletActivity, "Error processing payment", Toast.LENGTH_SHORT).show()
-//                }
-//            })
-//        }
-//    }
-//
-//    fun refundOrder(amount: Double, orderId: String) {
-//        val request = userId?.let { WalletActionRequest(user_id = it, amount = amount, order_id = orderId) }
-//        if (request != null) {
-//            api.refundOrder(request).enqueue(object : Callback<WalletActionResponse> {
-//                override fun onResponse(
-//                    call: Call<WalletActionResponse>,
-//                    response: Response<WalletActionResponse>
-//                ) {
-//                    if (response.isSuccessful) {
-//                        val newBalance = response.body()?.balance ?: 0.0
-//                        tvBalance.text = "Wallet Balance: ₹$newBalance"
-//                        fetchTransactions()
-//                        Toast.makeText(this@WalletActivity, "Refund successful", Toast.LENGTH_SHORT).show()
-//                    } else {
-//                        Toast.makeText(this@WalletActivity, "Refund failed", Toast.LENGTH_SHORT).show()
-//                    }
-//                }
-//
-//                override fun onFailure(call: Call<WalletActionResponse>, t: Throwable) {
-//                    t.printStackTrace()
-//                    Toast.makeText(this@WalletActivity, "Error processing refund", Toast.LENGTH_SHORT).show()
-//                }
-//            })
-//        }
-//    }
-//}
-
-
-//package com.example.groceryshoppingapp
-//
-//import android.app.AlertDialog
-//import android.os.Bundle
-//import android.widget.Button
-//import android.widget.EditText
-//import android.widget.TextView
-//import android.widget.Toast
-//import androidx.appcompat.app.AppCompatActivity
-//import androidx.recyclerview.widget.LinearLayoutManager
-//import androidx.recyclerview.widget.RecyclerView
-//import com.example.groceryshoppingapp.adapters.WalletTransactionAdapter
-//import com.example.groceryshoppingapp.models.WalletActionRequest
-//import com.example.groceryshoppingapp.models.WalletActionResponse
-//import com.example.groceryshoppingapp.models.WalletBalanceResponse
-//import com.example.groceryshoppingapp.models.WalletTransaction
-//import com.example.groceryshoppingapp.network.ApiService
-//import com.example.groceryshoppingapp.network.RetrofitClient
-//import com.example.groceryshoppingapp.utils.SessionManager
-//import com.razorpay.Checkout
-//import com.razorpay.PaymentResultListener
-//import org.json.JSONObject
-//import retrofit2.Call
-//import retrofit2.Callback
-//import retrofit2.Response
-
-//class WalletActivity : AppCompatActivity(), PaymentResultListener {
-//
-//    private lateinit var tvBalance: TextView
-//    private lateinit var rvTransactions: RecyclerView
-//    private lateinit var btnAddMoney: Button
-//    private val transactions = mutableListOf<WalletTransaction>()
-//    private lateinit var adapter: WalletTransactionAdapter
-//
-//    private lateinit var api: ApiService
-//    private var userId: String? = null
-//
-//    private var amountToAdd = 0.0  // ← Store entered amount
-//
-//    override fun onCreate(savedInstanceState: Bundle?) {
-//        super.onCreate(savedInstanceState)
-//        setContentView(R.layout.activity_wallet)
-//
-//        Checkout.preload(applicationContext)
-//
-//        userId = SessionManager.getFirebaseId(this)
-//
-//        tvBalance = findViewById(R.id.tvBalance)
-//        rvTransactions = findViewById(R.id.rvTransactions)
-//        btnAddMoney = findViewById(R.id.btnAddMoney)
-//
-//        adapter = WalletTransactionAdapter(transactions)
-//        rvTransactions.layoutManager = LinearLayoutManager(this)
-//        rvTransactions.adapter = adapter
-//
-//        api = RetrofitClient.getInstance(this).create(ApiService::class.java)
-//
-//        fetchWalletBalance()
-//        fetchTransactions()
-//
-//        btnAddMoney.setOnClickListener {
-//            openAddMoneyDialog()
-//        }
-//    }
-//
-//    private fun openAddMoneyDialog() {
-//        val dialogView = layoutInflater.inflate(R.layout.dialog_add_money, null)
-//        val etAmount = dialogView.findViewById<EditText>(R.id.etAddAmount)
-//
-//        AlertDialog.Builder(this)
-//            .setTitle("Add Money")
-//            .setView(dialogView)
-//            .setPositiveButton("Add") { _, _ ->
-//                val input = etAmount.text.toString()
-//
-//                if (input.isEmpty()) {
-//                    Toast.makeText(this, "Enter valid amount", Toast.LENGTH_SHORT).show()
-//                    return@setPositiveButton
-//                }
-//
-//                amountToAdd = input.toDouble()
-//
-//                startRazorpayPayment(amountToAdd)
-//            }
-//            .setNegativeButton("Cancel", null)
-//            .show()
-//    }
-//
-//    private fun startRazorpayPayment(amount: Double) {
-//        val checkout = Checkout()
-//        checkout.setKeyID("rzp_test_123456789")   // replace with your Razorpay Key
-//
-//        try {
-//            val options = JSONObject()
-//            options.put("name", "Grocery App")
-//            options.put("description", "Wallet Top-up")
-//
-//            val finalAmount = (amount * 100).toInt()
-//            options.put("amount", finalAmount)
-//
-//            val prefill = JSONObject()
-//            prefill.put("email", "test@test.com")
-//            prefill.put("contact", "9999999999")
-//
-//            options.put("prefill", prefill)
-//
-//            checkout.open(this, options)
-//
-//        } catch (e: Exception) {
-//            e.printStackTrace()
-//        }
-//    }
-//
-//    // Razorpay Success
-//    override fun onPaymentSuccess(razorpayPaymentId: String?) {
-//        Toast.makeText(this, "Payment Successful!", Toast.LENGTH_SHORT).show()
-//        addMoney(amountToAdd)  // wallet update
-//    }
-//
-//    // Razorpay Error
-//    override fun onPaymentError(code: Int, msg: String?) {
-//        Toast.makeText(this, "Payment Failed!", Toast.LENGTH_SHORT).show()
-//    }
-//
-//    // ---------- Existing Code (No changes below here) ----------
-//
-//    private fun fetchWalletBalance() {
-//        if (userId != null) {
-//            api.getWalletBalance(userId!!).enqueue(object : Callback<WalletBalanceResponse> {
-//                override fun onResponse(
-//                    call: Call<WalletBalanceResponse>,
-//                    response: Response<WalletBalanceResponse>
-//                ) {
-//                    if (response.isSuccessful) {
-//                        val balance = response.body()?.balance ?: 0.0
-//                        tvBalance.text = "Wallet Balance: ₹$balance"
-//                    }
-//                }
-//
-//                override fun onFailure(call: Call<WalletBalanceResponse>, t: Throwable) {
-//                    Toast.makeText(this@WalletActivity, "Error fetching balance", Toast.LENGTH_SHORT).show()
-//                }
-//            })
-//        }
-//    }
-//
-//    private fun fetchTransactions() {
-//        if (userId != null) {
-//            api.getWalletTransactions(userId!!).enqueue(object :
-//                Callback<List<WalletTransaction>> {
-//                override fun onResponse(call: Call<List<WalletTransaction>>, response: Response<List<WalletTransaction>>) {
-//                    if (response.isSuccessful) {
-//                        transactions.clear()
-//                        response.body()?.let { transactions.addAll(it) }
-//                        adapter.notifyDataSetChanged()
-//                    }
-//                }
-//
-//                override fun onFailure(call: Call<List<WalletTransaction>>, t: Throwable) {
-//                    Toast.makeText(this@WalletActivity, "Error fetching transactions", Toast.LENGTH_SHORT).show()
-//                }
-//            })
-//        }
-//    }
-//
-//    private fun addMoney(amount: Double) {
-//        val request = userId?.let { WalletActionRequest(it, amount) }
-//
-//        if (request != null) {
-//            api.addMoney(request).enqueue(object : Callback<WalletActionResponse> {
-//                override fun onResponse(call: Call<WalletActionResponse>, response: Response<WalletActionResponse>) {
-//                    if (response.isSuccessful) {
-//                        val newBalance = response.body()?.balance ?: 0.0
-//                        tvBalance.text = "Wallet Balance: ₹$newBalance"
-//                        fetchTransactions()
-//                        Toast.makeText(this@WalletActivity, "Money added", Toast.LENGTH_SHORT).show()
-//                    }
-//                }
-//
-//                override fun onFailure(call: Call<WalletActionResponse>, t: Throwable) {
-//                    Toast.makeText(this@WalletActivity, "Error adding money", Toast.LENGTH_SHORT).show()
-//                }
-//            })
-//        }
-//    }
-//}
-
-
 package com.example.groceryshoppingapp
 
 import android.app.AlertDialog
 import android.os.Bundle
-import android.widget.Button
-import android.widget.EditText
-import android.widget.TextView
-import android.widget.Toast
+import android.view.animation.AnimationUtils
+import android.widget.*
 import androidx.appcompat.app.AppCompatActivity
 import androidx.recyclerview.widget.LinearLayoutManager
-import androidx.recyclerview.widget.RecyclerView
 import com.example.groceryshoppingapp.adapters.WalletTransactionAdapter
-import com.example.groceryshoppingapp.models.WalletActionRequest
-import com.example.groceryshoppingapp.models.WalletActionResponse
 import com.example.groceryshoppingapp.models.WalletBalanceResponse
 import com.example.groceryshoppingapp.models.WalletTransaction
 import com.example.groceryshoppingapp.network.ApiService
@@ -391,20 +14,27 @@ import com.example.groceryshoppingapp.network.RetrofitClient
 import com.example.groceryshoppingapp.network.WalletOrderRequest
 import com.example.groceryshoppingapp.network.WalletOrderResponse
 import com.example.groceryshoppingapp.utils.SessionManager
+import com.google.android.material.bottomsheet.BottomSheetDialog
+import com.google.android.material.card.MaterialCardView
+import com.google.android.material.chip.ChipGroup
 import com.razorpay.Checkout
-import com.razorpay.PaymentResultListener
+import com.razorpay.PaymentData
+import com.razorpay.PaymentResultWithDataListener
 import retrofit2.Call
 import retrofit2.Callback
 import retrofit2.Response
 
-class WalletActivity : AppCompatActivity(), PaymentResultListener {
+class WalletActivity : AppCompatActivity(), PaymentResultWithDataListener {
 
     private lateinit var tvBalance: TextView
-    private lateinit var rvTransactions: RecyclerView
+    private lateinit var rvTransactions: androidx.recyclerview.widget.RecyclerView
     private lateinit var btnAddMoney: Button
-    private val transactions = mutableListOf<WalletTransaction>()
-    private lateinit var adapter: WalletTransactionAdapter
+    private lateinit var chipGroup: ChipGroup
 
+    private val transactions = mutableListOf<WalletTransaction>()
+    private val filteredList = mutableListOf<WalletTransaction>()
+
+    private lateinit var adapter: WalletTransactionAdapter
     private lateinit var api: ApiService
     private lateinit var paymentManager: PaymentManager
 
@@ -416,46 +46,105 @@ class WalletActivity : AppCompatActivity(), PaymentResultListener {
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_wallet)
 
+        // Razorpay preload
         Checkout.preload(applicationContext)
 
+        // Init API + Payment + Session
         api = RetrofitClient.getInstance(this).create(ApiService::class.java)
         paymentManager = PaymentManager(this)
-
         userId = SessionManager.getCustomerId(this)
+
+        // Bind UI
+
+        val walletBg = findViewById<LinearLayout>(R.id.walletCardBg)
+        val anim = AnimationUtils.loadAnimation(this, R.anim.wallet_glow)
+        walletBg.startAnimation(anim)
 
         tvBalance = findViewById(R.id.tvBalance)
         rvTransactions = findViewById(R.id.rvTransactions)
         btnAddMoney = findViewById(R.id.btnAddMoney)
+        chipGroup = findViewById(R.id.chipFilterGroup)
 
-        adapter = WalletTransactionAdapter(transactions)
+
+        // RecyclerView
+        adapter = WalletTransactionAdapter(filteredList) { tx ->
+            showTransactionDetails(tx)
+        }
+
         rvTransactions.layoutManager = LinearLayoutManager(this)
         rvTransactions.adapter = adapter
 
+        // Filters
+        setupFilterListeners()
+
+        // Load data
         fetchWalletBalance()
         fetchTransactions()
 
-        btnAddMoney.setOnClickListener {
-            openAddMoneyDialog()
-        }
+        // Add Money
+        btnAddMoney.setOnClickListener { openAddMoneyDialog() }
     }
+
+    // ------------------ FILTERS ------------------
+
+    private fun setupFilterListeners() {
+        chipGroup.setOnCheckedStateChangeListener { _, _ -> applyFilter() }
+    }
+
+    private fun applyFilter() {
+        val selectedId = chipGroup.checkedChipId
+        filteredList.clear()
+
+        when (selectedId) {
+            R.id.chipCredit ->
+                filteredList.addAll(transactions.filter { it.type.equals("Deposit", true) })
+
+            R.id.chipDebit ->
+                filteredList.addAll(transactions.filter { it.type.equals("Payment", true) })
+
+            R.id.chipRefund ->
+                filteredList.addAll(transactions.filter { it.type.equals("Refund", true) })
+
+            else -> filteredList.addAll(transactions)
+        }
+
+        adapter.notifyDataSetChanged()
+    }
+
+    // ------------------ BOTTOM SHEET DETAILS ------------------
+
+    private fun showTransactionDetails(tx: WalletTransaction) {
+        val view = layoutInflater.inflate(R.layout.bottomsheet_transaction_details, null)
+        val dialog = BottomSheetDialog(this)
+        dialog.setContentView(view)
+
+        view.findViewById<TextView>(R.id.tvType).text = tx.type
+        view.findViewById<TextView>(R.id.tvAmount).text = "₹${tx.amount}"
+        view.findViewById<TextView>(R.id.tvDate).text = tx.dateTime
+        view.findViewById<TextView>(R.id.tvOrderId).text = tx.orderId ?: "No Order Linked"
+
+        dialog.show()
+    }
+
+    // ------------------ ADD MONEY ------------------
 
     private fun openAddMoneyDialog() {
         val dialogView = layoutInflater.inflate(R.layout.dialog_add_money, null)
-        val etAmount = dialogView.findViewById<EditText>(R.id.etAddAmount)
+        val input = dialogView.findViewById<EditText>(R.id.etAddAmount)
 
         AlertDialog.Builder(this)
             .setTitle("Add Money")
             .setView(dialogView)
             .setPositiveButton("Add") { _, _ ->
-                val input = etAmount.text.toString()
-                if (input.isEmpty()) {
-                    Toast.makeText(this, "Enter valid amount", Toast.LENGTH_SHORT).show()
+                val value = input.text.toString()
+
+                if (value.isEmpty()) {
+                    Toast.makeText(this, "Enter amount", Toast.LENGTH_SHORT).show()
                     return@setPositiveButton
                 }
 
-                amountToAdd = try {
-                    input.toDouble()
-                } catch (e: Exception) {
+                amountToAdd = value.toDoubleOrNull() ?: 0.0
+                if (amountToAdd <= 0) {
                     Toast.makeText(this, "Invalid amount", Toast.LENGTH_SHORT).show()
                     return@setPositiveButton
                 }
@@ -466,127 +155,76 @@ class WalletActivity : AppCompatActivity(), PaymentResultListener {
             .show()
     }
 
+    // ------------------ CREATE ORDER ------------------
+
     private fun createBackendOrder(amount: Double) {
-        val uid = userId ?: run {
-            Toast.makeText(this, "User not logged in", Toast.LENGTH_SHORT).show()
-            return
-        }
+        api.createWalletOrder(WalletOrderRequest(userId!!, amount))
+            .enqueue(object : Callback<WalletOrderResponse> {
 
-        val request = WalletOrderRequest(
-            user_id = uid,
-            amount = amount
-        )
-
-        api.createWalletOrder(request).enqueue(object : Callback<WalletOrderResponse> {
-            override fun onResponse(
-                call: Call<WalletOrderResponse>,
-                resp: Response<WalletOrderResponse>
-            ) {
-                if (resp.isSuccessful) {
-                    val body = resp.body()
-                    if (body == null) {
-                        Toast.makeText(this@WalletActivity, "Invalid response", Toast.LENGTH_SHORT).show()
+                override fun onResponse(call: Call<WalletOrderResponse>, resp: Response<WalletOrderResponse>) {
+                    if (!resp.isSuccessful) {
+                        Toast.makeText(this@WalletActivity, "Error creating order", Toast.LENGTH_SHORT).show()
                         return
                     }
 
+                    val body = resp.body() ?: return
                     backendOrderId = body.backend_order_id
-                    val razorpayOrderId = body.razorpay_order_id
 
-                    paymentManager.startRazorpayCheckout(
-                        "Wallet Recharge",
-                        amountToAdd,
-                        razorpayOrderId
-                    )
-
-                } else {
-                    Toast.makeText(this@WalletActivity, "Order creation failed", Toast.LENGTH_SHORT).show()
+                    paymentManager.startWalletTopUp(amount, body.razorpay_order_id)
                 }
-            }
 
-            override fun onFailure(call: Call<WalletOrderResponse>, t: Throwable) {
-                Toast.makeText(this@WalletActivity, "Error: ${t.message}", Toast.LENGTH_SHORT).show()
-            }
-        })
+                override fun onFailure(call: Call<WalletOrderResponse>, t: Throwable) {
+                    Toast.makeText(this@WalletActivity, "Network error", Toast.LENGTH_SHORT).show()
+                }
+            })
     }
 
-    override fun onPaymentSuccess(paymentId: String?) {
+    // ------------------ RAZORPAY CALLBACKS ------------------
+
+    override fun onPaymentSuccess(paymentId: String?, data: PaymentData?) {
         paymentManager.verifyPayment(
             backendOrderId,
             paymentId,
-            PaymentManager.lastRazorpayOrderId,
-            PaymentManager.lastSignature
+            data?.orderId,
+            data?.signature
         )
     }
 
-    override fun onPaymentError(code: Int, msg: String?) {
-        Toast.makeText(this, "Payment Failed: $msg", Toast.LENGTH_SHORT).show()
+    override fun onPaymentError(code: Int, msg: String?, data: PaymentData?) {
+        Toast.makeText(this, "Payment Failed", Toast.LENGTH_SHORT).show()
     }
 
     fun onPaymentVerified() {
-        val uid = userId ?: return
-        val request = WalletActionRequest(user_id = uid, amount = amountToAdd)
-
-        api.addMoney(request).enqueue(object : Callback<WalletActionResponse> {
-            override fun onResponse(
-                call: Call<WalletActionResponse>,
-                response: Response<WalletActionResponse>
-            ) {
-                if (response.isSuccessful) {
-                    val newBalance = response.body()?.balance ?: 0.0
-                    tvBalance.text = "Wallet Balance: ₹$newBalance"
-                    fetchTransactions()
-                    Toast.makeText(
-                        this@WalletActivity,
-                        "Wallet topped up ₹$amountToAdd",
-                        Toast.LENGTH_SHORT
-                    ).show()
-                } else {
-                    Toast.makeText(this@WalletActivity, "Failed to update wallet", Toast.LENGTH_SHORT).show()
-                }
-            }
-
-            override fun onFailure(call: Call<WalletActionResponse>, t: Throwable) {
-                Toast.makeText(this@WalletActivity, "Error updating wallet: ${t.message}", Toast.LENGTH_SHORT).show()
-            }
-        })
+        fetchWalletBalance()
+        fetchTransactions()
+        Toast.makeText(this, "Wallet updated successfully", Toast.LENGTH_SHORT).show()
     }
+
+    // ------------------ FETCH BALANCE ------------------
 
     private fun fetchWalletBalance() {
-        val uid = userId ?: return
-        api.getWalletBalance(uid).enqueue(object : Callback<WalletBalanceResponse> {
-            override fun onResponse(
-                call: Call<WalletBalanceResponse>,
-                response: Response<WalletBalanceResponse>
-            ) {
-                if (response.isSuccessful) {
-                    val balance = response.body()?.balance ?: 0.0
-                    tvBalance.text = "Wallet Balance: ₹$balance"
-                }
+        api.getWalletBalance(userId!!).enqueue(object : Callback<WalletBalanceResponse> {
+
+            override fun onResponse(call: Call<WalletBalanceResponse>, resp: Response<WalletBalanceResponse>) {
+                tvBalance.text = "₹${resp.body()?.balance ?: 0.0}"
             }
 
-            override fun onFailure(call: Call<WalletBalanceResponse>, t: Throwable) {
-                Toast.makeText(this@WalletActivity, "Error fetching balance", Toast.LENGTH_SHORT).show()
-            }
+            override fun onFailure(call: Call<WalletBalanceResponse>, t: Throwable) {}
         })
     }
 
+    // ------------------ FETCH TRANSACTIONS ------------------
+
     private fun fetchTransactions() {
-        val uid = userId ?: return
-        api.getWalletTransactions(uid).enqueue(object : Callback<List<WalletTransaction>> {
-            override fun onResponse(
-                call: Call<List<WalletTransaction>>,
-                response: Response<List<WalletTransaction>>
-            ) {
-                if (response.isSuccessful) {
-                    transactions.clear()
-                    response.body()?.let { transactions.addAll(it) }
-                    adapter.notifyDataSetChanged()
-                }
+        api.getWalletTransactions(userId!!).enqueue(object : Callback<List<WalletTransaction>> {
+
+            override fun onResponse(call: Call<List<WalletTransaction>>, resp: Response<List<WalletTransaction>>) {
+                transactions.clear()
+                resp.body()?.let { transactions.addAll(it) }
+                applyFilter()
             }
 
-            override fun onFailure(call: Call<List<WalletTransaction>>, t: Throwable) {
-                Toast.makeText(this@WalletActivity, "Error fetching transactions", Toast.LENGTH_SHORT).show()
-            }
+            override fun onFailure(call: Call<List<WalletTransaction>>, t: Throwable) {}
         })
     }
 }

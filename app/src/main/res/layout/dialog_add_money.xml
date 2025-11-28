@@ -2,25 +2,28 @@
 <LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
     android:padding="20dp"
     android:orientation="vertical"
+    android:background="@drawable/bg_dialog_neon"
     android:layout_width="match_parent"
     android:layout_height="wrap_content">
 
     <TextView
         android:id="@+id/tvAddMoneyTitle"
-        android:layout_width="wrap_content"
+        android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:text="Enter Amount"
-        android:textSize="16sp"
+        android:text="Add money to wallet"
         android:textStyle="bold"
-        android:layout_marginBottom="10dp"/>
+        android:textSize="16sp"
+        android:textColor="@android:color/white"
+        android:layout_marginBottom="10dp" />
 
     <EditText
         android:id="@+id/etAddAmount"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:hint="Amount"
+        android:hint="Enter amount (₹)"
         android:inputType="numberDecimal"
         android:padding="10dp"
-        android:background="@android:drawable/edit_text" />
-
+        android:textColor="@android:color/white"
+        android:textColorHint="#80FFFFFF"
+        android:background="@drawable/bg_dialog_input_neon" />
 </LinearLayout>

@@ -27,16 +27,39 @@ class OrderManager(private val activity: OrderConfirmActivity) {
         )
 
         apiService.createOrder(orderData).enqueue(object : Callback<Map<String, Any>> {
-            override fun onResponse(call: Call<Map<String, Any>>, response: Response<Map<String, Any>>) {
+
+             override fun onResponse(call: Call<Map<String, Any>>, response: Response<Map<String, Any>>) {
+
                 if (response.isSuccessful && response.body() != null) {
+
                     val body = response.body()!!
                     val backendOrderId = body["order_id"] as? String
                     val razorpayOrderId = body["razorpay_order_id"] as? String
+
                     activity.onOrderPlacedSuccess(backendOrderId, razorpayOrderId, paymentMethod)
-                } else {
-                    activity.onOrderPlacedError("Failed to place order. Try again!")
+                    return
                 }
+
+                // ❗ read backend error JSON
+                val errorText = response.errorBody()?.string()
+
+                if (!errorText.isNullOrEmpty()) {
+
+                    when {
+                        "Insufficient wallet balance" in errorText -> {
+                            activity.onOrderPlacedError("Wallet balance is low.\nPlease recharge or change payment method.")
+                            return
+                        }
+                        "User not found" in errorText -> {
+                            activity.onOrderPlacedError("Session expired. Please login again.")
+                            return
+                        }
+                    }
+                }
+
+                activity.onOrderPlacedError("Failed to place order. Try again!")
             }
+
 
             override fun onFailure(call: Call<Map<String, Any>>, t: Throwable) {
                 activity.onOrderPlacedError("Network error: ${t.message}")

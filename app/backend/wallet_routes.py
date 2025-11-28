@@ -5,6 +5,11 @@ import uuid
 from google.cloud import firestore
 import razorpay
 import os
+import firebase_db
+
+import logging
+logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
+logger = logging.getLogger("order_api")
 wallet_bp = Blueprint("wallet", __name__)
 
 
@@ -15,16 +20,34 @@ razorpay_client = razorpay.Client(auth=(RAZORPAY_KEY_ID, RAZORPAY_KEY_SECRET))
 def get_user_ref(user_id):
     return db.collection("users").document(user_id)
 
-def get_transactions_ref():
-    return db.collection("transactions")
 
-# Get wallet balance
 @wallet_bp.route("/wallet/<user_id>", methods=["GET"])
 def get_wallet_balance(user_id):
-    user = get_user_ref(user_id).get()
-    if not user.exists:
-        return jsonify({"error": "User not found"}), 404
-    return jsonify({"balance": user.to_dict().get("wallet_balance", 0.0)})
+
+    # STEP 1 — Try Firestore doc ID
+    user_ref = db.collection("users").document(user_id)
+    snap = user_ref.get()
+
+    if not snap.exists:
+        # STEP 2 — Try fallback using customerId
+        fallback = db.collection("users").where("customerId", "==", user_id).get()
+
+        if len(fallback) == 0:
+            return jsonify({"error": "User not found"}), 404
+
+        snap = fallback[0]
+        user_ref = snap.reference
+        logger.info(f"⚠️ Using fallback customerId for balance: {user_ref.id}")
+
+
+    data = snap.to_dict()
+    balance = float(data.get("wallet_balance", 0.0))
+
+    return jsonify({
+        "balance": balance,
+        "success": True
+    })
+
 
 # Add money (deposit)
 @wallet_bp.route("/wallet/add", methods=["POST"])
@@ -33,24 +56,41 @@ def add_money():
     user_id = data["user_id"]
     amount = float(data["amount"])
 
+    # --- STEP 1: Try primary Firestore ID (id field) ---
     user_ref = get_user_ref(user_id)
     user = user_ref.get()
-    if not user.exists:
-        return jsonify({"error": "User not found"}), 404
 
-    new_balance = user.to_dict().get("wallet_balance", 0.0) + amount
+    # --- STEP 2: If not found, try legacy customerId fallback ---
+    if not user.exists:
+        # search for old `customerId` field
+        fallback_users = db.collection("users").where("customerId", "==", user_id).get()
+
+        if len(fallback_users) == 0:
+            return jsonify({"error": "User not found"}), 404
+
+        # take the first match
+        user = fallback_users[0]
+        user_ref = user.reference
+        logger.info(f"⚠️ Using fallback customerId user: {user_ref.id}")
+
+    # --- STEP 3: Now safe to update wallet ---
+    user_data = user.to_dict()
+    new_balance = float(user_data.get("wallet_balance", 0.0)) + amount
+
     user_ref.update({"wallet_balance": new_balance})
 
-    # Add transaction
+    # --- STEP 4: Add wallet transaction ---
     tx_id = str(uuid.uuid4())
     get_transactions_ref().document(tx_id).set({
-        "userId": user_id,
+        "userId": user_ref.id,  # ALWAYS use real Firestore ID
         "type": "Deposit",
         "amount": amount,
         "dateTime": datetime.utcnow(),
         "orderId": None
     })
-    return jsonify({"balance": new_balance})
+
+    return jsonify({"balance": new_balance, "success": True})
+
 
 # Pay for order
 @wallet_bp.route("/wallet/pay", methods=["POST"])
@@ -82,33 +122,74 @@ def pay_order():
     })
     return jsonify({"balance": new_balance})
 
-# Refund to wallet
+
+
+
+def get_transactions_ref():
+    return firebase_db.db.collection("transactions")
+
+
 @wallet_bp.route("/wallet/refund", methods=["POST"])
 def refund():
-    data = request.json
-    user_id = data["user_id"]
-    amount = float(data["amount"])
-    order_id = data.get("order_id")
+    try:
+        data = request.json or {}
+        firestore_id = data.get("user_id")      # Firestore user document ID
+        customerId = data.get("customerId")      # App's customerId
+        amount = float(data.get("amount", 0))
+        order_id = data.get("order_id")
 
-    user_ref = get_user_ref(user_id)
-    user = user_ref.get()
-    if not user.exists:
-        return jsonify({"error": "User not found"}), 404
+        if not firestore_id or amount <= 0:
+            return jsonify({"error": "Invalid refund request"}), 400
 
-    new_balance = user.to_dict().get("wallet_balance", 0.0) + amount
-    user_ref.update({"wallet_balance": new_balance})
+        # -----------------------------------------
+        #  GET USER
+        # -----------------------------------------
+        user_ref = firebase_db.db.collection("users").document(firestore_id)
+        snap = user_ref.get()
 
-    tx_id = str(uuid.uuid4())
-    get_transactions_ref().document(tx_id).set({
-        "userId": user_id,
-        "type": "Refund",
-        "amount": amount,
-        "dateTime": datetime.utcnow(),
-        "orderId": order_id
-    })
-    return jsonify({"balance": new_balance})
+        if not snap.exists:
+            return jsonify({"error": "User not found"}), 404
 
-# Transaction history
+        user_data = snap.to_dict()
+
+        # -----------------------------------------
+        #  UPDATE WALLET BALANCE
+        # -----------------------------------------
+        new_balance = float(user_data.get("wallet_balance", 0)) + amount
+        user_ref.update({"wallet_balance": new_balance})
+
+        # -----------------------------------------
+        #  CREATE TRANSACTION RECORD
+        # -----------------------------------------
+        tx_id = str(uuid.uuid4())
+
+        firebase_db.db.collection("transactions").document(tx_id).set({
+                                "userId": customerId,
+                                "type": "Refund",
+                                "amount": amount,
+                                "dateTime": datetime.utcnow(),
+                                "orderId": order_id,
+                                "payment_type": "Wallet"
+                            })
+
+
+        #logger.info(f"💰 /wallet/refund SUCCESS → +₹{amount} → user={firestore_id}")
+        logger.info(f"💰 /wallet/refund to → +₹{amount} → user={customerId}")
+
+        return jsonify({
+            "success": True,
+            "balance": new_balance,
+            "transaction_id": tx_id
+        }), 200
+
+    except Exception as e:
+        logger.info(f"[ERROR] /wallet/refund crashed: {e}")
+        return jsonify({"error": "Refund failed"}), 500
+
+
+
+
+
 @wallet_bp.route("/wallet/transactions/<user_id>", methods=["GET"])
 def transaction_history(user_id):
     tx_ref = get_transactions_ref().where("userId", "==", user_id).order_by("dateTime", direction=firestore.Query.DESCENDING)
@@ -119,6 +200,7 @@ def transaction_history(user_id):
         data["dateTime"] = data["dateTime"].isoformat()
         tx_list.append(data)
     return jsonify(tx_list)
+
 
 @wallet_bp.route("/create_wallet_order", methods=["POST"])
 def create_wallet_order():
@@ -174,27 +256,42 @@ def verify_wallet_payment():
     except:
         return jsonify({"success": False, "message": "Signature verification failed"}), 400
 
-    # 🎉 Save success in DB
+    # fetch backend order
     order_ref = db.collection("wallet_orders").document(backend_order_id)
     order_data = order_ref.get().to_dict()
 
-    user_id = order_data["user_id"]
-    amount = order_data["amount"]
+    if not order_data:
+        return jsonify({"success": False, "message": "Order not found"}), 404
 
-    # update Firestore order status
+    user_id = order_data.get("user_id")
+    amount = order_data.get("amount", 0.0)
+
+    # fetch user
+    # user_ref = db.collection("users").document(user_id)
+    # user_doc = user_ref.get().to_dict()
+    users = db.collection("users").where("customerId", "==", user_id).get()
+
+    if len(users) == 0:
+        return jsonify({"success": False, "message": "User not found"}), 404
+
+    user_ref = users[0].reference
+    user_doc = users[0].to_dict()
+
+
+    if not user_doc:
+        return jsonify({"success": False, "message": "User not found in database"}), 404
+
+    # update wallet
+    new_balance = float(user_doc.get("wallet_balance", 0.0)) + float(amount)
+    user_ref.update({"wallet_balance": new_balance})
+
+    # update order status
     order_ref.update({
         "status": "paid",
         "payment_id": razorpay_payment_id
     })
 
-    # add money to wallet
-    user_ref = db.collection("users").document(user_id)
-    user_doc = user_ref.get().to_dict()
-    new_balance = user_doc.get("wallet_balance", 0.0) + amount
-
-    user_ref.update({"wallet_balance": new_balance})
-
-    # Add transaction
+    # transaction entry
     tx_id = str(uuid.uuid4())
     db.collection("transactions").document(tx_id).set({
         "userId": user_id,
