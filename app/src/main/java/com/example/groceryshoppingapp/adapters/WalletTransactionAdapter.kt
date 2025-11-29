@@ -18,10 +18,14 @@ class WalletTransactionAdapter(
 
         fun bind(tx: WalletTransaction) {
 
+            val typeLower = tx.type.lowercase()
+
+            // Default
             binding.tvTransactionType.text = tx.type
             binding.tvTransactionDate.text = tx.dateTime
 
-            when (tx.type.lowercase()) {
+            when (typeLower) {
+
                 "deposit" -> {
                     binding.imgType.setImageResource(R.drawable.credit_icon)
                     binding.tvTransactionAmount.setTextColor(Color.parseColor("#4CAF50"))
@@ -38,6 +42,21 @@ class WalletTransactionAdapter(
                     binding.imgType.setImageResource(R.drawable.refund_icon)
                     binding.tvTransactionAmount.setTextColor(Color.parseColor("#7C4DFF"))
                     binding.tvTransactionAmount.text = "+₹${tx.amount}"
+                }
+
+                // 🟧 NEW — PARTIAL REFUND
+                "partial refund" -> {
+                    binding.imgType.setImageResource(R.drawable.refund_icon)
+
+                    val orange = Color.parseColor("#FF9800")
+
+                    binding.tvTransactionAmount.setTextColor(orange)
+                    binding.tvTransactionType.setTextColor(orange)
+
+                    binding.tvTransactionAmount.text = "+₹${tx.amount}"
+
+                    binding.tvTransactionType.text =
+                        "Partial Refund (Order ${tx.orderId?.take(8) ?: ""})"
                 }
             }
 

@@ -1,13 +1,14 @@
-from flask import Blueprint, request, jsonify
-from firebase_db import db
-from datetime import datetime
-import uuid
-from google.cloud import firestore
-import razorpay
-import os
-import firebase_db
-
 import logging
+import os
+import razorpay
+import uuid
+from datetime import datetime
+from flask import Blueprint, request, jsonify
+from google.cloud import firestore
+
+import firebase_db
+from firebase_db import db
+
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
 logger = logging.getLogger("order_api")
 wallet_bp = Blueprint("wallet", __name__)
@@ -133,6 +134,7 @@ def get_transactions_ref():
 def refund():
     try:
         data = request.json or {}
+
         firestore_id = data.get("user_id")      # Firestore user document ID
         customerId = data.get("customerId")      # App's customerId
         amount = float(data.get("amount", 0))
@@ -153,41 +155,54 @@ def refund():
         user_data = snap.to_dict()
 
         # -----------------------------------------
+        #  CHECK PARTIAL REFUND FLAG (FULL FIX)
+        # -----------------------------------------
+        raw_partial = data.get("is_partial")
+
+        is_partial = False
+        if isinstance(raw_partial, bool):
+            is_partial = raw_partial
+        elif isinstance(raw_partial, str):
+            is_partial = raw_partial.lower() == "true"
+        else:
+            is_partial = False
+
+        refund_type = "Partial Refund" if is_partial else "Refund"
+
+        # -----------------------------------------
         #  UPDATE WALLET BALANCE
         # -----------------------------------------
         new_balance = float(user_data.get("wallet_balance", 0)) + amount
         user_ref.update({"wallet_balance": new_balance})
 
         # -----------------------------------------
-        #  CREATE TRANSACTION RECORD
+        #  CREATE TRANSACTION LOG
         # -----------------------------------------
         tx_id = str(uuid.uuid4())
 
         firebase_db.db.collection("transactions").document(tx_id).set({
-                                "userId": customerId,
-                                "type": "Refund",
-                                "amount": amount,
-                                "dateTime": datetime.utcnow(),
-                                "orderId": order_id,
-                                "payment_type": "Wallet"
-                            })
+            "userId": customerId,
+            "type": refund_type,            # <-- FIXED HERE
+            "amount": amount,
+            "dateTime": datetime.utcnow(),
+            "orderId": order_id,
+            "payment_type": "Wallet"
+        })
 
-
-        #logger.info(f"💰 /wallet/refund SUCCESS → +₹{amount} → user={firestore_id}")
-        logger.info(f"💰 /wallet/refund to → +₹{amount} → user={customerId}")
+        logger.info(
+            f"💰 /wallet/refund ({refund_type}) → +₹{amount} → user={customerId}"
+        )
 
         return jsonify({
             "success": True,
             "balance": new_balance,
-            "transaction_id": tx_id
+            "transaction_id": tx_id,
+            "refund_type": refund_type
         }), 200
 
     except Exception as e:
         logger.info(f"[ERROR] /wallet/refund crashed: {e}")
         return jsonify({"error": "Refund failed"}), 500
-
-
-
 
 
 @wallet_bp.route("/wallet/transactions/<user_id>", methods=["GET"])

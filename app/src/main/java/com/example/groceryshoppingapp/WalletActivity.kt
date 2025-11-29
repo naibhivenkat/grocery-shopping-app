@@ -1,5 +1,6 @@
 package com.example.groceryshoppingapp
 
+import android.annotation.SuppressLint
 import android.app.AlertDialog
 import android.os.Bundle
 import android.view.animation.AnimationUtils
@@ -23,6 +24,7 @@ import com.razorpay.PaymentResultWithDataListener
 import retrofit2.Call
 import retrofit2.Callback
 import retrofit2.Response
+import android.graphics.Color
 
 class WalletActivity : AppCompatActivity(), PaymentResultWithDataListener {
 
@@ -103,7 +105,13 @@ class WalletActivity : AppCompatActivity(), PaymentResultWithDataListener {
                 filteredList.addAll(transactions.filter { it.type.equals("Payment", true) })
 
             R.id.chipRefund ->
-                filteredList.addAll(transactions.filter { it.type.equals("Refund", true) })
+                filteredList.addAll(
+                    transactions.filter {
+                        it.type.equals("Refund", true) ||
+                                it.type.equals("Partial Refund", true)
+                    }
+                )
+
 
             else -> filteredList.addAll(transactions)
         }
@@ -111,20 +119,42 @@ class WalletActivity : AppCompatActivity(), PaymentResultWithDataListener {
         adapter.notifyDataSetChanged()
     }
 
-    // ------------------ BOTTOM SHEET DETAILS ------------------
-
+    @SuppressLint("SetTextI18n")
     private fun showTransactionDetails(tx: WalletTransaction) {
         val view = layoutInflater.inflate(R.layout.bottomsheet_transaction_details, null)
         val dialog = BottomSheetDialog(this)
         dialog.setContentView(view)
 
-        view.findViewById<TextView>(R.id.tvType).text = tx.type
-        view.findViewById<TextView>(R.id.tvAmount).text = "₹${tx.amount}"
-        view.findViewById<TextView>(R.id.tvDate).text = tx.dateTime
-        view.findViewById<TextView>(R.id.tvOrderId).text = tx.orderId ?: "No Order Linked"
+        val tvType = view.findViewById<TextView>(R.id.tvType)
+        val tvAmount = view.findViewById<TextView>(R.id.tvAmount)
+        val tvDate = view.findViewById<TextView>(R.id.tvDate)
+        val tvOrderId = view.findViewById<TextView>(R.id.tvOrderId)
+
+        // Set common fields
+        tvType.text = tx.type
+        tvAmount.text = "₹${tx.amount}"
+        tvDate.text = tx.dateTime
+        tvOrderId.text = tx.orderId ?: "No Order Linked"
+
+        // --------------------------------------------
+        // 🔥 Highlight Partial Refund in ORANGE
+        // --------------------------------------------
+        if (tx.type.equals("Partial Refund", true)) {
+            val orange = Color.parseColor("#FF9800")
+
+            tvType.setTextColor(orange)
+            tvAmount.setTextColor(orange)
+
+            // Format text nicely
+            tvType.text = "Partial Refund"
+        }
+
+        // (Normal refund shows purple in the list, but here it stays default)
+        // --------------------------------------------
 
         dialog.show()
     }
+
 
     // ------------------ ADD MONEY ------------------
 

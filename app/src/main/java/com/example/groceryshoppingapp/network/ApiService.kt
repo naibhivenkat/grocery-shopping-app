@@ -1,30 +1,36 @@
 package com.example.groceryshoppingapp.network
 
 import com.example.groceryshoppingapp.models.AddItemsRequest
-import com.example.groceryshoppingapp.models.*
+import com.example.groceryshoppingapp.models.CartItem
+import com.example.groceryshoppingapp.models.CreateOrderRequest
+import com.example.groceryshoppingapp.models.GenericResponse
+import com.example.groceryshoppingapp.models.GetItemsResponse
+import com.example.groceryshoppingapp.models.GetShopResponse
+import com.example.groceryshoppingapp.models.LoginRequest
+import com.example.groceryshoppingapp.models.LoginResponse
+import com.example.groceryshoppingapp.models.Order
+import com.example.groceryshoppingapp.models.RegisterResponse
+import com.example.groceryshoppingapp.models.Shop
+import com.example.groceryshoppingapp.models.WalletActionRequest
+import com.example.groceryshoppingapp.models.WalletActionResponse
+import com.example.groceryshoppingapp.models.WalletBalanceResponse
+import com.example.groceryshoppingapp.models.WalletTransaction
+import okhttp3.ResponseBody
 import retrofit2.Call
 import retrofit2.http.Body
+import retrofit2.http.DELETE
+import retrofit2.http.Field
+import retrofit2.http.FormUrlEncoded
 import retrofit2.http.GET
+import retrofit2.http.Header
+import retrofit2.http.PATCH
+import retrofit2.http.POST
+import retrofit2.http.PUT
 import retrofit2.http.Path
 import retrofit2.http.Query
-import retrofit2.http.POST
-import retrofit2.http.FormUrlEncoded
-import retrofit2.http.Field
-import retrofit2.http.PATCH
-import okhttp3.ResponseBody
-import retrofit2.http.DELETE
-import retrofit2.http.PUT
-import retrofit2.http.Header
-import com.example.groceryshoppingapp.models.WalletTransaction
-import com.example.groceryshoppingapp.models.WalletActionResponse
-import com.example.groceryshoppingapp.models.WalletActionRequest
-import com.example.groceryshoppingapp.models.WalletBalanceResponse
+
 interface ApiService {
-    @PATCH("api/orders/{order_id}")
-    fun updateOrder(
-        @Path("order_id") orderId: String,
-        @Body body: Map<String, String>
-    ): Call<Map<String, Any>>
+
 
 
     @POST("api/update_order_status")
@@ -33,7 +39,7 @@ interface ApiService {
     ): Call<Map<String, Any>>
 
 
-    @GET("api/orders/{uuid}")
+    @GET("api/get_order_details/{uuid}") // TODO: CHANGED
     fun getOrderById(@Path("uuid") uuid: String): Call<Order>
 
     @GET("api/shops")
@@ -59,7 +65,7 @@ interface ApiService {
     ): Call<ApiResponse>
 
     // Original per‑shop endpoint (can still be used)
-    @GET("api/orders/shopkeeper/{shop_id}")
+    @GET("api/get_shopkeeper_orders/shopkeeper/{shop_id}") // TODO : CHANGED
     fun getShopOrders(
         @Path("shop_id") shopId: String
     ): Call<List<Order>>
@@ -80,7 +86,7 @@ interface ApiService {
     @POST("login")
     fun login(@Body request: LoginRequest): Call<LoginResponse>
 
-    @GET("api/orders/customer/{customerId}")
+    @GET("api/get_customers_orders/customer/{customerId}") // TODO : CHANGED
     fun getCustomerOrders(
         @Path("customerId") customerId: String
     ): Call<List<Order>>
@@ -140,7 +146,7 @@ interface ApiService {
     @POST("update_password")
     fun updatePassword(@Body data: Map<String, String>): Call<GenericResponse>
 
-    @POST("api/orders")
+    @POST("api/place_orders")  // TODO : CHANGED
     fun createOrder(@Body body: CreateOrderRequest): Call<Map<String, Any>>
 
     // 🔹 Verify payment endpoint
@@ -197,6 +203,7 @@ interface ApiService {
 
     @POST("/verify_wallet_payment")
     fun verifyWalletPayment(@Body data: WalletVerifyRequest): Call<Map<String, Any>>
+
 
 
 

@@ -1,7 +1,6 @@
 package com.example.groceryshoppingapp
 
 import android.content.Intent
-import android.net.Uri
 import android.os.Build
 import android.os.Bundle
 import android.view.View
@@ -37,7 +36,10 @@ class OrderDetailActivity : AppCompatActivity() {
     private lateinit var recyclerItems: RecyclerView
     private lateinit var textShopName: TextView
     private lateinit var textCreatedAt: TextView
-    private lateinit var btnViewInvoice: Button   // 👈 NEW
+    private lateinit var btnViewInvoice: Button
+
+    // 🔥 ADDED: partial refund section UI
+    private lateinit var textPartialRefund: TextView
 
     private lateinit var adapter: OrderItemAdapter
 
@@ -62,7 +64,11 @@ class OrderDetailActivity : AppCompatActivity() {
         btnUpdateStatus = findViewById(R.id.btn_update_status)
         btnRefresh = findViewById(R.id.btn_refresh)
         btnSaveItems = findViewById(R.id.btn_save_items)
-        btnViewInvoice = findViewById(R.id.btn_invoice)   // 👈 NEW
+        btnViewInvoice = findViewById(R.id.btn_invoice)
+
+        // 🔥 ADDED: get reference to new TextView
+        textPartialRefund = findViewById(R.id.text_partial_refund)
+
         val btnBack = findViewById<Button>(R.id.btn_back)
 
         order = intent.getParcelableExtra("order")!!
@@ -75,14 +81,12 @@ class OrderDetailActivity : AppCompatActivity() {
         btnUpdateStatus.setOnClickListener { updateOrderStatus() }
         btnSaveItems.setOnClickListener { saveItemChanges() }
 
-
+        // Invoice page
         btnViewInvoice.setOnClickListener {
             val intent = Intent(this, InvoiceViewActivity::class.java)
             intent.putExtra("order_id", order.orderUuid)
             startActivity(intent)
         }
-
-
     }
 
     override fun onDestroy() {
@@ -97,7 +101,9 @@ class OrderDetailActivity : AppCompatActivity() {
     private fun setupUI() {
         updateStatusText(order.status)
 
-        val isShopOwner = SessionManager.getRole(this) == "shopowner"
+        val role = SessionManager.getRole(this)
+        val isShopOwner = role == "shopowner" || role == "shopkeeper"
+
         adapter = OrderItemAdapter(order.items.toMutableList(), isShopOwner)
         recyclerItems.layoutManager = LinearLayoutManager(this)
         recyclerItems.adapter = adapter
@@ -108,16 +114,16 @@ class OrderDetailActivity : AppCompatActivity() {
             textPayment.visibility = View.VISIBLE
         } ?: run { textPayment.visibility = View.GONE }
 
-        // 👇 Show View Invoice only for customers + delivered orders
+        // Show invoice button only to customer
         if (!isShopOwner && order.status.equals("delivered", ignoreCase = true)) {
             btnViewInvoice.visibility = View.VISIBLE
             btnViewInvoice.isEnabled = true
-            btnViewInvoice.setBackgroundColor(getColor(android.R.color.holo_green_dark))
         } else {
             btnViewInvoice.visibility = View.GONE
         }
 
-
+        // 🔥🔥 ADDED: show partial refund breakdown
+        showPartialRefundUI()
 
         if (isShopOwner) {
             spinnerStatus.visibility = View.VISIBLE
@@ -133,18 +139,37 @@ class OrderDetailActivity : AppCompatActivity() {
             if (currentIndex >= 0) spinnerStatus.setSelection(currentIndex)
 
             spinnerStatus.onItemSelectedListener = object : AdapterView.OnItemSelectedListener {
-                override fun onItemSelected(
-                    parent: AdapterView<*>,
-                    view: View?,
-                    pos: Int,
-                    id: Long
-                ) {
-                    editCancelMsg.visibility =
-                        if (options[pos] == "Cancelled") View.VISIBLE else View.GONE
+                override fun onItemSelected(parent: AdapterView<*>, view: View?, pos: Int, id: Long) {
+                    editCancelMsg.visibility = if (options[pos] == "Cancelled") View.VISIBLE else View.GONE
                 }
 
                 override fun onNothingSelected(parent: AdapterView<*>) {}
             }
+        } else {
+            spinnerStatus.visibility = View.GONE
+            btnUpdateStatus.visibility = View.GONE
+            btnSaveItems.visibility = View.GONE
+        }
+    }
+
+    // 🔥🔥 ADDED FUNCTION — displays partial refund
+    private fun showPartialRefundUI() {
+
+        val refund = order.partialRefundAmount
+        val shortages = order.shortageItems
+
+        if (refund != null && refund > 0) {
+            var text = "Partial Refund: ₹$refund\n"
+
+            shortages?.forEach { s ->
+                text += "\n• ${s.name ?: "Item"}: Ordered ${s.orderedQty}, Delivered ${s.deliveredQty}, Refund ₹${s.refundAmount}"
+            }
+
+            textPartialRefund.text = text
+            textPartialRefund.visibility = View.VISIBLE
+
+        } else {
+            textPartialRefund.visibility = View.GONE
         }
     }
 
@@ -206,28 +231,16 @@ class OrderDetailActivity : AppCompatActivity() {
                     if (response.isSuccessful) {
                         order = response.body()!!
                         setupUI()
-                        Toast.makeText(
-                            this@OrderDetailActivity,
-                            "Order refreshed",
-                            Toast.LENGTH_SHORT
-                        ).show()
+                        Toast.makeText(this@OrderDetailActivity, "Order refreshed", Toast.LENGTH_SHORT).show()
                     } else {
-                        Toast.makeText(
-                            this@OrderDetailActivity,
-                            "Failed to refresh order",
-                            Toast.LENGTH_SHORT
-                        ).show()
+                        Toast.makeText(this@OrderDetailActivity, "Failed to refresh order", Toast.LENGTH_SHORT).show()
                     }
                 }
             }
 
             override fun onFailure(call: Call<Order>, t: Throwable) {
                 if (!isFinishing && !isDestroyed) {
-                    Toast.makeText(
-                        this@OrderDetailActivity,
-                        "Error: ${t.message}",
-                        Toast.LENGTH_SHORT
-                    ).show()
+                    Toast.makeText(this@OrderDetailActivity, "Error: ${t.message}", Toast.LENGTH_SHORT).show()
                 }
             }
         })
@@ -235,51 +248,37 @@ class OrderDetailActivity : AppCompatActivity() {
 
     private fun updateOrderStatus() {
         val selectedStatus = spinnerStatus.selectedItem.toString()
-        val cancelMsg = editCancelMsg.text.toString()
-        val updateMap = mutableMapOf<String, String>()
-        updateMap["status"] = selectedStatus.lowercase()
-        if (selectedStatus == "Cancelled" && cancelMsg.isNotBlank()) {
-            updateMap["cancel_message"] = cancelMsg
-        }
 
         val body = mapOf(
             "order_id" to order.orderUuid,
             "status" to selectedStatus
         )
+
         updateStatusCall = RetrofitClient.getInstance(this)
             .create(ApiService::class.java)
             .updateOrderStatusFinal(body)
-//        updateStatusCall?.enqueue(object : Callback<Map<String, Any>> {
-//            override fun onResponse(call: Call<Map<String, Any>>, response: Response<Map<String, Any>>) {
-//                if (!isFinishing && !isDestroyed) {
-//                    Toast.makeText(this@OrderDetailActivity, "Order updated!", Toast.LENGTH_SHORT).show()
-//                    refreshOrder()
-//                }
-//            }
-        updateStatusCall?.enqueue(object : Callback<Map<String, Any>> {
-            override fun onResponse(
-                call: Call<Map<String, Any>>,
-                response: Response<Map<String, Any>>
-            ) {
-                if (!isFinishing && !isDestroyed) {
-                    Toast.makeText(this@OrderDetailActivity, "Order updated!", Toast.LENGTH_SHORT)
-                        .show()
-                    refreshOrder()
 
-                    // 🧾 If the order is delivered, recheck in a few seconds (give backend time to generate invoice)
-                    if (selectedStatus.equals("Delivered", ignoreCase = true)) {
-                        btnViewInvoice.postDelayed({
-                            refreshOrder()
-                        }, 4000) // wait 4 seconds before re-fetch
+        updateStatusCall?.enqueue(object : Callback<Map<String, Any>> {
+            override fun onResponse(call: Call<Map<String, Any>>, response: Response<Map<String, Any>>) {
+                if (!isFinishing && !isDestroyed) {
+                    if (response.isSuccessful) {
+                        Toast.makeText(this@OrderDetailActivity, "Order updated!", Toast.LENGTH_SHORT).show()
+                        refreshOrder()
+
+                        if (selectedStatus.equals("Delivered", ignoreCase = true)) {
+                            btnViewInvoice.postDelayed({
+                                refreshOrder()
+                            }, 4000)
+                        }
+                    } else {
+                        Toast.makeText(this@OrderDetailActivity, "Failed to update", Toast.LENGTH_SHORT).show()
                     }
                 }
             }
 
-
             override fun onFailure(call: Call<Map<String, Any>>, t: Throwable) {
                 if (!isFinishing && !isDestroyed) {
-                    Toast.makeText(this@OrderDetailActivity, "Failed to update", Toast.LENGTH_SHORT)
-                        .show()
+                    Toast.makeText(this@OrderDetailActivity, "Failed to update", Toast.LENGTH_SHORT).show()
                 }
             }
         })
@@ -295,41 +294,25 @@ class OrderDetailActivity : AppCompatActivity() {
                 comment = it.comment ?: ""
             )
         }
-        val payload =
-            com.example.groceryshoppingapp.network.UpdateOrderItemsRequest(items = itemsPayload)
+        val payload = com.example.groceryshoppingapp.network.UpdateOrderItemsRequest(items = itemsPayload)
 
         updateItemsCall = RetrofitClient.getInstance(this).create(ApiService::class.java)
             .updateOrderItems(order.orderUuid, payload)
         updateItemsCall?.enqueue(object : Callback<Map<String, Any>> {
-            override fun onResponse(
-                call: Call<Map<String, Any>>,
-                response: Response<Map<String, Any>>
-            ) {
+            override fun onResponse(call: Call<Map<String, Any>>, response: Response<Map<String, Any>>) {
                 if (!isFinishing && !isDestroyed) {
                     if (response.isSuccessful) {
-                        Toast.makeText(
-                            this@OrderDetailActivity,
-                            "Items updated successfully!",
-                            Toast.LENGTH_SHORT
-                        ).show()
+                        Toast.makeText(this@OrderDetailActivity, "Items updated successfully!", Toast.LENGTH_SHORT).show()
                         refreshOrder()
                     } else {
-                        Toast.makeText(
-                            this@OrderDetailActivity,
-                            "Failed to update items",
-                            Toast.LENGTH_SHORT
-                        ).show()
+                        Toast.makeText(this@OrderDetailActivity, "Failed to update items", Toast.LENGTH_SHORT).show()
                     }
                 }
             }
 
             override fun onFailure(call: Call<Map<String, Any>>, t: Throwable) {
                 if (!isFinishing && !isDestroyed) {
-                    Toast.makeText(
-                        this@OrderDetailActivity,
-                        "Failed to save changes: ${t.message}",
-                        Toast.LENGTH_SHORT
-                    ).show()
+                    Toast.makeText(this@OrderDetailActivity, "Failed to save changes: ${t.message}", Toast.LENGTH_SHORT).show()
                 }
             }
         })

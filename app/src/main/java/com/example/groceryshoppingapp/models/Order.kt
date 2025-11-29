@@ -37,7 +37,15 @@ data class Order(
     val transaction_id: String? = null,   // 🔹 new optional
 
     @SerializedName("invoice_url")
-    val invoiceUrl: String? = null
+    val invoiceUrl: String? = null,
+
+    @SerializedName("partial_refund_amount")
+    val partialRefundAmount: Double? = null,
+
+    @SerializedName("partial_items")
+    val shortageItems: List<ShortageItem>? = null
+
+
 
 ) : Parcelable
 
@@ -49,7 +57,9 @@ data class ItemQuantity(
     val name: String,
     var price: Double,
     var quantity: Double,
-    var comment: String? = null
+    var comment: String? = null,
+    @SerializedName("original_quantity")
+    var originalQuantity: Double = 0.0
 
 ) : Parcelable
 

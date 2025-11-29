@@ -17,15 +17,36 @@
         android:textColor="?attr/colorOnSurface" />
 
     <!-- Editable section (for shopkeeper only) -->
-    <EditText
-        android:id="@+id/et_item_quantity"
+    <LinearLayout
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:inputType="number"
-        android:hint="Quantity"
-        android:visibility="gone"
-        android:textColor="?attr/colorOnSurface"
-        android:textColorHint="?attr/colorOnSurface" />
+        android:orientation="horizontal"
+        android:gravity="center_vertical"
+        android:layout_marginTop="4dp">
+
+        <EditText
+            android:id="@+id/et_item_quantity"
+            android:layout_width="0dp"
+            android:layout_weight="1"
+            android:layout_height="wrap_content"
+            android:inputType="numberDecimal"
+            android:hint="Qty"
+            android:visibility="gone"
+            android:textColor="?attr/colorOnSurface"
+            android:textColorHint="?attr/colorOnSurface" />
+
+        <!-- ✅ NEW: Label to show original ordered amount -->
+        <TextView
+            android:id="@+id/tv_ordered_qty_label"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="/ 5"
+            android:textSize="14sp"
+            android:textStyle="italic"
+            android:layout_marginStart="8dp"
+            android:textColor="#757575"
+            android:visibility="gone" />
+    </LinearLayout>
 
     <EditText
         android:id="@+id/et_item_price"
@@ -61,7 +82,6 @@
         android:text="₹ 0.00"
         android:textColor="?attr/colorOnSurface" />
 
-    <!-- Optional comment display -->
     <TextView
         android:id="@+id/tv_item_comment"
         android:layout_width="wrap_content"

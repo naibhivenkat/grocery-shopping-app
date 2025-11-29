@@ -34,6 +34,18 @@
         android:text="Payment:"
         android:visibility="gone" />
 
+    <TextView
+        android:id="@+id/text_partial_refund"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:textColor="#FF5722"
+        android:textSize="16sp"
+        android:textStyle="bold"
+        android:padding="10dp"
+        android:visibility="gone"
+        android:background="#FFF3E0"/>
+
+
     <!-- Spinner + Cancel msg -->
     <Spinner
         android:id="@+id/spinner_status"
