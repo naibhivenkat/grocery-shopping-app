@@ -252,29 +252,29 @@ jobs:
       # -----------------------------
       # Build Android
       # -----------------------------
-#      - name: Build Shopowner APK
-#        run: ./gradlew assembleShopownerDebug
-#        env:
-#          SENDINBLUE_API_KEY: ${{ secrets.SENDINBLUE_API_KEY }}
-#          FROM_EMAIL: ${{ secrets.FROM_EMAIL }}
-#
-#      - name: Build Customer APK
-#        run: ./gradlew assembleCustomerDebug
-#        env:
-#          SENDINBLUE_API_KEY: ${{ secrets.SENDINBLUE_API_KEY }}
-#          FROM_EMAIL: ${{ secrets.FROM_EMAIL }}
-#
-#      # -----------------------------
-#      # Release APKs
-#      # -----------------------------
-#      - name: Upload APKs to Release
-#        uses: softprops/action-gh-release@v1
-#        with:
-#          tag_name: v${{ env.NEW_VERSION_NAME }}
-#          name: Release v${{ env.NEW_VERSION_NAME }}
-#          files: |
-#            app/build/outputs/apk/shopowner/debug/app-shopowner-debug.apk
-#            app/build/outputs/apk/customer/debug/app-customer-debug.apk
+      - name: Build Shopowner APK
+        run: ./gradlew assembleShopownerDebug
+        env:
+          SENDINBLUE_API_KEY: ${{ secrets.SENDINBLUE_API_KEY }}
+          FROM_EMAIL: ${{ secrets.FROM_EMAIL }}
+
+      - name: Build Customer APK
+        run: ./gradlew assembleCustomerDebug
+        env:
+          SENDINBLUE_API_KEY: ${{ secrets.SENDINBLUE_API_KEY }}
+          FROM_EMAIL: ${{ secrets.FROM_EMAIL }}
+
+      # -----------------------------
+      # Release APKs
+      # -----------------------------
+      - name: Upload APKs to Release
+        uses: softprops/action-gh-release@v1
+        with:
+          tag_name: v${{ env.NEW_VERSION_NAME }}
+          name: Release v${{ env.NEW_VERSION_NAME }}
+          files: |
+            app/build/outputs/apk/shopowner/debug/app-shopowner-debug.apk
+            app/build/outputs/apk/customer/debug/app-customer-debug.apk
 
       # ==========================================================
       # BACKEND DEPLOYMENT TO GOOGLE CLOUD RUN
