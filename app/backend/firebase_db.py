@@ -6,7 +6,7 @@ import logging
 import os
 import uuid
 from firebase_admin import credentials, firestore, storage as fb_storage, messaging
-
+from datetime import datetime, timedelta, timezone
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
 logger = logging.getLogger("order_api")
 # ---------------------------------------------------------------------
@@ -135,9 +135,10 @@ def append_item(item_dict):
 # ---------------------------------------------------------------------
 def append_order(order_dict):
     try:
+        IST = timezone(timedelta(hours=5, minutes=30))
         order_uuid = str(uuid.uuid4())
         order_dict["order_uuid"] = order_uuid
-        order_dict["created_at"] = datetime.datetime.now().isoformat()
+        order_dict["created_at"] = datetime.now(IST).replace(microsecond=0).isoformat(),
 
         db.collection("orders").add(order_dict)
         logger.info(f"✅ Added order {order_uuid}")
@@ -448,3 +449,213 @@ def get_user_firestore_ref(customerId):
         return found.reference, found
 
     return None, None
+
+
+# ================================
+#  KHATA / LEDGER HELPERS
+# ================================
+
+# khata_accounts: doc_id = f"{shop_id}_{customer_id}"
+KHATA_ACCOUNTS = "khata_accounts"
+KHATA_TX = "khata_transactions"
+
+
+def get_khata_account_doc_id(shop_id: str, customer_id: str) -> str:
+    return f"{shop_id}_{customer_id}"
+
+
+def get_or_create_khata_account(shop_id: str, customer_id: str,
+                                customer_name: str = None,
+                                phone: str = None) -> dict:
+    """
+    Get or create a khata account row in khata_accounts.
+    """
+    try:
+        doc_id = get_khata_account_doc_id(shop_id, customer_id)
+        doc_ref = db.collection(KHATA_ACCOUNTS).document(doc_id)
+        snap = doc_ref.get()
+        IST = timezone(timedelta(hours=5, minutes=30))
+        if not snap.exists:
+            payload = {
+                "shop_id": shop_id,
+                "customer_id": customer_id,
+                "customer_name": customer_name or "",
+                "phone": phone or "",
+                "balance": 0.0,
+                "updated_at": datetime.now(IST).replace(microsecond=0).isoformat()
+            }
+            doc_ref.set(payload)
+            return {"doc_id": doc_id, **payload}
+
+        data = snap.to_dict()
+        data["doc_id"] = doc_id
+        return data
+
+    except Exception as e:
+        logger.info(f"[ERROR] get_or_create_khata_account: {e}")
+        return None
+
+
+def update_khata_balance(shop_id: str, customer_id: str, delta: float) -> dict | None:
+    """
+    Add delta to current balance. Positive delta = customer owes more (debit).
+    Negative delta = customer paid (credit).
+    """
+    try:
+        doc_id = get_khata_account_doc_id(shop_id, customer_id)
+        doc_ref = db.collection(KHATA_ACCOUNTS).document(doc_id)
+
+        snap = doc_ref.get()
+        if not snap.exists:
+            logger.info(f"⚠ No khata account found, creating new for {shop_id}/{customer_id}")
+            account = get_or_create_khata_account(shop_id, customer_id)
+            if not account:
+                return None
+            balance = float(account.get("balance", 0.0))
+        else:
+            data = snap.to_dict()
+            balance = float(data.get("balance", 0.0))
+
+        new_balance = balance + float(delta)
+        if new_balance < 0:
+            new_balance = 0  # Prevent negative balance
+
+        IST = timezone(timedelta(hours=5, minutes=30))
+        update_data = {
+            "balance": new_balance,
+            "updated_at": datetime.now(IST).replace(microsecond=0).isoformat()
+        }
+        doc_ref.update(update_data)
+
+        updated = doc_ref.get().to_dict()
+        updated["doc_id"] = doc_id
+        return updated
+
+    except Exception as e:
+        logger.info(f"[ERROR] update_khata_balance: {e}")
+        return None
+
+
+def add_khata_transaction(shop_id: str,
+                          customer_id: str,
+                          amount: float,
+                          tx_type: str,
+                          note: str = "",
+                          order_id: str | None = None) -> dict | None:
+    """
+    Add an entry to khata_transactions and update balance.
+    tx_type: "debit" or "credit" or "adjustment" etc.
+    debit  = customer owes more  (delta = +amount)
+    credit = customer pays back  (delta = -amount)
+    """
+    try:
+        amount = float(amount)
+        if amount <= 0:
+            logger.info("⚠ add_khata_transaction: amount <= 0, ignoring")
+            return None
+
+        tx_id = str(uuid.uuid4())
+        IST = timezone(timedelta(hours=5, minutes=30))
+        created_at = datetime.now(IST).replace(microsecond=0).isoformat()
+
+        # 1) Create / ensure account
+        account = get_or_create_khata_account(shop_id, customer_id)
+        if not account:
+            return None
+
+        # 2) Compute delta for balance
+        tx_type_lower = tx_type.lower()
+        if tx_type_lower == "debit":
+            delta = amount      # customer owes more
+        elif tx_type_lower == "credit":
+            delta = -amount     # customer pays back
+        else:
+            delta = 0.0         # adjustment won't change balance here
+
+        # 3) Update balance
+        updated_account = update_khata_balance(shop_id, customer_id, delta)
+
+        # 4) Add transaction row
+        tx_doc = {
+            "shop_id": shop_id,
+            "customer_id": customer_id,
+            "tx_id": tx_id,
+            "type": tx_type,
+            "amount": amount,
+            "note": note or "",
+            "order_id": order_id,
+            "created_at": created_at
+        }
+        db.collection(KHATA_TX).document(tx_id).set(tx_doc)
+
+        # Merge account & tx for response
+        return {
+            "transaction": tx_doc,
+            "account": updated_account
+        }
+
+    except Exception as e:
+        logger.info(f"[ERROR] add_khata_transaction: {e}")
+        return None
+
+
+def get_khata_account(shop_id: str, customer_id: str) -> dict | None:
+    try:
+        doc_id = get_khata_account_doc_id(shop_id, customer_id)
+        snap = db.collection(KHATA_ACCOUNTS).document(doc_id).get()
+        if not snap.exists:
+            return None
+        data = snap.to_dict()
+        data["doc_id"] = doc_id
+        return data
+    except Exception as e:
+        logger.info(f"[ERROR] get_khata_account: {e}")
+        return None
+
+
+def list_khata_customers_for_shop(shop_id: str) -> list[dict]:
+    try:
+        q = db.collection(KHATA_ACCOUNTS).where("shop_id", "==", shop_id).stream()
+        result = []
+        for doc in q:
+            d = doc.to_dict()
+            d["doc_id"] = doc.id
+            result.append(d)
+        return result
+    except Exception as e:
+        logger.info(f"[ERROR] list_khata_customers_for_shop: {e}")
+        return []
+
+
+def list_khata_accounts_for_customer(customer_id: str) -> list[dict]:
+    """All khata accounts for a given customer across shops."""
+    try:
+        q = db.collection(KHATA_ACCOUNTS).where("customer_id", "==", customer_id).stream()
+        result = []
+        for doc in q:
+            d = doc.to_dict()
+            d["doc_id"] = doc.id
+            result.append(d)
+        return result
+    except Exception as e:
+        logger.info(f"[ERROR] list_khata_accounts_for_customer: {e}")
+        return []
+
+
+def list_khata_transactions(shop_id: str, customer_id: str, limit: int = 100) -> list[dict]:
+    try:
+        q = (db.collection(KHATA_TX)
+             .where("shop_id", "==", shop_id)
+             .where("customer_id", "==", customer_id)
+             .order_by("created_at", direction=firestore.Query.DESCENDING)
+             .limit(limit))
+
+        result = []
+        for doc in q.stream():
+            d = doc.to_dict()
+            d["doc_id"] = doc.id
+            result.append(d)
+        return result
+    except Exception as e:
+        logger.info(f"[ERROR] list_khata_transactions: {e}")
+        return []

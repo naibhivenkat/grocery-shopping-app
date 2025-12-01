@@ -66,6 +66,11 @@ class ShopOwnerDashboardActivity : AppCompatActivity() {
                 R.id.nav_view_profile -> startActivity(Intent(this, ProfileActivity::class.java))
                 R.id.nav_settings -> startActivity(Intent(this, SettingsActivity::class.java))
                 R.id.nav_manage_items -> startActivity(Intent(this, ManageItemsActivity::class.java))
+                R.id.nav_khata_book ->
+                    // ⭐ NEW: Open Khata Book
+                    startActivity(Intent(this, ShopKhataListActivity::class.java))
+
+
                 R.id.nav_logout -> {
                     SessionManager.logout(this)
                     startActivity(Intent(this, LoginActivity::class.java).apply {

@@ -6,6 +6,9 @@ import com.example.groceryshoppingapp.models.CreateOrderRequest
 import com.example.groceryshoppingapp.models.GenericResponse
 import com.example.groceryshoppingapp.models.GetItemsResponse
 import com.example.groceryshoppingapp.models.GetShopResponse
+import com.example.groceryshoppingapp.models.KhataAccountsResponse
+import com.example.groceryshoppingapp.models.KhataLedgerResponse
+import com.example.groceryshoppingapp.models.KhataTransactionRequest
 import com.example.groceryshoppingapp.models.LoginRequest
 import com.example.groceryshoppingapp.models.LoginResponse
 import com.example.groceryshoppingapp.models.Order
@@ -204,6 +207,34 @@ interface ApiService {
     @POST("/verify_wallet_payment")
     fun verifyWalletPayment(@Body data: WalletVerifyRequest): Call<Map<String, Any>>
 
+
+    // ---- KHATA / LEDGER ----
+
+    @POST("api/khata/create_ledger")
+    fun createKhataLedger(
+        @Body body: Map<String, String>
+    ): Call<Map<String, Any>>
+
+    @POST("api/khata/add_transaction")
+    fun addKhataTransaction(
+        @Body request: KhataTransactionRequest
+    ): Call<ApiResponse>
+
+    @GET("api/khata/customers/{shopId}")
+    fun getKhataCustomers(
+        @Path("shopId") shopId: String
+    ): Call<KhataAccountsResponse>
+
+    @GET("api/khata/ledger/{shopId}/{customerId}")
+    fun getKhataLedger(
+        @Path("shopId") shopId: String,
+        @Path("customerId") customerId: String
+    ): Call<KhataLedgerResponse>
+
+    @GET("api/khata/my_accounts/{customerId}")
+    fun getMyKhataAccounts(
+        @Path("customerId") customerId: String
+    ): Call<KhataAccountsResponse>
 
 
 

@@ -9,8 +9,6 @@ import androidx.drawerlayout.widget.DrawerLayout
 import com.example.groceryshoppingapp.utils.SessionManager
 import com.google.android.material.navigation.NavigationView
 import android.widget.Button
-import com.example.groceryshoppingapp.CustomerOrdersActivity
-import com.example.groceryshoppingapp.ShopSelectionActivity
 
 class CustomerHomeActivity : AppCompatActivity() {
 
@@ -25,7 +23,7 @@ class CustomerHomeActivity : AppCompatActivity() {
         // Get logged-in customer ID
         customerId = SessionManager.getCustomerId(this)
 
-        // Set up drawer and toolbar
+        // Setup drawer + toolbar
         drawerLayout = findViewById(R.id.drawer_layout)
         navigationView = findViewById(R.id.navigation_view)
         val toolbar: Toolbar = findViewById(R.id.toolbar)
@@ -34,7 +32,7 @@ class CustomerHomeActivity : AppCompatActivity() {
         supportActionBar?.setDisplayHomeAsUpEnabled(true)
         supportActionBar?.setHomeAsUpIndicator(R.drawable.ic_menu)
 
-        // Toggle drawer on menu icon click
+        // Toggle drawer on menu click
         toolbar.setNavigationOnClickListener {
             if (drawerLayout.isDrawerOpen(Gravity.END)) {
                 drawerLayout.closeDrawer(Gravity.END)
@@ -43,7 +41,7 @@ class CustomerHomeActivity : AppCompatActivity() {
             }
         }
 
-        // Set up main button actions
+        // --- MAIN BUTTONS ---
         findViewById<Button>(R.id.btn_select_shop).setOnClickListener {
             startActivity(Intent(this, ShopSelectionActivity::class.java))
         }
@@ -52,19 +50,24 @@ class CustomerHomeActivity : AppCompatActivity() {
             startActivity(Intent(this, CustomerOrdersActivity::class.java))
         }
 
-        // Handle navigation drawer item clicks
+        // ------------- NAV DRAWER MENU CLICK HANDLER -------------
         navigationView.setNavigationItemSelectedListener { menuItem ->
             when (menuItem.itemId) {
-                R.id.nav_view_profile -> {
-                    startActivity(Intent(this, ProfileActivity::class.java))
-                }
-                R.id.nav_settings -> {
-                    startActivity(Intent(this, SettingsActivity::class.java))
-                }
 
-                R.id.nav_wallet -> {    // 🔹 NEW: Wallet button
+                R.id.nav_view_profile ->
+                    startActivity(Intent(this, ProfileActivity::class.java))
+
+                R.id.nav_settings ->
+                    startActivity(Intent(this, SettingsActivity::class.java))
+
+                R.id.nav_wallet ->
                     startActivity(Intent(this, WalletActivity::class.java))
-                }
+
+                // 🔥 NEW — KHATA BOOK / ACCOUNT MANAGER
+                R.id.nav_my_khata ->
+                    startActivity(Intent(this, CustomerKhataListActivity::class.java))
+
+
                 R.id.nav_logout -> {
                     SessionManager.logout(this)
                     val intent = Intent(this, LoginActivity::class.java)
@@ -72,6 +75,7 @@ class CustomerHomeActivity : AppCompatActivity() {
                     startActivity(intent)
                 }
             }
+
             drawerLayout.closeDrawer(Gravity.END)
             true
         }

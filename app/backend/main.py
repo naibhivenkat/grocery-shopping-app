@@ -29,11 +29,12 @@ from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, Tabl
 from weasyprint import HTML, CSS
 
 import firebase_db
+from khata import khata_bp
 from wallet_routes import wallet_bp
 
 app = Flask(__name__)
 app.register_blueprint(wallet_bp)
-
+app.register_blueprint(khata_bp, url_prefix="/api/khata")
 # Initialize limiter
 limiter = Limiter(key_func=get_remote_address)
 limiter.init_app(app)
@@ -2495,6 +2496,13 @@ def handle_partial_refund(order_doc, normalized_status: str):
         logger.error(f"❌ Failed to update order with partial refund info: {e}")
 
 
+@app.route("/api/khata/my_accounts/<customer_id>", methods=["GET"])
+def khata_list_for_customer(customer_id):
+    accounts = firebase_db.list_khata_accounts_for_customer(customer_id)
+    return jsonify({
+        "success": True,
+        "accounts": accounts
+    }), 200
 
 if __name__ == "__main__":
     logger.info("Gunicorn setup complete, about to run...")
