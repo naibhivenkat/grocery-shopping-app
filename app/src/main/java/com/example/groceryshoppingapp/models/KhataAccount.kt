@@ -12,7 +12,8 @@ data class KhataAccount(
     @SerializedName("customer_name") var customerName: String? = null,
     @SerializedName("phone") var phone: String? = null,
     @SerializedName("balance") var balance: Double? = 0.0,
-    @SerializedName("updated_at") var updatedAt: String? = null
+    @SerializedName("updated_at") var updatedAt: String? = null,
+    @SerializedName("shop_name") var shopName: String? = ""   // NEW
 ) : Parcelable
 
 data class KhataAccountsResponse(

@@ -4,9 +4,11 @@ import firebase_admin
 import json
 import logging
 import os
+import time
 import uuid
-from firebase_admin import credentials, firestore, storage as fb_storage, messaging
 from datetime import datetime, timedelta, timezone
+from firebase_admin import credentials, firestore, storage as fb_storage, messaging
+
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
 logger = logging.getLogger("order_api")
 # ---------------------------------------------------------------------
@@ -138,7 +140,7 @@ def append_order(order_dict):
         IST = timezone(timedelta(hours=5, minutes=30))
         order_uuid = str(uuid.uuid4())
         order_dict["order_uuid"] = order_uuid
-        order_dict["created_at"] = datetime.now(IST).replace(microsecond=0).isoformat(),
+        order_dict["created_at"] = datetime.now(IST).replace(microsecond=0).isoformat()
 
         db.collection("orders").add(order_dict)
         logger.info(f"✅ Added order {order_uuid}")
@@ -248,20 +250,6 @@ def update_order_status(order_uuid: str, new_status: str, extra_fields: dict = N
     except Exception as e:
         logger.info(f"[ERROR] update_order_status: {e}")
         return False
-
-
-# def upload_invoice_to_storage(order_id, pdf_buffer, customer_id=None):
-#     try:
-#         blob_path = f"invoices/{customer_id}/{order_id}.pdf" if customer_id else f"invoices/{order_id}.pdf"
-#         blob = bucket.blob(blob_path)
-#         blob.upload_from_file(pdf_buffer, content_type="application/pdf")
-#         #blob.make_public()
-#         url = blob.public_url
-#         logger.info(f"✅ Uploaded invoice: {url}")
-#         return url
-#     except Exception as e:
-#         logger.info(f"[ERROR] upload_invoice_to_storage: {e}")
-#         return None
 
 
 def upload_invoice_to_storage(order_id, pdf_buffer, customer_id=None):
@@ -451,211 +439,231 @@ def get_user_firestore_ref(customerId):
     return None, None
 
 
-# ================================
-#  KHATA / LEDGER HELPERS
-# ================================
-
-# khata_accounts: doc_id = f"{shop_id}_{customer_id}"
-KHATA_ACCOUNTS = "khata_accounts"
-KHATA_TX = "khata_transactions"
-
-
-def get_khata_account_doc_id(shop_id: str, customer_id: str) -> str:
-    return f"{shop_id}_{customer_id}"
+#-----------------------------
+# Helper: Get shop document
+# -----------------------------
+# -----------------------------
+# GET SHOP
+# -----------------------------
+def get_shop(shop_id):
+    doc = db.collection("shops").document(shop_id).get()
+    return doc.to_dict() if doc.exists else None
 
 
-def get_or_create_khata_account(shop_id: str, customer_id: str,
-                                customer_name: str = None,
-                                phone: str = None) -> dict:
-    """
-    Get or create a khata account row in khata_accounts.
-    """
-    try:
-        doc_id = get_khata_account_doc_id(shop_id, customer_id)
-        doc_ref = db.collection(KHATA_ACCOUNTS).document(doc_id)
-        snap = doc_ref.get()
-        IST = timezone(timedelta(hours=5, minutes=30))
-        if not snap.exists:
-            payload = {
-                "shop_id": shop_id,
-                "customer_id": customer_id,
-                "customer_name": customer_name or "",
-                "phone": phone or "",
-                "balance": 0.0,
-                "updated_at": datetime.now(IST).replace(microsecond=0).isoformat()
-            }
-            doc_ref.set(payload)
-            return {"doc_id": doc_id, **payload}
+# -----------------------------
+# CREATE OR GET KHATA ACCOUNT
+# -----------------------------
+def get_or_create_khata_account(shop_id, customer_id, name=None, phone=None):
+    doc_id = f"{shop_id}_{customer_id}"
+    ref = db.collection("khata_accounts").document(doc_id)
+    snap = ref.get()
 
+    # Already exists → ensure shop_name is present
+    if snap.exists:
         data = snap.to_dict()
         data["doc_id"] = doc_id
+
+        # FIX: if shop_name missing, set & update it
+        if not data.get("shop_name"):
+            shop = get_shop(shop_id)
+            shop_name = shop.get("name") if shop else "Unknown"
+            data["shop_name"] = shop_name
+            ref.update({"shop_name": shop_name})
+
         return data
 
-    except Exception as e:
-        logger.info(f"[ERROR] get_or_create_khata_account: {e}")
+    # Create new account
+    shop = get_shop(shop_id)
+    shop_name = shop.get("name") if shop else "Unknown"
+
+    IST = timezone(timedelta(hours=5, minutes=30))
+    time_data = datetime.now(IST).replace(microsecond=0).isoformat()
+
+    data = {
+        "doc_id": doc_id,
+        "shop_id": shop_id,
+        "customer_id": customer_id,
+        "customer_name": name or "",
+        "phone": phone or "",
+        "balance": 0.0,
+        "shop_name": shop_name,      # ⭐ ALWAYS WRITE SHOP NAME
+        "updated_at": time_data
+    }
+
+    ref.set(data)
+    return data
+
+
+# -----------------------------
+# ADD TRANSACTION
+# -----------------------------
+def add_khata_transaction(shop_id, customer_id, amount, tx_type, note="", order_id=None):
+
+    doc_id = f"{shop_id}_{customer_id}"
+    ref = db.collection("khata_accounts").document(doc_id)
+    acc = ref.get().to_dict()
+
+    if not acc:
         return None
 
+    old_balance = float(acc.get("balance", 0.0))
 
-def update_khata_balance(shop_id: str, customer_id: str, delta: float) -> dict | None:
-    """
-    Add delta to current balance. Positive delta = customer owes more (debit).
-    Negative delta = customer paid (credit).
-    """
-    try:
-        doc_id = get_khata_account_doc_id(shop_id, customer_id)
-        doc_ref = db.collection(KHATA_ACCOUNTS).document(doc_id)
+    # Balance logic
+    if tx_type == "debit":
+        new_balance = old_balance + amount
+    elif tx_type == "credit":
+        new_balance = old_balance - amount
+    else:
+        new_balance = old_balance
 
-        snap = doc_ref.get()
-        if not snap.exists:
-            logger.info(f"⚠ No khata account found, creating new for {shop_id}/{customer_id}")
-            account = get_or_create_khata_account(shop_id, customer_id)
-            if not account:
-                return None
-            balance = float(account.get("balance", 0.0))
-        else:
-            data = snap.to_dict()
-            balance = float(data.get("balance", 0.0))
+    # Exact timestamp (epoch ms)
+    ts_ms = int(time.time() * 1000)
+    tx_id = f"tx_{ts_ms}"
 
-        new_balance = balance + float(delta)
-        if new_balance < 0:
-            new_balance = 0  # Prevent negative balance
+    tx_data = {
+        "tx_id": tx_id,
+        "shop_id": shop_id,
+        "customer_id": customer_id,
+        "type": tx_type,
+        "amount": float(amount),
+        "note": note,
+        "order_id": order_id,
+        "created_at": str(ts_ms)
+    }
 
-        IST = timezone(timedelta(hours=5, minutes=30))
-        update_data = {
-            "balance": new_balance,
-            "updated_at": datetime.now(IST).replace(microsecond=0).isoformat()
-        }
-        doc_ref.update(update_data)
+    # Save transaction
+    db.collection("khata_transactions").document(tx_id).set(tx_data)
 
-        updated = doc_ref.get().to_dict()
-        updated["doc_id"] = doc_id
-        return updated
+    # FIX: Ensure shop_name always updated (never missing again)
+    shop = get_shop(shop_id)
+    shop_name = acc.get("shop_name") or (shop.get("name") if shop else "Unknown")
 
-    except Exception as e:
-        logger.info(f"[ERROR] update_khata_balance: {e}")
+    ref.update({
+        "balance": float(new_balance),
+        "updated_at": datetime.utcnow(),
+        "shop_name": shop_name   # ⭐ MANDATORY FIX
+    })
+
+    return {
+        "transaction": tx_data,
+        "balance": new_balance
+    }
+
+
+
+
+# -----------------------------
+# GET KHATA ACCOUNT
+# -----------------------------
+def get_khata_account(shop_id, customer_id):
+    doc_id = f"{shop_id}_{customer_id}"
+    snap = db.collection("khata_accounts").document(doc_id).get()
+    if not snap.exists:
         return None
+    data = snap.to_dict()
+    data["doc_id"] = doc_id
+    return data
 
 
-def add_khata_transaction(shop_id: str,
-                          customer_id: str,
-                          amount: float,
-                          tx_type: str,
-                          note: str = "",
-                          order_id: str | None = None) -> dict | None:
-    """
-    Add an entry to khata_transactions and update balance.
-    tx_type: "debit" or "credit" or "adjustment" etc.
-    debit  = customer owes more  (delta = +amount)
-    credit = customer pays back  (delta = -amount)
-    """
-    try:
-        amount = float(amount)
-        if amount <= 0:
-            logger.info("⚠ add_khata_transaction: amount <= 0, ignoring")
-            return None
 
-        tx_id = str(uuid.uuid4())
-        IST = timezone(timedelta(hours=5, minutes=30))
-        created_at = datetime.now(IST).replace(microsecond=0).isoformat()
+# ---------------------------------------------------------------------------------
+# LIST TRANSACTIONS  (100% SAFE – Never overwrites old timestamps)
+# ---------------------------------------------------------------------------------
+def list_khata_transactions(shop_id, customer_id, limit=200):
 
-        # 1) Create / ensure account
-        account = get_or_create_khata_account(shop_id, customer_id)
-        if not account:
-            return None
+    snap = (
+        db.collection("khata_transactions")
+        .where("shop_id", "==", shop_id)
+        .where("customer_id", "==", customer_id)
+        .order_by("created_at", direction=firestore.Query.ASCENDING)
+        .limit(limit)
+        .get()
+    )
 
-        # 2) Compute delta for balance
-        tx_type_lower = tx_type.lower()
-        if tx_type_lower == "debit":
-            delta = amount      # customer owes more
-        elif tx_type_lower == "credit":
-            delta = -amount     # customer pays back
-        else:
-            delta = 0.0         # adjustment won't change balance here
+    tx_list = []
 
-        # 3) Update balance
-        updated_account = update_khata_balance(shop_id, customer_id, delta)
+    for doc in snap:
+        data = doc.to_dict()
+        ts = data.get("created_at")
 
-        # 4) Add transaction row
-        tx_doc = {
-            "shop_id": shop_id,
-            "customer_id": customer_id,
-            "tx_id": tx_id,
-            "type": tx_type,
-            "amount": amount,
-            "note": note or "",
-            "order_id": order_id,
-            "created_at": created_at
-        }
-        db.collection(KHATA_TX).document(tx_id).set(tx_doc)
+        epoch_ms = None
 
-        # Merge account & tx for response
-        return {
-            "transaction": tx_doc,
-            "account": updated_account
-        }
+        # -------------------------------------------------------------
+        # CASE 1: New format → STRING containing ONLY digits
+        # -------------------------------------------------------------
+        if isinstance(ts, str) and ts.isdigit():
+            epoch_ms = int(ts)
 
-    except Exception as e:
-        logger.info(f"[ERROR] add_khata_transaction: {e}")
-        return None
+        # -------------------------------------------------------------
+        # CASE 2: Firestore datetime (old saved format)
+        # -------------------------------------------------------------
+        elif isinstance(ts, datetime):
+            epoch_ms = int(ts.timestamp() * 1000)
 
+        # -------------------------------------------------------------
+        # CASE 3: Firestore stored float seconds (very old data)
+        # -------------------------------------------------------------
+        elif isinstance(ts, float) or isinstance(ts, int):
+            try:
+                epoch_ms = int(float(ts) * 1000)
+            except:
+                epoch_ms = None
 
-def get_khata_account(shop_id: str, customer_id: str) -> dict | None:
-    try:
-        doc_id = get_khata_account_doc_id(shop_id, customer_id)
-        snap = db.collection(KHATA_ACCOUNTS).document(doc_id).get()
-        if not snap.exists:
-            return None
-        data = snap.to_dict()
-        data["doc_id"] = doc_id
-        return data
-    except Exception as e:
-        logger.info(f"[ERROR] get_khata_account: {e}")
-        return None
+        # -------------------------------------------------------------
+        # CASE 4: RFC822 string, example "Tue, 02 Dec 2025 05:55:19 GMT"
+        # -------------------------------------------------------------
+        elif isinstance(ts, str) and "," in ts:
+            try:
+                dt = datetime.strptime(ts, "%a, %d %b %Y %H:%M:%S %Z")
+                epoch_ms = int(dt.timestamp() * 1000)
+            except:
+                epoch_ms = None
+
+        # -------------------------------------------------------------
+        # FINAL SAFE FALLBACK → extract from tx_id
+        # -------------------------------------------------------------
+        if not epoch_ms:
+            try:
+                epoch_ms = int(data["tx_id"].replace("tx_", ""))
+            except:
+                epoch_ms = int(time.time() * 1000)
+
+        # Return timestamp as STRING (important)
+        data["created_at"] = str(epoch_ms)
+
+        tx_list.append(data)
+
+    return tx_list
 
 
-def list_khata_customers_for_shop(shop_id: str) -> list[dict]:
-    try:
-        q = db.collection(KHATA_ACCOUNTS).where("shop_id", "==", shop_id).stream()
-        result = []
-        for doc in q:
-            d = doc.to_dict()
-            d["doc_id"] = doc.id
-            result.append(d)
-        return result
-    except Exception as e:
-        logger.info(f"[ERROR] list_khata_customers_for_shop: {e}")
-        return []
 
 
-def list_khata_accounts_for_customer(customer_id: str) -> list[dict]:
-    """All khata accounts for a given customer across shops."""
-    try:
-        q = db.collection(KHATA_ACCOUNTS).where("customer_id", "==", customer_id).stream()
-        result = []
-        for doc in q:
-            d = doc.to_dict()
-            d["doc_id"] = doc.id
-            result.append(d)
-        return result
-    except Exception as e:
-        logger.info(f"[ERROR] list_khata_accounts_for_customer: {e}")
-        return []
+# -----------------------------
+# LIST TRANSACTIONS
+# -----------------------------
+# def list_khata_transactions(shop_id, customer_id, limit=200):
+#     snap = (
+#         db.collection("khata_transactions")
+#         .where("shop_id", "==", shop_id)
+#         .where("customer_id", "==", customer_id)
+#         .order_by("created_at", direction=firestore.Query.ASCENDING)
+#         .limit(limit)
+#         .get()
+#     )
+#     return [doc.to_dict() for doc in snap]
 
 
-def list_khata_transactions(shop_id: str, customer_id: str, limit: int = 100) -> list[dict]:
-    try:
-        q = (db.collection(KHATA_TX)
-             .where("shop_id", "==", shop_id)
-             .where("customer_id", "==", customer_id)
-             .order_by("created_at", direction=firestore.Query.DESCENDING)
-             .limit(limit))
+# -----------------------------
+# LIST KHATA FOR SHOP
+# -----------------------------
+def list_khata_customers_for_shop(shop_id):
+    snap = db.collection("khata_accounts").where("shop_id", "==", shop_id).get()
+    return [doc.to_dict() for doc in snap]
 
-        result = []
-        for doc in q.stream():
-            d = doc.to_dict()
-            d["doc_id"] = doc.id
-            result.append(d)
-        return result
-    except Exception as e:
-        logger.info(f"[ERROR] list_khata_transactions: {e}")
-        return []
+
+# -----------------------------
+# LIST KHATA FOR CUSTOMER
+# -----------------------------
+def list_khata_accounts_for_customer(customer_id):
+    snap = db.collection("khata_accounts").where("customer_id", "==", customer_id).get()
+    return [doc.to_dict() for doc in snap]
