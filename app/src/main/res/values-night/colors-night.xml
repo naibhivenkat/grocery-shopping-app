@@ -1,16 +1,41 @@
 <resources>
+
+    <!-- Existing brand colors -->
     <color name="purple_200">#BB86FC</color>
     <color name="purple_500">#6200EE</color>
     <color name="purple_700">#3700B3</color>
+
     <color name="teal_200">#03DAC5</color>
     <color name="teal_700">#018786</color>
+
     <color name="black">#000000</color>
     <color name="white">#FFFFFF</color>
 
+    <!-- Order backgrounds (existing) -->
     <color name="order_bg">#121212</color>
     <color name="order_bg_cancelled">#660000</color>
+
+    <!-- Existing accent colors -->
     <color name="orange_500">#FFB74D</color>
     <color name="blue_500">#64B5F6</color>
     <color name="green_500">#81C784</color>
     <color name="red_500">#E57373</color>
+
+    <!-- ⭐ NEW: Khata / Ledger Colors (Dark) -->
+
+    <!-- Card -->
+    <color name="card_dark">#1E1E1E</color>
+
+    <!-- Balance colors -->
+    <color name="khata_due_red">#FF6E6E</color>
+    <color name="khata_advance_green">#7EE887</color>
+
+    <!-- Badges -->
+    <color name="badge_due_bg">#B71C1C</color>
+    <color name="badge_advance_bg">#1B5E20</color>
+
+    <!-- Text -->
+    <color name="text_primary_dark">#FFFFFF</color>
+    <color name="text_secondary_dark">#BDBDBD</color>
+
 </resources>

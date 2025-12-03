@@ -1,8 +1,8 @@
 <?xml version="1.0" encoding="utf-8"?>
 <androidx.cardview.widget.CardView xmlns:android="http://schemas.android.com/apk/res/android"
-    xmlns:app="http://schemas.android.com/apk/res-auto"
     android:layout_width="match_parent"
     android:layout_height="wrap_content"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
     android:layout_margin="6dp"
     app:cardCornerRadius="12dp"
     app:cardElevation="3dp">
@@ -13,24 +13,22 @@
         android:layout_width="match_parent"
         android:layout_height="wrap_content">
 
-        <!-- First row: amount LEFT | type badge RIGHT -->
+        <!-- Row: amount + type badge -->
         <LinearLayout
             android:orientation="horizontal"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:gravity="center_vertical">
 
-            <!-- Amount left -->
             <TextView
                 android:id="@+id/tvAmount"
                 android:layout_width="0dp"
                 android:layout_height="wrap_content"
                 android:layout_weight="1"
-                android:text="₹100"
+                android:text="₹1000"
                 android:textSize="16sp"
                 android:textStyle="bold" />
 
-            <!-- Badge right -->
             <TextView
                 android:id="@+id/tvType"
                 android:layout_width="wrap_content"
@@ -42,25 +40,23 @@
                 android:paddingRight="8dp"
                 android:paddingTop="3dp"
                 android:paddingBottom="3dp"
-                android:background="@drawable/bg_khata_badge_due" />
+                android:background="@drawable/bg_badge_due" />
         </LinearLayout>
 
-        <!-- Date -->
         <TextView
             android:id="@+id/tvDate"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            android:text="2025-01-01 12:30"
+            android:text="02 Dec 2025, 07:15 PM"
             android:textSize="12sp"
             android:textColor="@android:color/darker_gray"
             android:layout_marginTop="4dp" />
 
-        <!-- Note -->
         <TextView
             android:id="@+id/tvNote"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            android:text="Note"
+            android:text="Note goes here"
             android:textSize="12sp"
             android:layout_marginTop="4dp" />
 

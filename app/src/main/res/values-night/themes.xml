@@ -1,4 +1,5 @@
 <resources xmlns:tools="http://schemas.android.com/tools">
+
     <style name="Theme.GroceryShoppingApp" parent="Theme.MaterialComponents.DayNight.NoActionBar">
         <!-- Disable default action bar so we can use Toolbar -->
         <item name="windowActionBar">false</item>
@@ -14,5 +15,20 @@
         <item name="android:colorBackground">@color/dark_background</item>
         <item name="colorSurface">@color/dark_surface</item>
         <item name="colorOnSurface">@android:color/white</item>
+
+        <!-- Default text colors -->
+        <item name="android:textColorPrimary">@color/text_primary_dark</item>
+        <item name="android:textColorSecondary">@color/text_secondary_dark</item>
+
+        <!-- Card style for Material CardViews -->
+        <item name="materialCardViewStyle">@style/KhataCardStyle</item>
     </style>
+
+    <style name="KhataCardStyle" parent="@style/Widget.MaterialComponents.CardView">
+        <item name="cardBackgroundColor">@color/card_dark</item>
+        <item name="cardCornerRadius">14dp</item>
+        <item name="cardElevation">5dp</item>
+        <item name="cardUseCompatPadding">true</item>
+    </style>
+
 </resources>

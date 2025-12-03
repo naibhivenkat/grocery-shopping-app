@@ -2,36 +2,76 @@
 <LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:app="http://schemas.android.com/apk/res-auto"
     android:orientation="vertical"
-    android:padding="12dp"
+    android:padding="0dp"
     android:layout_width="match_parent"
-    android:layout_height="match_parent">
+    android:layout_height="match_parent"
+    android:background="@color/light_background">
 
-    <Button
-        android:id="@+id/btnBack"
-        android:layout_width="wrap_content"
-        android:layout_height="wrap_content"
-        android:text="Back" />
+    <!-- ============================
+         TOP TOOLBAR (Perfect Spacing)
+         ============================ -->
+    <RelativeLayout
+        android:id="@+id/layoutToolbar"
+        android:layout_width="match_parent"
+        android:layout_height="56dp"
+        android:paddingHorizontal="12dp"
+        android:gravity="center_vertical"
+        android:background="@color/light_surface">
 
-    <TextView
-        android:id="@+id/tvTitle"
-        android:layout_width="wrap_content"
-        android:layout_height="wrap_content"
-        android:text="Khata Book (Shop)"
-        android:textSize="20sp"
-        android:textStyle="bold"
-        android:layout_marginTop="8dp" />
+        <!-- Back Button -->
+        <TextView
+            android:id="@+id/btnBack"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="BACK"
+            android:textStyle="bold"
+            android:textColor="@color/blue_500"
+            android:textSize="14sp"
+            android:layout_alignParentStart="true"
+            android:padding="8dp" />
 
-    <!-- Summary card -->
+        <!-- Screen Title -->
+        <TextView
+            android:id="@+id/tvTitle"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="Khata Book (Shop)"
+            android:textStyle="bold"
+            android:textSize="18sp"
+            android:layout_centerInParent="true"
+            android:textColor="@color/black" />
+
+        <!-- Add Button -->
+        <Button
+            android:id="@+id/btnCreateKhata"
+            android:layout_width="80dp"
+            android:layout_height="36dp"
+            android:text="ADD"
+            android:textAllCaps="true"
+            android:textStyle="bold"
+            android:textColor="@android:color/white"
+            android:background="@drawable/bg_add_button"
+            android:layout_alignParentEnd="true"
+            android:layout_centerVertical="true" />
+
+    </RelativeLayout>
+
+
+    <!-- ==============
+         SUMMARY CARD
+         ============== -->
     <androidx.cardview.widget.CardView
+        android:id="@+id/cardSummary"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:layout_marginTop="10dp"
+        android:layout_margin="12dp"
         app:cardCornerRadius="16dp"
-        app:cardElevation="4dp">
+        app:cardElevation="4dp"
+        android:background="@color/light_surface">
 
         <LinearLayout
             android:orientation="vertical"
-            android:padding="12dp"
+            android:padding="16dp"
             android:layout_width="match_parent"
             android:layout_height="wrap_content">
 
@@ -40,40 +80,38 @@
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
                 android:text="Customers: 0"
-                android:textSize="14sp" />
+                android:textSize="14sp"
+                android:textColor="@color/text_secondary_light" />
 
             <TextView
                 android:id="@+id/tvTotalDue"
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
-                android:text="Total Due: ₹0"
-                android:textSize="16sp"
+                android:text="Total Due: ₹0.00"
+                android:textSize="18sp"
                 android:textStyle="bold"
-                android:layout_marginTop="4dp" />
+                android:layout_marginTop="6dp"
+                android:textColor="@color/black" />
+
         </LinearLayout>
+
     </androidx.cardview.widget.CardView>
 
-    <Button
-        android:id="@+id/btnCreateKhata"
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:text="Create Khata Account"
-        android:layout_marginTop="10dp"
-        android:background="#2196F3"
-        android:textColor="@android:color/white" />
 
-    <!-- ⭐ FIXED: SwipeRefreshLayout wraps single RecyclerView -->
+    <!-- ============
+         LIST SECTION
+         ============ -->
     <androidx.swiperefreshlayout.widget.SwipeRefreshLayout
         android:id="@+id/swipeRefresh"
         android:layout_width="match_parent"
         android:layout_height="0dp"
-        android:layout_weight="1"
-        android:layout_marginTop="8dp">
+        android:layout_weight="1">
 
         <androidx.recyclerview.widget.RecyclerView
             android:id="@+id/rvKhataCustomers"
             android:layout_width="match_parent"
-            android:layout_height="match_parent" />
+            android:layout_height="match_parent"
+            android:padding="8dp" />
 
     </androidx.swiperefreshlayout.widget.SwipeRefreshLayout>
 

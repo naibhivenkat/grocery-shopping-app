@@ -1,29 +1,30 @@
+<!-- CUSTOMER HOME ACTIVITY -->
+
 <menu xmlns:android="http://schemas.android.com/apk/res/android">
     <item
         android:id="@+id/nav_view_profile"
-        android:title="View Profile"
-        android:icon="@android:drawable/ic_menu_myplaces" /> <!-- built-in icon -->
+        android:icon="@android:drawable/ic_menu_myplaces"
+        android:title="View Profile" /> <!-- built-in icon -->
     <item
         android:id="@+id/nav_settings"
-        android:title="Settings"
-        android:icon="@android:drawable/ic_menu_preferences" />
+        android:icon="@android:drawable/ic_menu_preferences"
+        android:title="Settings" />
 
     <item
         android:id="@+id/nav_wallet"
-        android:title="Wallet"
-        android:icon="@drawable/ic_wallet" />
-
-    <item
-        android:id="@+id/nav_logout"
-        android:title="Logout"
-        android:icon="@android:drawable/ic_lock_power_off" />
+        android:icon="@drawable/ic_wallet"
+        android:title="Wallet" />
 
     <item
         android:id="@+id/nav_my_khata"
-        android:title="My Khata"
-        android:icon="@drawable/ic_khata" />
+        android:icon="@drawable/ic_khata"
+        android:title="My Khata" />
 
 
+    <item
+        android:id="@+id/nav_logout"
+        android:icon="@android:drawable/ic_lock_power_off"
+        android:title="Logout" />
 
 
 </menu>

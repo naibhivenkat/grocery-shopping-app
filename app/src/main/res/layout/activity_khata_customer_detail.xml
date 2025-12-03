@@ -1,119 +1,116 @@
 <?xml version="1.0" encoding="utf-8"?>
 <LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:app="http://schemas.android.com/apk/res-auto"
-    xmlns:tools="http://schemas.android.com/tools"
     android:orientation="vertical"
+    android:padding="16dp"
+    android:background="@color/light_background"
     android:layout_width="match_parent"
-    android:layout_height="match_parent"
-    android:padding="12dp">
+    android:layout_height="match_parent">
 
-    <!-- HEADER -->
-    <LinearLayout
-        android:orientation="horizontal"
+    <Button
+        android:id="@+id/btnBack"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:text="Back"
+        android:background="@android:color/transparent"
+        android:textColor="@color/blue_500" />
+
+    <TextView
+        android:id="@+id/tvCustomerName"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:text="Customer Name"
+        android:textSize="18sp"
+        android:textStyle="bold"
+        android:layout_marginTop="8dp" />
+
+    <TextView
+        android:id="@+id/tvCustomerPhone"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:text="Phone: -"
+        android:layout_marginTop="2dp"
+        android:textSize="14sp" />
+
+    <!-- Balance card -->
+    <androidx.cardview.widget.CardView
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:gravity="center_vertical">
-
-        <ImageView
-            android:id="@+id/btnBack"
-            android:src="@drawable/ic_arrow_back"
-            android:layout_width="24dp"
-            android:layout_height="24dp"
-            android:padding="4dp" />
+        android:layout_marginTop="10dp"
+        app:cardCornerRadius="12dp"
+        app:cardElevation="4dp">
 
         <LinearLayout
             android:orientation="vertical"
-            android:layout_width="0dp"
-            android:layout_height="wrap_content"
-            android:layout_weight="1"
-            android:paddingStart="10dp">
-
-            <TextView
-                android:id="@+id/tvCustomerName"
-                android:text="Customer Name"
-                android:textSize="18sp"
-                android:textStyle="bold"
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"/>
-
-            <TextView
-                android:id="@+id/tvCustomerPhone"
-                android:text="9898989898"
-                android:textSize="14sp"
-                android:textColor="@android:color/darker_gray"
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"/>
-        </LinearLayout>
-
-        <!-- Balance -->
-        <LinearLayout
-            android:orientation="vertical"
-            android:gravity="end"
-            android:layout_width="wrap_content"
+            android:padding="12dp"
+            android:layout_width="match_parent"
             android:layout_height="wrap_content">
 
             <TextView
-                android:id="@+id/tvBalance"
-                android:text="₹0.00"
-                android:textSize="18sp"
-                android:textStyle="bold"
+                android:id="@+id/tvBalanceLabel"
                 android:layout_width="wrap_content"
-                android:layout_height="wrap_content"/>
+                android:layout_height="wrap_content"
+                android:text="You owe shop"
+                android:textSize="14sp" />
 
             <TextView
-                android:id="@+id/tvBalanceLabel"
-                android:text="All Clear"
-                android:textSize="12sp"
-                android:textColor="@android:color/holo_red_dark"
+                android:id="@+id/tvBalance"
                 android:layout_width="wrap_content"
-                android:layout_height="wrap_content"/>
+                android:layout_height="wrap_content"
+                android:text="₹0.00"
+                android:textSize="22sp"
+                android:textStyle="bold"
+                android:layout_marginTop="4dp" />
+
+            <TextView
+                android:id="@+id/tvLastUpdated"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="Last updated: --"
+                android:textSize="12sp"
+                android:layout_marginTop="4dp" />
         </LinearLayout>
+    </androidx.cardview.widget.CardView>
 
-    </LinearLayout>
-
-    <!-- Last updated -->
-    <TextView
-        android:id="@+id/tvLastUpdated"
-        android:text="Last updated: --"
-        android:textSize="12sp"
-        android:layout_marginTop="6dp"
-        android:textColor="@android:color/darker_gray"
-        android:layout_width="wrap_content"
-        android:layout_height="wrap_content"/>
-
-    <!-- ACTION BUTTONS (Shop owner only) -->
+    <!-- Shop owner action buttons -->
     <LinearLayout
         android:id="@+id/layoutActions"
+        android:orientation="horizontal"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:orientation="horizontal"
-        android:gravity="center"
-        android:layout_marginTop="10dp">
+        android:layout_marginTop="10dp"
+        android:gravity="center">
 
         <Button
             android:id="@+id/btnAddDebit"
-            android:text="Add Debit"
             android:layout_width="0dp"
+            android:layout_height="wrap_content"
             android:layout_weight="1"
-            android:layout_height="wrap_content"/>
+            android:text="Add Debit"
+            android:backgroundTint="@color/red_500"
+            android:textColor="@android:color/white" />
+
+        <View
+            android:layout_width="8dp"
+            android:layout_height="0dp" />
 
         <Button
             android:id="@+id/btnAddCredit"
-            android:text="Add Credit"
             android:layout_width="0dp"
+            android:layout_height="wrap_content"
             android:layout_weight="1"
-            android:layout_marginStart="10dp"
-            android:layout_height="wrap_content"/>
+            android:text="Add Credit"
+            android:backgroundTint="@color/green_500"
+            android:textColor="@android:color/white" />
     </LinearLayout>
 
-    <!-- LIST WITH SWIPE REFRESH -->
+    <!-- Transactions list with pull to refresh -->
     <androidx.swiperefreshlayout.widget.SwipeRefreshLayout
         android:id="@+id/swipeRefresh"
         android:layout_width="match_parent"
         android:layout_height="0dp"
-        android:layout_marginTop="8dp"
         android:layout_weight="1"
-        tools:ignore="MissingClass">
+        android:layout_marginTop="10dp">
 
         <androidx.recyclerview.widget.RecyclerView
             android:id="@+id/rvTransactions"
