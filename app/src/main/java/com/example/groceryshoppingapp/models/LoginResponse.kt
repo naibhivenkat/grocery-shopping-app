@@ -5,7 +5,8 @@ import com.google.gson.annotations.SerializedName
 data class LoginResponse(
     val success: Boolean,
     val user: UserData?,
-    @SerializedName("token") val token: String? // root-level token from backend
+    @SerializedName("token") val token: String?,
+    @SerializedName("message") val message: String? = null
 )
 
 data class UserData(
@@ -26,6 +27,5 @@ data class UserData(
     @SerializedName("shopExists") val shopExists: Boolean? = null,
     @SerializedName("hasItems") val hasItems: Boolean? = null,
 
-    // ✅ reuse same Shop model as in GetItemsResponse
     val shop: Shop? = null
 )

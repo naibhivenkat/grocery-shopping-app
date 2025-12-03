@@ -11,7 +11,6 @@
         android:layout_width="match_parent"
         android:layout_height="match_parent">
 
-        <!-- Title -->
         <TextView
             android:id="@+id/tv_login_title"
             android:text="@string/ui_login"
@@ -21,14 +20,12 @@
             android:layout_width="wrap_content"
             android:layout_height="wrap_content" />
 
-        <!-- Username -->
         <EditText
             android:id="@+id/et_username"
             android:hint="Username"
             android:layout_width="match_parent"
             android:layout_height="wrap_content" />
 
-        <!-- Password -->
         <EditText
             android:id="@+id/et_password"
             android:hint="Password"
@@ -37,7 +34,6 @@
             android:layout_height="wrap_content"
             android:layout_marginTop="12dp" />
 
-        <!-- Error Message -->
         <TextView
             android:id="@+id/tv_error_message"
             android:layout_width="wrap_content"
@@ -47,7 +43,6 @@
             android:paddingTop="8dp"
             android:textSize="14sp" />
 
-        <!-- Forgot Password -->
         <TextView
             android:id="@+id/tv_forgot_password"
             android:text="@string/forgot_password"
@@ -57,7 +52,6 @@
             android:layout_height="wrap_content"
             android:layout_marginTop="8dp" />
 
-        <!-- Login Button -->
         <Button
             android:id="@+id/btn_login"
             android:layout_width="match_parent"
@@ -65,7 +59,6 @@
             android:text="@string/ui_login_2"
             android:layout_marginTop="16dp" />
 
-        <!-- Register Link -->
         <TextView
             android:id="@+id/tv_register"
             android:text="@string/ui_no_account_register"
@@ -74,7 +67,6 @@
             android:layout_height="wrap_content"
             android:layout_marginTop="16dp" />
 
-        <!-- Help Link -->
         <TextView
             android:id="@+id/tv_help"
             android:text="Need Help?"
