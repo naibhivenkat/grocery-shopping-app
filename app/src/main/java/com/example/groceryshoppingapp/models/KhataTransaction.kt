@@ -1,13 +1,9 @@
 package com.example.groceryshoppingapp.models
 
 import android.os.Parcelable
-import com.google.firebase.firestore.IgnoreExtraProperties
 import com.google.gson.annotations.SerializedName
 import kotlinx.parcelize.Parcelize
-import com.google.firebase.firestore.PropertyName
 
-
-@IgnoreExtraProperties
 @Parcelize
 data class KhataTransaction(
 
@@ -32,11 +28,17 @@ data class KhataTransaction(
     @SerializedName("order_id")
     val orderId: String? = null,
 
-    // ⭐ THIS IS THE ONLY IMPORTANT FIX:
-    @SerializedName("created_at")
-    val createdAt: String? = null
+    // ⭐ ALWAYS store timestamp as Long (safe with Parcelize)
+    @SerializedName("created_at", alternate = ["createdAt", "timestamp"])
+    val createdAt: Long? = null
 
-) : Parcelable
+) : Parcelable {
+
+    // ⭐ Return safe timestamp
+    fun getCreatedTimestamp(): Long {
+        return createdAt ?: System.currentTimeMillis()
+    }
+}
 
 data class KhataLedgerResponse(
     val success: Boolean,

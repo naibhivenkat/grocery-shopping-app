@@ -35,7 +35,6 @@ import retrofit2.http.Query
 interface ApiService {
 
 
-
     @POST("api/update_order_status")
     fun updateOrderStatusFinal(
         @Body body: Map<String, String>
@@ -239,6 +238,22 @@ interface ApiService {
     @POST("/api/khata/pay_khata_from_wallet")
     fun payKhataFromWallet(@Body body: PayKhataRequest): Call<PayKhataResponse>
 
+    @POST("api/khata/cash_payment_request")
+    fun createCashPaymentRequest(@Body body: CashPaymentRequest): Call<ApiResponse>
+
+
+    @GET("api/khata/cash_status/{customerId}/{shopId}")
+    fun getCashStatus(
+        @Path("customerId") customerId: String,
+        @Path("shopId") shopId: String
+    ): Call<CashStatusResponse>
+
+
+    @POST("api/khata/approve_cash_payment")
+    fun approveCashPayment(@Body req: CashPaymentRequest): Call<ApiResponse>
+
+    @POST("api/khata/reject_cash_payment")
+    fun rejectCashPayment(@Body req: CashPaymentRequest): Call<ApiResponse>
 
 
     data class CreateShopRequest(
@@ -296,4 +311,19 @@ data class PayKhataResponse(
     val success: Boolean,
     val wallet_balance: Double,
     val message: String?
+)
+
+data class CashStatusResponse(
+    val success: Boolean,
+    val status: String?,         // pending / approved / rejected
+    val amount: Double? = 0.0,
+    val request_id: String? = null,
+    val message: String? = null
+)
+
+
+data class CashPaymentRequest(
+    val customer_id: String,
+    val shop_id: String,
+    val amount: Double
 )

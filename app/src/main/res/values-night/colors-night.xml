@@ -38,4 +38,7 @@
     <color name="text_primary_dark">#FFFFFF</color>
     <color name="text_secondary_dark">#BDBDBD</color>
 
+    <color name="khata_rejected_red">#FF5722</color>
+
+
 </resources>

@@ -72,6 +72,54 @@
         </LinearLayout>
     </androidx.cardview.widget.CardView>
 
+    <!-- ⭐ NEW: Pending Cash Banner (Visible only when shopowner & pending) -->
+    <LinearLayout
+        android:id="@+id/layoutPendingCash"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="10dp"
+        android:orientation="vertical"
+        android:padding="10dp"
+        android:background="@color/light_surface"
+        android:visibility="gone">
+
+        <TextView
+            android:id="@+id/tvPendingCashInfo"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="Customer reported cash payment: ₹0.00"
+            android:textSize="14sp"
+            android:textColor="@color/khata_due_red" />
+
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="horizontal"
+            android:gravity="end"
+            android:layout_marginTop="8dp">
+
+            <Button
+                android:id="@+id/btnRejectCash"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="Reject"
+                android:backgroundTint="@color/red_500"
+                android:textColor="@android:color/white" />
+
+            <View
+                android:layout_width="10dp"
+                android:layout_height="0dp" />
+
+            <Button
+                android:id="@+id/btnApproveCash"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="Approve"
+                android:backgroundTint="@color/green_500"
+                android:textColor="@android:color/white" />
+        </LinearLayout>
+    </LinearLayout>
+
     <!-- Shop owner action buttons -->
     <LinearLayout
         android:id="@+id/layoutActions"

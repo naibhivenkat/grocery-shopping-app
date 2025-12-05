@@ -16,6 +16,7 @@ import com.example.groceryshoppingapp.models.KhataTransaction
 import com.example.groceryshoppingapp.models.KhataTransactionRequest
 import com.example.groceryshoppingapp.network.ApiResponse
 import com.example.groceryshoppingapp.network.ApiService
+import com.example.groceryshoppingapp.network.CashPaymentRequest
 import com.example.groceryshoppingapp.network.RetrofitClient
 import com.example.groceryshoppingapp.utils.SessionManager
 import retrofit2.Call
@@ -109,6 +110,7 @@ class KhataCustomerDetailActivity : AppCompatActivity() {
         binding.tvCustomerPhone.text = account.phone ?: "-"
         updateBalanceUI(account.balance ?: 0.0)
         updateLastUpdated()
+        updatePendingCashUI()   // ⭐ NEW
     }
 
     private fun updateBalanceUI(balance: Double) {
@@ -149,6 +151,10 @@ class KhataCustomerDetailActivity : AppCompatActivity() {
                     account.customerName = body.account?.customerName
                     account.phone = body.account?.phone
                     account.shopName = body.account?.shopName
+                    // ⭐ NEW: refresh pending fields from backend
+                    account.pendingCash = body.account?.pendingCash
+                    account.pendingStatus = body.account?.pendingStatus
+                    account.pendingRequestId = body.account?.pendingRequestId
 
                     transactions.clear()
                     body.transactions?.let { transactions.addAll(it) }
@@ -156,6 +162,7 @@ class KhataCustomerDetailActivity : AppCompatActivity() {
 
                     updateBalanceUI(account.balance ?: 0.0)
                     updateLastUpdated()
+                    updatePendingCashUI()    // ⭐ NEW
                 }
 
                 override fun onFailure(call: Call<KhataLedgerResponse>, t: Throwable) {
@@ -167,6 +174,127 @@ class KhataCustomerDetailActivity : AppCompatActivity() {
                     ).show()
                 }
             })
+    }
+
+    // ⭐ NEW — show/hide Pending Cash banner for shop owner
+    private fun updatePendingCashUI() {
+        val role = SessionManager.getRole(this)
+        val pendingAmount = account.pendingCash ?: 0.0
+        val status = account.pendingStatus
+
+        if (role == "shopowner" && status == "pending" && pendingAmount > 0) {
+            binding.layoutPendingCash.visibility = View.VISIBLE
+            binding.tvPendingCashInfo.text =
+                "Customer reported cash payment: ₹${String.format("%.2f", pendingAmount)}"
+
+            binding.btnApproveCash.setOnClickListener {
+                confirmApproveCash()
+            }
+
+            binding.btnRejectCash.setOnClickListener {
+                confirmRejectCash()
+            }
+
+        } else {
+            binding.layoutPendingCash.visibility = View.GONE
+        }
+    }
+
+    // ⭐ NEW — confirm dialogs
+    private fun confirmApproveCash() {
+        AlertDialog.Builder(this)
+            .setTitle("Approve Cash Payment")
+            .setMessage("Approve this cash payment?")
+            .setPositiveButton("Approve") { _, _ -> approveCash() }
+            .setNegativeButton("Cancel", null)
+            .show()
+    }
+
+    private fun confirmRejectCash() {
+        AlertDialog.Builder(this)
+            .setTitle("Reject Cash Payment")
+            .setMessage("Reject this cash payment?")
+            .setPositiveButton("Reject") { _, _ -> rejectCash() }
+            .setNegativeButton("Cancel", null)
+            .show()
+    }
+
+    // ⭐ NEW — call backend /approve_cash_payment
+    private fun approveCash() {
+        val shopId = account.shopId ?: return
+        val customerId = account.customerId ?: return
+
+        val req = CashPaymentRequest(
+            customer_id = customerId,
+            shop_id = shopId,
+            amount = account.pendingCash ?: 0.0   // backend ignores amount
+        )
+
+        api.approveCashPayment(req).enqueue(object : Callback<ApiResponse> {
+            override fun onResponse(call: Call<ApiResponse>, response: Response<ApiResponse>) {
+                if (response.isSuccessful && response.body()?.success == true) {
+                    Toast.makeText(
+                        this@KhataCustomerDetailActivity,
+                        "Cash payment approved",
+                        Toast.LENGTH_SHORT
+                    ).show()
+                    loadLedger(true)
+                } else {
+                    Toast.makeText(
+                        this@KhataCustomerDetailActivity,
+                        response.body()?.message ?: "Failed",
+                        Toast.LENGTH_SHORT
+                    ).show()
+                }
+            }
+
+            override fun onFailure(call: Call<ApiResponse>, t: Throwable) {
+                Toast.makeText(
+                    this@KhataCustomerDetailActivity,
+                    t.message,
+                    Toast.LENGTH_SHORT
+                ).show()
+            }
+        })
+    }
+
+    // ⭐ NEW — call backend /reject_cash_payment
+    private fun rejectCash() {
+        val shopId = account.shopId ?: return
+        val customerId = account.customerId ?: return
+
+        val req = CashPaymentRequest(
+            customer_id = customerId,
+            shop_id = shopId,
+            amount = account.pendingCash ?: 0.0
+        )
+
+        api.rejectCashPayment(req).enqueue(object : Callback<ApiResponse> {
+            override fun onResponse(call: Call<ApiResponse>, response: Response<ApiResponse>) {
+                if (response.isSuccessful && response.body()?.success == true) {
+                    Toast.makeText(
+                        this@KhataCustomerDetailActivity,
+                        "Cash payment rejected",
+                        Toast.LENGTH_SHORT
+                    ).show()
+                    loadLedger(true)
+                } else {
+                    Toast.makeText(
+                        this@KhataCustomerDetailActivity,
+                        response.body()?.message ?: "Failed",
+                        Toast.LENGTH_SHORT
+                    ).show()
+                }
+            }
+
+            override fun onFailure(call: Call<ApiResponse>, t: Throwable) {
+                Toast.makeText(
+                    this@KhataCustomerDetailActivity,
+                    t.message,
+                    Toast.LENGTH_SHORT
+                ).show()
+            }
+        })
     }
 
     private fun openAddDialog(type: String) {

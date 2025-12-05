@@ -3,6 +3,7 @@ package com.example.groceryshoppingapp.adapters
 import android.graphics.Color
 import android.view.LayoutInflater
 import android.view.ViewGroup
+import androidx.core.content.ContextCompat
 import androidx.recyclerview.widget.RecyclerView
 import com.example.groceryshoppingapp.R
 import com.example.groceryshoppingapp.databinding.ItemKhataTransactionBinding
@@ -18,40 +19,48 @@ class KhataTransactionAdapter(
         RecyclerView.ViewHolder(binding.root) {
 
         fun bind(tx: KhataTransaction) {
-            // Amount
-            val amount = tx.amount ?: 0.0
-            binding.tvAmount.text = "₹${String.format("%.2f", amount)}"
 
-            // Date: createdAt is epoch millis in String
-            val epochMillis = try {
-                tx.createdAt?.toLong() ?: System.currentTimeMillis()
-            } catch (e: Exception) {
-                System.currentTimeMillis()
-            }
+            val ctx = binding.root.context
 
+            // Timestamp
+            val epochMillis = tx.getCreatedTimestamp()
             val sdf = SimpleDateFormat("dd MMM yyyy, hh:mm a", Locale.getDefault())
             sdf.timeZone = TimeZone.getTimeZone("Asia/Kolkata")
             binding.tvDate.text = sdf.format(Date(epochMillis))
 
+            // Amount
+            val amount = tx.amount ?: 0.0
+            binding.tvAmount.text = "₹${String.format("%.2f", amount)}"
+
             // Note
             binding.tvNote.text = tx.note ?: ""
 
-            // Type + colors
-            val typeLower = tx.type?.lowercase() ?: ""
-            binding.tvType.text = typeLower.uppercase()
+            // Type
+            val type = tx.type?.lowercase() ?: ""
 
-            when (typeLower) {
+            when (type) {
+
                 "debit" -> {
-                    // debit = customer owes more
+                    binding.tvType.text = "DEBIT"
                     binding.tvAmount.setTextColor(Color.parseColor("#D32F2F"))
                     binding.tvType.setBackgroundResource(R.drawable.bg_badge_due)
                 }
+
                 "credit" -> {
-                    // credit = payment made
+                    binding.tvType.text = "CREDIT"
                     binding.tvAmount.setTextColor(Color.parseColor("#2E7D32"))
                     binding.tvType.setBackgroundResource(R.drawable.bg_badge_advance)
                 }
+
+                "reject" -> {
+                    // ⭐ Rejected Cash Payment – no balance change
+                    binding.tvType.text = "REJECTED"
+                    binding.tvAmount.setTextColor(Color.parseColor("#FF9800")) // Orange
+                    binding.tvType.setBackgroundResource(R.drawable.bg_badge_yellow)
+                }
+
                 else -> {
+                    binding.tvType.text = type.uppercase()
                     binding.tvAmount.setTextColor(Color.BLACK)
                     binding.tvType.setBackgroundResource(R.drawable.bg_badge_advance)
                 }

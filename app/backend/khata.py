@@ -297,3 +297,273 @@ def pay_khata_from_wallet():
         "wallet_balance": new_balance,
         "message": "Khata payment successful"
     }), 200
+
+#---------------------#-----------#------
+@khata_bp.route("/cash_payment_request", methods=["POST"])
+def cash_payment_request():
+    data = request.json or {}
+
+    shop_id = data.get("shop_id")
+    customer_id = data.get("customer_id")
+    amount = float(data.get("amount", 0))
+
+    if not shop_id or not customer_id or amount <= 0:
+        return jsonify({"success": False, "message": "Invalid data"}), 400
+
+    # 1️⃣ Create a new cash payment request document
+    request_id = str(uuid.uuid4())
+
+    firebase_db.db.collection("cash_payments").document(request_id).set({
+        "request_id": request_id,
+        "shop_id": shop_id,
+        "customer_id": customer_id,
+        "amount": amount,
+        "status": "pending",
+        "timestamp": datetime.datetime.utcnow()
+    })
+
+    # 2️⃣ FIND THE CUSTOMER'S KHATA ACCOUNT
+    acc_ref = (
+        firebase_db.db.collection("khata_accounts")
+        .where("shop_id", "==", shop_id)
+        .where("customer_id", "==", customer_id)
+        .limit(1)
+    )
+
+    docs = acc_ref.stream()
+    acc_doc = next(docs, None)
+
+    if acc_doc is None:
+        return jsonify({"success": False, "message": "Khata account not found"}), 404
+
+    # 3️⃣ UPDATE KHATA ACCOUNT with PENDING DETAILS
+    acc_doc.reference.update({
+        "pending_cash": amount,
+        "pending_status": "pending",
+        "pending_request_id": request_id,
+        "updated_at": datetime.datetime.utcnow().isoformat()
+    })
+
+    return jsonify({
+        "success": True,
+        "message": "Cash payment request submitted",
+        "request_id": request_id
+    })
+
+
+@khata_bp.route("/cash_status/<customerId>/<shopId>", methods=["GET"])
+def get_cash_status(customerId, shopId):
+    try:
+        query = (
+            firebase_db.db.collection("cash_payments")
+            .where("customer_id", "==", customerId)
+            .where("shop_id", "==", shopId)
+            .order_by("timestamp", direction=firestore.Query.DESCENDING)
+            .limit(1)
+        )
+
+        docs = query.stream()
+        doc = next(docs, None)
+
+        if doc is None:
+            return jsonify({
+                "success": True,
+                "status": "none",
+                "message": "No pending cash payments"
+            }), 200
+
+        data = doc.to_dict()
+
+        return jsonify({
+            "success": True,
+            "status": data.get("status"),
+            "amount": data.get("amount"),
+            "request_id": data.get("request_id")
+        }), 200
+
+    except Exception as e:
+        print("🔥 CASH STATUS ERROR:", e)
+        return jsonify({"success": False, "message": "Server error"}), 500
+
+
+@khata_bp.route("/cash_payment_update", methods=["POST"])
+def update_cash_payment_status():
+    data = request.json or {}
+
+    request_id = data.get("request_id")
+    status = data.get("status")  # approved / rejected
+
+    if not request_id or status not in ["approved", "rejected"]:
+        return jsonify({"success": False, "message": "Invalid data"}), 400
+
+    try:
+        doc_ref = firebase_db.db.collection("cash_payments").document(request_id)
+        doc = doc_ref.get()
+
+        if not doc.exists:
+            return jsonify({"success": False, "message": "Request not found"}), 404
+
+        pay_data = doc.to_dict()
+
+        # Update status
+        doc_ref.update({"status": status})
+
+        if status == "approved":
+            # Add khata transaction
+            firebase_db.add_khata_transaction(
+                shop_id=pay_data["shop_id"],
+                customer_id=pay_data["customer_id"],
+                amount=pay_data["amount"],
+                tx_type="credit",
+                note="Cash Payment Approved",
+                order_id=None
+            )
+
+        return jsonify({"success": True, "status": status}), 200
+
+    except Exception as e:
+        print("🔥 CASH UPDATE ERROR:", e)
+        return jsonify({"success": False, "message": "Server error"}), 500
+
+
+@khata_bp.route("/approve_cash_payment", methods=["POST"])
+def approve_cash_payment():
+    data = request.json or {}
+
+    shop_id = data.get("shop_id")
+    customer_id = data.get("customer_id")
+
+    if not shop_id or not customer_id:
+        return jsonify({"success": False, "message": "Invalid data"}), 400
+
+    # Get khata account
+    acc_ref = (
+        firebase_db.db.collection("khata_accounts")
+        .where("shop_id", "==", shop_id)
+        .where("customer_id", "==", customer_id)
+        .limit(1)
+    )
+
+    docs = acc_ref.stream()
+    acc_doc = next(docs, None)
+
+    if not acc_doc:
+        return jsonify({"success": False, "message": "Account not found"}), 404
+
+    acc = acc_doc.to_dict()
+    pending_amount = acc.get("pending_cash")
+
+    if not pending_amount or pending_amount <= 0:
+        return jsonify({"success": False, "message": "No pending request"}), 400
+
+    # APPROVE — Add khata CREDIT entry
+    firebase_db.add_khata_transaction(
+        shop_id=shop_id,
+        customer_id=customer_id,
+        amount=pending_amount,
+        tx_type="credit",
+        note="Cash payment approved",
+        order_id=None
+    )
+
+    # Update khata account
+    acc_doc.reference.update({
+        "balance": acc.get("balance", 0) - pending_amount,
+        "pending_cash": None,
+        "pending_status": None,
+        "pending_request_id": None,
+        "updated_at": datetime.datetime.utcnow().isoformat()
+    })
+
+    return jsonify({
+        "success": True,
+        "message": "Cash payment approved",
+        "amount": pending_amount
+    })
+
+
+# @khata_bp.route("/reject_cash_payment", methods=["POST"])
+# def reject_cash_payment():
+#     data = request.json or {}
+#
+#     shop_id = data.get("shop_id")
+#     customer_id = data.get("customer_id")
+#
+#     if not shop_id or not customer_id:
+#         return jsonify({"success": False, "message": "Invalid data"}), 400
+#
+#     acc_ref = (
+#         firebase_db.db.collection("khata_accounts")
+#         .where("shop_id", "==", shop_id)
+#         .where("customer_id", "==", customer_id)
+#         .limit(1)
+#     )
+#
+#     docs = acc_ref.stream()
+#     acc_doc = next(docs, None)
+#
+#     if not acc_doc:
+#         return jsonify({"success": False, "message": "Account not found"}), 404
+#
+#     # Clear pending only
+#     acc_doc.reference.update({
+#         "pending_cash": None,
+#         "pending_status": "rejected",
+#         "updated_at": datetime.datetime.utcnow().isoformat()
+#     })
+#
+#     return jsonify({
+#         "success": True,
+#         "message": "Cash payment rejected"
+#     })
+
+
+@khata_bp.route("/reject_cash_payment", methods=["POST"])
+def reject_cash_payment():
+    data = request.json or {}
+
+    shop_id = data.get("shop_id")
+    customer_id = data.get("customer_id")
+
+    if not shop_id or not customer_id:
+        return jsonify({"success": False, "message": "Invalid data"}), 400
+
+    acc_ref = (
+        firebase_db.db.collection("khata_accounts")
+        .where("shop_id", "==", shop_id)
+        .where("customer_id", "==", customer_id)
+        .limit(1)
+    )
+
+    docs = acc_ref.stream()
+    acc_doc = next(docs, None)
+
+    if not acc_doc:
+        return jsonify({"success": False, "message": "Account not found"}), 404
+
+    acc = acc_doc.to_dict()
+    pending_amount = acc.get("pending_cash") or 0.0
+
+    # 1️⃣ Add REJECTED transaction entry (DOES NOT affect balance)
+    firebase_db.add_khata_transaction(
+        shop_id=shop_id,
+        customer_id=customer_id,
+        amount=pending_amount,
+        tx_type="reject",
+        note="Cash payment rejected",
+        order_id=None
+    )
+
+    # 2️⃣ Update khata account fields
+    acc_doc.reference.update({
+        "pending_cash": None,
+        "pending_status": "rejected",
+        "pending_request_id": None,
+        "updated_at": datetime.datetime.utcnow().isoformat()
+    })
+
+    return jsonify({
+        "success": True,
+        "message": "Cash payment rejected",
+        "amount": pending_amount
+    })

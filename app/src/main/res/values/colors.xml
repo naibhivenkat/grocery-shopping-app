@@ -52,4 +52,7 @@
     <color name="text_primary_light">#1C1B1F</color>
     <color name="text_secondary_light">#6D6D6D</color>
 
+    <color name="khata_rejected_red">#FF5722</color>
+
+
 </resources>

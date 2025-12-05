@@ -7,9 +7,7 @@
     android:layout_height="match_parent"
     android:background="@color/light_background">
 
-    <!-- ============================
-         TOP TOOLBAR (Perfect Spacing)
-         ============================ -->
+    <!-- TOP TOOLBAR -->
     <RelativeLayout
         android:id="@+id/layoutToolbar"
         android:layout_width="match_parent"
@@ -18,7 +16,6 @@
         android:gravity="center_vertical"
         android:background="@color/light_surface">
 
-        <!-- Back Button -->
         <TextView
             android:id="@+id/btnBack"
             android:layout_width="wrap_content"
@@ -30,7 +27,6 @@
             android:layout_alignParentStart="true"
             android:padding="8dp" />
 
-        <!-- Screen Title -->
         <TextView
             android:id="@+id/tvTitle"
             android:layout_width="wrap_content"
@@ -41,7 +37,6 @@
             android:layout_centerInParent="true"
             android:textColor="@color/black" />
 
-        <!-- Add Button -->
         <Button
             android:id="@+id/btnCreateKhata"
             android:layout_width="80dp"
@@ -56,10 +51,7 @@
 
     </RelativeLayout>
 
-
-    <!-- ==============
-         SUMMARY CARD
-         ============== -->
+    <!-- SUMMARY CARD -->
     <androidx.cardview.widget.CardView
         android:id="@+id/cardSummary"
         android:layout_width="match_parent"
@@ -97,10 +89,47 @@
 
     </androidx.cardview.widget.CardView>
 
+    <!-- 🔵 FILTER CHIPS (Option A: under summary) -->
+    <com.google.android.material.chip.ChipGroup
+        android:id="@+id/chipFilterGroup"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:paddingHorizontal="12dp"
+        android:paddingBottom="4dp"
+        app:singleSelection="true">
 
-    <!-- ============
-         LIST SECTION
-         ============ -->
+        <com.google.android.material.chip.Chip
+            android:id="@+id/chipAll"
+            style="@style/Widget.MaterialComponents.Chip.Filter"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="All"
+            android:checked="true" />
+
+        <com.google.android.material.chip.Chip
+            android:id="@+id/chipPending"
+            style="@style/Widget.MaterialComponents.Chip.Filter"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="Pending" />
+
+        <com.google.android.material.chip.Chip
+            android:id="@+id/chipApproved"
+            style="@style/Widget.MaterialComponents.Chip.Filter"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="Approved" />
+
+        <com.google.android.material.chip.Chip
+            android:id="@+id/chipRejected"
+            style="@style/Widget.MaterialComponents.Chip.Filter"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="Rejected" />
+
+    </com.google.android.material.chip.ChipGroup>
+
+    <!-- LIST -->
     <androidx.swiperefreshlayout.widget.SwipeRefreshLayout
         android:id="@+id/swipeRefresh"
         android:layout_width="match_parent"

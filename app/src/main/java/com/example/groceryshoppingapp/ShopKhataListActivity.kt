@@ -21,6 +21,10 @@ class ShopKhataListActivity : AppCompatActivity() {
 
     private lateinit var binding: ActivityShopKhataListBinding
     private lateinit var api: ApiService
+
+    // 🔹 allAccounts = full data from server
+    // 🔹 accounts = filtered list used by adapter
+    private val allAccounts = mutableListOf<KhataAccount>()
     private val accounts = mutableListOf<KhataAccount>()
     private lateinit var adapter: KhataAccountAdapter
 
@@ -31,17 +35,16 @@ class ShopKhataListActivity : AppCompatActivity() {
 
         api = RetrofitClient.getInstance(this).create(ApiService::class.java)
 
-        // 🔵 UPDATED ADAPTER (3 PARAMETERS)
         adapter = KhataAccountAdapter(
             accounts,
             onViewClick = { acc ->
                 val intent = Intent(this, KhataCustomerDetailActivity::class.java)
                 intent.putExtra("account", acc)
-                intent.putExtra("isReadOnly", false)  // shop owner can edit
+                intent.putExtra("isReadOnly", false)  // shop owner can edit + approve cash
                 startActivity(intent)
             },
             onPayClick = { _ ->
-                // 🔴 Shop owner does NOT pay khata → no action needed.
+                // Shop owner does NOT pay khata → no action
             }
         )
 
@@ -53,7 +56,46 @@ class ShopKhataListActivity : AppCompatActivity() {
 
         binding.swipeRefresh.setOnRefreshListener { loadAccounts() }
 
+        setupFilterChips()
         loadAccounts()
+    }
+
+    // 🔹 Filter chip logic
+    private fun setupFilterChips() {
+        binding.chipFilterGroup.setOnCheckedStateChangeListener { _, _ ->
+            applyFilter()
+        }
+        // Ensure "All" is checked initially in XML
+    }
+
+    private fun applyFilter() {
+        accounts.clear()
+
+        val checkedId = binding.chipFilterGroup.checkedChipId
+
+        when (checkedId) {
+            R.id.chipPending -> {
+                // Only pendings
+                accounts.addAll(allAccounts.filter { it.pendingStatus == "pending" })
+            }
+            R.id.chipApproved -> {
+                accounts.addAll(allAccounts.filter { it.pendingStatus == "approved" })
+            }
+            R.id.chipRejected -> {
+                accounts.addAll(allAccounts.filter { it.pendingStatus == "rejected" })
+            }
+            else -> {
+                // Default → All
+                accounts.addAll(allAccounts)
+            }
+        }
+
+        adapter.notifyDataSetChanged()
+
+        // Update summary for filtered view
+        binding.tvTotalCustomers.text = "Customers: ${accounts.size}"
+        val totalDue = accounts.sumOf { it.balance ?: 0.0 }
+        binding.tvTotalDue.text = "Total Due: ₹${String.format("%.2f", totalDue)}"
     }
 
     private fun loadAccounts() {
@@ -83,19 +125,16 @@ class ShopKhataListActivity : AppCompatActivity() {
                 }
 
                 val body = response.body()
+                allAccounts.clear()
                 accounts.clear()
 
                 body?.accounts?.forEach { acc ->
                     acc.shopName = acc.shopName ?: "Unknown Shop"
-                    accounts.add(acc)
+                    allAccounts.add(acc)
                 }
 
-                adapter.notifyDataSetChanged()
-
-                // Summary
-                binding.tvTotalCustomers.text = "Customers: ${accounts.size}"
-                val totalDue = accounts.sumOf { it.balance ?: 0.0 }
-                binding.tvTotalDue.text = "Total Due: ₹${String.format("%.2f", totalDue)}"
+                // Apply current selected filter
+                applyFilter()
             }
 
             override fun onFailure(call: Call<KhataAccountsResponse>, t: Throwable) {
