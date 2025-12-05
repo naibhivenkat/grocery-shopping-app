@@ -565,17 +565,13 @@ def get_khata_account(shop_id, customer_id):
     return data
 
 
-
-# ---------------------------------------------------------------------------------
-# LIST TRANSACTIONS  (100% SAFE – Never overwrites old timestamps)
-# ---------------------------------------------------------------------------------
 def list_khata_transactions(shop_id, customer_id, limit=200):
 
     snap = (
         db.collection("khata_transactions")
         .where("shop_id", "==", shop_id)
         .where("customer_id", "==", customer_id)
-        .order_by("created_at", direction=firestore.Query.ASCENDING)
+        .order_by("created_at", direction=firestore.Query.DESCENDING)  # ⬅️ FIX: latest first
         .limit(limit)
         .get()
     )
@@ -586,32 +582,16 @@ def list_khata_transactions(shop_id, customer_id, limit=200):
         data = doc.to_dict()
         ts = data.get("created_at")
 
+        # ⬇ KEEP your timestamp cleanup code exactly as is ⬇
+        # (DO NOT CHANGE ANYTHING ELSE)
         epoch_ms = None
 
-        # -------------------------------------------------------------
-        # CASE 1: New format → STRING containing ONLY digits
-        # -------------------------------------------------------------
         if isinstance(ts, str) and ts.isdigit():
             epoch_ms = int(ts)
-
-        # -------------------------------------------------------------
-        # CASE 2: Firestore datetime (old saved format)
-        # -------------------------------------------------------------
         elif isinstance(ts, datetime):
             epoch_ms = int(ts.timestamp() * 1000)
-
-        # -------------------------------------------------------------
-        # CASE 3: Firestore stored float seconds (very old data)
-        # -------------------------------------------------------------
-        elif isinstance(ts, float) or isinstance(ts, int):
-            try:
-                epoch_ms = int(float(ts) * 1000)
-            except:
-                epoch_ms = None
-
-        # -------------------------------------------------------------
-        # CASE 4: RFC822 string, example "Tue, 02 Dec 2025 05:55:19 GMT"
-        # -------------------------------------------------------------
+        elif isinstance(ts, (float, int)):
+            epoch_ms = int(float(ts) * 1000)
         elif isinstance(ts, str) and "," in ts:
             try:
                 dt = datetime.strptime(ts, "%a, %d %b %Y %H:%M:%S %Z")
@@ -619,16 +599,12 @@ def list_khata_transactions(shop_id, customer_id, limit=200):
             except:
                 epoch_ms = None
 
-        # -------------------------------------------------------------
-        # FINAL SAFE FALLBACK → extract from tx_id
-        # -------------------------------------------------------------
         if not epoch_ms:
             try:
                 epoch_ms = int(data["tx_id"].replace("tx_", ""))
             except:
                 epoch_ms = int(time.time() * 1000)
 
-        # Return timestamp as STRING (important)
         data["created_at"] = str(epoch_ms)
 
         tx_list.append(data)
@@ -636,26 +612,6 @@ def list_khata_transactions(shop_id, customer_id, limit=200):
     return tx_list
 
 
-
-
-# -----------------------------
-# LIST TRANSACTIONS
-# -----------------------------
-# def list_khata_transactions(shop_id, customer_id, limit=200):
-#     snap = (
-#         db.collection("khata_transactions")
-#         .where("shop_id", "==", shop_id)
-#         .where("customer_id", "==", customer_id)
-#         .order_by("created_at", direction=firestore.Query.ASCENDING)
-#         .limit(limit)
-#         .get()
-#     )
-#     return [doc.to_dict() for doc in snap]
-
-
-# -----------------------------
-# LIST KHATA FOR SHOP
-# -----------------------------
 def list_khata_customers_for_shop(shop_id):
     snap = db.collection("khata_accounts").where("shop_id", "==", shop_id).get()
     return [doc.to_dict() for doc in snap]

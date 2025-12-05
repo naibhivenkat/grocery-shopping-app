@@ -63,6 +63,18 @@
             android:textSize="18sp"
             android:textStyle="bold"
             android:layout_marginTop="6dp" />
+
+        <!-- 🔵 NEW: Pay Now button (shown only when customer has DUE) -->
+        <Button
+            android:id="@+id/btnPayNow"
+            android:layout_width="match_parent"
+            android:layout_height="42dp"
+            android:text="Pay Now"
+            android:textAllCaps="false"
+            android:backgroundTint="@color/purple_500"
+            android:textColor="@android:color/white"
+            android:layout_marginTop="10dp"
+            android:visibility="gone" /> <!-- default hidden -->
     </LinearLayout>
 
 </androidx.cardview.widget.CardView>

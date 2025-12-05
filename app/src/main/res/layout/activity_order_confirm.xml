@@ -16,20 +16,19 @@
             android:id="@+id/textViewTitle"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            android:text="@string/ui_confirm_your_order"
+            android:text="Confirm Your Order"
             android:textSize="24sp"
             android:textStyle="bold"
             android:textColor="?attr/colorOnSurface"
             android:layout_marginBottom="16dp"
-            android:gravity="center"/>
+            android:gravity="center" />
 
         <TextView
             android:id="@+id/textViewShopName"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            android:text="@string/ui_shop_name"
+            android:text="Shop:"
             android:textSize="20sp"
-            android:textStyle="bold"
             android:textColor="?attr/colorOnSurface"
             android:layout_marginBottom="8dp"/>
 
@@ -37,17 +36,48 @@
             android:id="@+id/textViewTotal"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            android:text="@string/ui_total_000"
+            android:text="Total: ₹0"
             android:textSize="22sp"
             android:textStyle="bold"
             android:textColor="?attr/colorSecondary"
-            android:layout_marginBottom="24dp"/>
+            android:layout_marginBottom="20dp"/>
+
+        <!-- NEW: Pay Now Label -->
+        <TextView
+            android:id="@+id/textViewPayNowLabel"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="Enter Amount To Pay Now"
+            android:textSize="16sp"
+            android:textColor="?attr/colorOnSurface"
+            android:layout_marginBottom="6dp" />
+
+        <!-- NEW: Pay Now Input -->
+        <EditText
+            android:id="@+id/editTextPayNow"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:inputType="numberDecimal"
+            android:hint="Enter amount"
+            android:padding="12dp"
+            android:background="@android:drawable/editbox_background"
+            android:layout_marginBottom="12dp"/>
+
+        <!-- NEW: Due amount display -->
+        <TextView
+            android:id="@+id/textViewDueAmount"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="Due: ₹0"
+            android:textSize="16sp"
+            android:textColor="?attr/colorSecondary"
+            android:layout_marginBottom="20dp" />
 
         <TextView
             android:id="@+id/textViewPaymentLabel"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            android:text="@string/ui_select_payment_method"
+            android:text="Select Payment Method"
             android:textSize="16sp"
             android:textColor="?attr/colorOnSurface"
             android:layout_marginBottom="8dp" />
@@ -57,18 +87,20 @@
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:layout_marginBottom="24dp"
-            android:spinnerMode="dropdown"/>
+            android:spinnerMode="dropdown" />
 
         <Button
             android:id="@+id/buttonPlaceOrder"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:text="@string/ui_place_order"
+            android:text="Place Order"
             android:textSize="16sp"
             android:textStyle="bold"
             android:backgroundTint="?attr/colorPrimary"
             android:textColor="?attr/colorOnPrimary"
             android:padding="12dp"
-            android:textAllCaps="false"/>
+            android:textAllCaps="false" />
+
     </LinearLayout>
+
 </ScrollView>

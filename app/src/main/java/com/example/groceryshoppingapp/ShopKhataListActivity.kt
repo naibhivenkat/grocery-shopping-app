@@ -31,12 +31,19 @@ class ShopKhataListActivity : AppCompatActivity() {
 
         api = RetrofitClient.getInstance(this).create(ApiService::class.java)
 
-        adapter = KhataAccountAdapter(accounts) { acc ->
-            val intent = Intent(this, KhataCustomerDetailActivity::class.java)
-            intent.putExtra("account", acc)
-            intent.putExtra("isReadOnly", false)  // shop owner editable
-            startActivity(intent)
-        }
+        // 🔵 UPDATED ADAPTER (3 PARAMETERS)
+        adapter = KhataAccountAdapter(
+            accounts,
+            onViewClick = { acc ->
+                val intent = Intent(this, KhataCustomerDetailActivity::class.java)
+                intent.putExtra("account", acc)
+                intent.putExtra("isReadOnly", false)  // shop owner can edit
+                startActivity(intent)
+            },
+            onPayClick = { _ ->
+                // 🔴 Shop owner does NOT pay khata → no action needed.
+            }
+        )
 
         binding.rvKhataCustomers.layoutManager = LinearLayoutManager(this)
         binding.rvKhataCustomers.adapter = adapter
@@ -44,9 +51,7 @@ class ShopKhataListActivity : AppCompatActivity() {
         binding.btnBack.setOnClickListener { finish() }
         binding.btnCreateKhata.setOnClickListener { openSelectCustomerScreen() }
 
-        binding.swipeRefresh.setOnRefreshListener {
-            loadAccounts()
-        }
+        binding.swipeRefresh.setOnRefreshListener { loadAccounts() }
 
         loadAccounts()
     }
@@ -80,14 +85,14 @@ class ShopKhataListActivity : AppCompatActivity() {
                 val body = response.body()
                 accounts.clear()
 
-                body?.accounts?.let { list ->
-                    list.forEach { acc ->
-                        acc.shopName = acc.shopName ?: "Unknown Shop"
-                        accounts.add(acc)
-                    }
+                body?.accounts?.forEach { acc ->
+                    acc.shopName = acc.shopName ?: "Unknown Shop"
+                    accounts.add(acc)
                 }
+
                 adapter.notifyDataSetChanged()
 
+                // Summary
                 binding.tvTotalCustomers.text = "Customers: ${accounts.size}"
                 val totalDue = accounts.sumOf { it.balance ?: 0.0 }
                 binding.tvTotalDue.text = "Total Due: ₹${String.format("%.2f", totalDue)}"
@@ -111,6 +116,7 @@ class ShopKhataListActivity : AppCompatActivity() {
 
     override fun onActivityResult(reqCode: Int, resCode: Int, data: Intent?) {
         super.onActivityResult(reqCode, resCode, data)
+
         if (reqCode == 200 && resCode == RESULT_OK) {
             val customer = data?.getParcelableExtra<AppUser>("customer") ?: return
             createKhata(customer)
@@ -143,7 +149,7 @@ class ShopKhataListActivity : AppCompatActivity() {
                 if (!response.isSuccessful) {
                     Toast.makeText(
                         this@ShopKhataListActivity,
-                        "Failed to create",
+                        "Failed to create khata",
                         Toast.LENGTH_SHORT
                     ).show()
                     return

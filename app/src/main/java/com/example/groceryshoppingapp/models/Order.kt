@@ -68,13 +68,17 @@ data class OrderItemRequest(
     val quantity: Double
 )
 
+
 data class CreateOrderRequest(
     val shopId: String,
     val payment_method: String,
     val items: List<OrderItemRequest>,
-    val transaction_id: String? = null, // 🔹 optional
-    val invoice_url: String? = null
+    val transaction_id: String? = null,
+    val invoice_url: String? = null,
+    val pay_now: Double,
+    val due_amount: Double
 )
+
 
 @Parcelize
 data class Customer(

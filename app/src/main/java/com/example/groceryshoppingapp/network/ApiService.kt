@@ -236,6 +236,9 @@ interface ApiService {
         @Path("customerId") customerId: String
     ): Call<KhataAccountsResponse>
 
+    @POST("/api/khata/pay_khata_from_wallet")
+    fun payKhataFromWallet(@Body body: PayKhataRequest): Call<PayKhataResponse>
+
 
 
     data class CreateShopRequest(
@@ -280,4 +283,17 @@ data class WalletVerifyRequest(
     val payment_id: String,
     val order_id: String,
     val signature: String
+)
+
+data class PayKhataRequest(
+    val shop_id: String,
+    val customer_id: String,
+    val amount: Double
+)
+
+
+data class PayKhataResponse(
+    val success: Boolean,
+    val wallet_balance: Double,
+    val message: String?
 )

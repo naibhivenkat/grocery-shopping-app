@@ -10,9 +10,9 @@
         android:id="@+id/btnBack"
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
-        android:text="Back"
+        android:text="⬅ Back"
         android:background="@android:color/transparent"
-        android:textColor="@color/blue_500" />
+        android:textColor="@color/purple_500" />
 
     <!-- TOP TITLE -->
     <TextView

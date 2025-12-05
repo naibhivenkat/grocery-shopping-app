@@ -234,4 +234,15 @@ object SessionManager {
         return prefs(context).getString("firebase_id", "") ?: ""
     }
 
+    fun saveWalletBalance(context: Context, balance: Double) {
+        val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+        prefs.edit().putFloat("wallet_balance", balance.toFloat()).apply()
+    }
+
+    fun getWalletBalance(context: Context): Double {
+        val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+        return prefs.getFloat("wallet_balance", 0f).toDouble()
+    }
+
+
 }
