@@ -203,6 +203,7 @@ class CustomerKhataListActivity : AppCompatActivity(), PaymentResultWithDataList
                     0 -> fetchWalletBalance { balance ->
                         showWalletConfirmation(acc, balance)
                     }
+
                     1 -> showCashAmountDialog(acc)
                     2 -> showUpiAmountDialog(acc)   // ⭐ NEW
                 }
@@ -329,17 +330,52 @@ class CustomerKhataListActivity : AppCompatActivity(), PaymentResultWithDataList
                     btnYes.setTextColor(Color.GRAY)
                 }
 
-
-
-                // 🔥 Case 2: Wallet is less than due → allow partial entry
+                // 🔥 Case 2: Wallet is less than due → partial payment allowed
                 walletBalance < amountDue -> {
-                    tvMsg?.text =
-                        "Wallet Balance: ₹$walletBalance\n" +
-                                "Amount to Pay: ₹$amountDue\n\n" +
-                                "⚠️ Insufficient Wallet Balance\n" +
-                                "You can still enter a partial amount."
 
-                    tvMsg?.setTextColor(Color.parseColor("#FFA000")) // Yellow warning
+                    val line1 = "Wallet Balance: ₹$walletBalance\n"
+                    val line2 = "Amount to Pay: ₹$amountDue\n\n"
+                    val line3 = "⚠️ Insufficient Wallet Balance\n\n"
+                    val line4 = "You can still enter a partial amount."
+
+                    val full = line1 + line2 + line3 + line4
+                    val span = SpannableString(full)
+
+                    // 🎨 Colors
+                    val darkOrange = Color.parseColor("#EF6C00")   // line1
+                    val darkRed = Color.parseColor("#C62828")      // line3
+                    //val blue = Color.parseColor("#1565C0")         // line4 (or switch to green)
+                    val green = Color.parseColor("#2E7D32")     // if you prefer green
+
+                    // 🟧 Line 1 — dark orange
+                    span.setSpan(
+                        ForegroundColorSpan(darkOrange),
+                        0,
+                        line1.length,
+                        Spanned.SPAN_EXCLUSIVE_EXCLUSIVE
+                    )
+
+                    // ⚫ Line 2 stays black (no span)
+
+                    // 🔴 Line 3 — dark red
+                    val start3 = full.indexOf(line3)
+                    span.setSpan(
+                        ForegroundColorSpan(darkRed),
+                        start3,
+                        start3 + line3.length,
+                        Spanned.SPAN_EXCLUSIVE_EXCLUSIVE
+                    )
+
+                    // 🔵 Line 4 — blue (or green)
+                    val start4 = full.indexOf(line4)
+                    span.setSpan(
+                        ForegroundColorSpan(green),
+                        start4,
+                        full.length,
+                        Spanned.SPAN_EXCLUSIVE_EXCLUSIVE
+                    )
+
+                    tvMsg?.text = span
 
                     btnYes.isEnabled = true
                     btnYes.setOnClickListener {
@@ -347,6 +383,8 @@ class CustomerKhataListActivity : AppCompatActivity(), PaymentResultWithDataList
                         showAmountInputDialog(acc)
                     }
                 }
+
+
 
                 // 🔥 Case 3: Wallet >= due → full or partial allowed
                 else -> {
