@@ -256,6 +256,18 @@ interface ApiService {
     fun rejectCashPayment(@Body req: CashPaymentRequest): Call<ApiResponse>
 
 
+    @POST("api/khata/create_razorpay_order")
+    fun createKhataRazorpayOrder(
+        @Body req: KhataRazorpayOrderRequest
+    ): Call<KhataRazorpayOrderResponse>
+
+    @POST("api/khata/verify_razorpay_payment")
+    fun verifyKhataRazorpayPayment(
+        @Body req: KhataRazorpayVerifyRequest
+    ): Call<ApiResponse>
+
+
+
     data class CreateShopRequest(
         val name: String,
         val address: String,
@@ -326,4 +338,25 @@ data class CashPaymentRequest(
     val customer_id: String,
     val shop_id: String,
     val amount: Double
+)
+
+
+data class KhataRazorpayOrderRequest(
+    val customer_id: String,
+    val shop_id: String,
+    val amount: Double
+)
+
+data class KhataRazorpayOrderResponse(
+    val success: Boolean,
+    val backend_order_id: String?,
+    val razorpay_order_id: String?,
+    val message: String?
+)
+
+data class KhataRazorpayVerifyRequest(
+    val backend_order_id: String,
+    val order_id: String,
+    val payment_id: String,
+    val signature: String
 )

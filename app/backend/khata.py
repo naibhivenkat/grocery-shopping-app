@@ -1,103 +1,9 @@
-# # khata.py
-# from flask import Blueprint, request, jsonify
-# import firebase_db
-#
-# khata_bp = Blueprint("khata_bp", __name__)
-#
-# # ================================
-# #  KHATA / LEDGER ROUTES
-# # ================================
-#
-# @khata_bp.route("/create_ledger", methods=["POST"])
-# def khata_create_ledger():
-#     data = request.json or {}
-#     shop_id = data.get("shop_id")
-#     customer_id = data.get("customer_id")
-#     name = data.get("customer_name") or data.get("name")
-#     phone = data.get("phone")
-#
-#     if not shop_id or not customer_id:
-#         return jsonify({"success": False, "message": "shop_id and customer_id required"}), 400
-#
-#     account = firebase_db.get_or_create_khata_account(shop_id, customer_id, name, phone)
-#     if not account:
-#         return jsonify({"success": False, "message": "Failed to create ledger"}), 500
-#
-#     return jsonify({"success": True, "account": account}), 200
-#
-#
-# @khata_bp.route("/add_transaction", methods=["POST"])
-# def khata_add_transaction():
-#     data = request.json or {}
-#     shop_id = data.get("shop_id")
-#     customer_id = data.get("customer_id")
-#     tx_type = data.get("type")  # "debit" or "credit"
-#     amount = data.get("amount")
-#     note = data.get("note") or ""
-#     order_id = data.get("order_id")
-#
-#     if not all([shop_id, customer_id, tx_type, amount]):
-#         return jsonify({"success": False, "message": "Missing required fields"}), 400
-#
-#     try:
-#         amount = float(amount)
-#     except Exception:
-#         return jsonify({"success": False, "message": "amount must be numeric"}), 400
-#
-#     result = firebase_db.add_khata_transaction(
-#         shop_id=shop_id,
-#         customer_id=customer_id,
-#         amount=amount,
-#         tx_type=tx_type,
-#         note=note,
-#         order_id=order_id
-#     )
-#
-#     if not result:
-#         return jsonify({"success": False, "message": "Failed to add transaction"}), 500
-#
-#     return jsonify({"success": True, **result}), 200
-#
-#
-# @khata_bp.route("/ledger/<shop_id>/<customer_id>", methods=["GET"])
-# def khata_get_ledger(shop_id, customer_id):
-#     account = firebase_db.get_khata_account(shop_id, customer_id)
-#     txs = firebase_db.list_khata_transactions(shop_id, customer_id, limit=200)
-#
-#     if not account:
-#         return jsonify({"success": False, "message": "No ledger found"}), 404
-#
-#     return jsonify({
-#         "success": True,
-#         "account": account,
-#         "transactions": txs
-#     }), 200
-#
-#
-# @khata_bp.route("/customers/<shop_id>", methods=["GET"])
-# def khata_list_customers(shop_id):
-#     accounts = firebase_db.list_khata_customers_for_shop(shop_id)
-#     return jsonify({
-#         "success": True,
-#         "accounts": accounts
-#     }), 200
-#
-#
-# @khata_bp.route("/my_accounts/<customer_id>", methods=["GET"])
-# def khata_list_for_customer(customer_id):
-#     accounts = firebase_db.list_khata_accounts_for_customer(customer_id)
-#     return jsonify({
-#         "success": True,
-#         "accounts": accounts
-#     }), 200
-
-
 from flask import Blueprint, request, jsonify
 import firebase_db
 import logging
 import uuid
 from firebase_admin import firestore
-
+import razorpay
 import datetime
 
 
@@ -106,6 +12,10 @@ logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(mess
 logger = logging.getLogger("order_api")
 
 khata_bp = Blueprint("khata_bp", __name__)
+
+RAZORPAY_KEY_ID = "rzp_test_RKK3DuGSaxK9fR"
+RAZORPAY_KEY_SECRET = "VgVc96Pdn3t5T8ieX0nb2ajt"
+razorpay_client = razorpay.Client(auth=(RAZORPAY_KEY_ID, RAZORPAY_KEY_SECRET))
 
 # --------------------------------------------------------
 # CREATE LEDGER
@@ -191,7 +101,7 @@ def khata_list_for_customer(customer_id):
 @khata_bp.route("/pay_khata_from_wallet", methods=["POST"])
 def pay_khata_from_wallet():
     data = request.json or {}
-    logger.error(f"🔥 PAY_KHATA_FROM_WALLET RECEIVED → {data}")
+    logger.info(f"🔥 PAY_KHATA_FROM_WALLET RECEIVED → {data}")
 
 
     shop_id = data.get("shop_id")
@@ -482,42 +392,6 @@ def approve_cash_payment():
     })
 
 
-# @khata_bp.route("/reject_cash_payment", methods=["POST"])
-# def reject_cash_payment():
-#     data = request.json or {}
-#
-#     shop_id = data.get("shop_id")
-#     customer_id = data.get("customer_id")
-#
-#     if not shop_id or not customer_id:
-#         return jsonify({"success": False, "message": "Invalid data"}), 400
-#
-#     acc_ref = (
-#         firebase_db.db.collection("khata_accounts")
-#         .where("shop_id", "==", shop_id)
-#         .where("customer_id", "==", customer_id)
-#         .limit(1)
-#     )
-#
-#     docs = acc_ref.stream()
-#     acc_doc = next(docs, None)
-#
-#     if not acc_doc:
-#         return jsonify({"success": False, "message": "Account not found"}), 404
-#
-#     # Clear pending only
-#     acc_doc.reference.update({
-#         "pending_cash": None,
-#         "pending_status": "rejected",
-#         "updated_at": datetime.datetime.utcnow().isoformat()
-#     })
-#
-#     return jsonify({
-#         "success": True,
-#         "message": "Cash payment rejected"
-#     })
-
-
 @khata_bp.route("/reject_cash_payment", methods=["POST"])
 def reject_cash_payment():
     data = request.json or {}
@@ -567,3 +441,115 @@ def reject_cash_payment():
         "message": "Cash payment rejected",
         "amount": pending_amount
     })
+
+
+@khata_bp.route("/create_razorpay_order", methods=["POST"])
+def create_khata_razorpay_order():
+    data = request.json or {}
+    customer_id = data.get("customer_id")
+    shop_id = data.get("shop_id")
+    amount = float(data.get("amount", 0))
+
+    if not customer_id or not shop_id or amount <= 0:
+        logger.info(f" Customer-ID {customer_id}  and Shop Id {shop_id}")
+        return {"success": False, "message": "Invalid data"}, 400
+
+    backend_order_id = str(uuid.uuid4())
+
+    try:
+        # Create Razorpay Order
+        razorpay_order = razorpay_client.order.create({
+            "amount": int(amount * 100),
+            "currency": "INR",
+            "receipt": backend_order_id,
+            "payment_capture": 1
+        })
+
+        razorpay_order_id = razorpay_order["id"]
+
+        # Save to Firestore
+        firebase_db.db.collection("khata_pay_orders").document(backend_order_id).set({
+            "backend_order_id": backend_order_id,
+            "razorpay_order_id": razorpay_order_id,
+            "customer_id": customer_id,
+            "shop_id": shop_id,
+            "amount": amount,
+            "status": "pending",
+            "timestamp": datetime.datetime.utcnow()
+        })
+        logger.info(f"✅ Wallet Payment Order Created Successfully")
+
+        return {
+            "success": True,
+            "backend_order_id": backend_order_id,
+            "razorpay_order_id": razorpay_order_id
+        }
+
+    except Exception as e:
+        print("🔥 ERROR create_khata_razorpay_order:", e)
+        return {"success": False, "message": "Failed to create Razorpay order"}, 500
+
+
+
+@khata_bp.route("/verify_razorpay_payment", methods=["POST"])
+def verify_khata_razorpay_payment():
+    data = request.json or {}
+
+    backend_order_id = data.get("backend_order_id")
+    razorpay_order_id = data.get("order_id")
+    razorpay_payment_id = data.get("payment_id")
+    razorpay_signature = data.get("signature")
+
+    if not backend_order_id or not razorpay_order_id or not razorpay_payment_id or not razorpay_signature:
+        return {"success": False, "message": "Missing verification data"}, 400
+
+    try:
+        # ---------------------------
+        # 1️⃣ VERIFY SIGNATURE SAFELY
+        # ---------------------------
+        razorpay_client.utility.verify_payment_signature({
+            "razorpay_order_id": razorpay_order_id,
+            "razorpay_payment_id": razorpay_payment_id,
+            "razorpay_signature": razorpay_signature
+        })
+        logger.info(f"✅ Verify-Razorpay-Payment Successful")
+
+    except Exception as e:
+        print("🔥 Razorpay Verification Failed:", e)
+        return {"success": False, "message": "Invalid signature"}, 400
+
+    # ---------------------------
+    # 2️⃣ Fetch backend order
+    # ---------------------------
+    doc = firebase_db.db.collection("khata_pay_orders").document(backend_order_id).get()
+    logger.info(f"✅ khata_pay_orders Added to Firebase")
+    if not doc.exists:
+        return {"success": False, "message": "Order not found"}, 404
+
+    pay = doc.to_dict()
+
+    # ---------------------------
+    # 3️⃣ Add Khata CREDIT transaction
+    # ---------------------------
+    try:
+        firebase_db.add_khata_transaction(
+            shop_id=pay["shop_id"],
+            customer_id=pay["customer_id"],
+            amount=pay["amount"],
+            tx_type="credit",
+            note="Khata Payment via Razorpay"
+        )
+
+        # Update status in DB
+        doc.reference.update({
+            "status": "success",
+            "razorpay_payment_id": razorpay_payment_id,
+            "updated_at": datetime.datetime.utcnow()
+        })
+
+        logger.info(f"✅ khata_pay_orders Transactions Added to Firebase")
+        return {"success": True, "message": "Khata payment verified"}
+
+    except Exception as e:
+        print("🔥 Failed to save khata credit:", e)
+        return {"success": False, "message": "Transaction error"}, 500
