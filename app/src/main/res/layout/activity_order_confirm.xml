@@ -1,10 +1,8 @@
 <?xml version="1.0" encoding="utf-8"?>
 <ScrollView xmlns:android="http://schemas.android.com/apk/res/android"
-    android:id="@+id/order_confirm_scroll"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
-    android:background="?attr/colorSurface"
-    android:padding="24dp">
+    android:padding="20dp">
 
     <LinearLayout
         android:layout_width="match_parent"
@@ -19,88 +17,143 @@
             android:text="Confirm Your Order"
             android:textSize="24sp"
             android:textStyle="bold"
-            android:textColor="?attr/colorOnSurface"
-            android:layout_marginBottom="16dp"
-            android:gravity="center" />
+            android:textColor="@color/purple_700"
+            android:layout_marginBottom="10dp" />
 
         <TextView
             android:id="@+id/textViewShopName"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            android:text="Shop:"
-            android:textSize="20sp"
-            android:textColor="?attr/colorOnSurface"
-            android:layout_marginBottom="8dp"/>
+            android:textSize="16sp"
+            android:layout_marginBottom="4dp" />
 
         <TextView
             android:id="@+id/textViewTotal"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            android:text="Total: ₹0"
-            android:textSize="22sp"
             android:textStyle="bold"
-            android:textColor="?attr/colorSecondary"
-            android:layout_marginBottom="20dp"/>
+            android:textSize="22sp"
+            android:textColor="@color/teal_700"
+            android:layout_marginBottom="20dp" />
 
-        <!-- NEW: Pay Now Label -->
         <TextView
             android:id="@+id/textViewPayNowLabel"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            android:text="Enter Amount To Pay Now"
-            android:textSize="16sp"
-            android:textColor="?attr/colorOnSurface"
+            android:text="Enter Amount to Pay Now"
             android:layout_marginBottom="6dp" />
 
-        <!-- NEW: Pay Now Input -->
         <EditText
             android:id="@+id/editTextPayNow"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:inputType="numberDecimal"
-            android:hint="Enter amount"
             android:padding="12dp"
-            android:background="@android:drawable/editbox_background"
-            android:layout_marginBottom="12dp"/>
+            android:background="@drawable/rounded_input"
+            android:layout_marginBottom="10dp" />
 
-        <!-- NEW: Due amount display -->
         <TextView
             android:id="@+id/textViewDueAmount"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
             android:text="Due: ₹0"
             android:textSize="16sp"
-            android:textColor="?attr/colorSecondary"
-            android:layout_marginBottom="20dp" />
+            android:textColor="@android:color/black"
+            android:layout_marginBottom="18dp" />
 
-        <TextView
-            android:id="@+id/textViewPaymentLabel"
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:text="Select Payment Method"
-            android:textSize="16sp"
-            android:textColor="?attr/colorOnSurface"
-            android:layout_marginBottom="8dp" />
-
-        <Spinner
-            android:id="@+id/paymentSpinner"
+        <!-- UPI -->
+        <LinearLayout
+            android:id="@+id/optionUpi"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:layout_marginBottom="24dp"
-            android:spinnerMode="dropdown" />
+            android:padding="18dp"
+            android:orientation="vertical"
+            android:background="@drawable/payment_option_bg"
+            android:layout_marginBottom="12dp">
+
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="UPI / Online Payments"
+                android:textSize="16sp"
+                android:textStyle="bold" />
+        </LinearLayout>
+
+        <!-- WALLET -->
+        <!-- WALLET -->
+        <LinearLayout
+            android:id="@+id/optionWallet"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:padding="18dp"
+            android:orientation="vertical"
+            android:background="@drawable/payment_option_bg"
+            android:layout_marginBottom="12dp">
+
+            <TextView
+                android:id="@+id/txtWalletTitle"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="Wallet"
+                android:textSize="16sp"
+                android:textStyle="bold"
+                android:layout_marginBottom="6dp" />
+
+            <TextView
+                android:id="@+id/txtWalletBalance"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="Balance: --"
+                android:textSize="16sp"
+                android:textStyle="bold"
+                android:textColor="@android:color/black"
+                android:visibility="gone"
+                android:layout_marginBottom="6dp" />
+
+            <!-- NEW ERROR MESSAGE -->
+            <TextView
+                android:id="@+id/txtWalletError"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="❌ Insufficient Balance! ❌"
+                android:textColor="@android:color/holo_red_dark"
+                android:textStyle="bold"
+                android:textSize="14sp"
+                android:visibility="gone"
+                android:layout_marginBottom="8dp" />
+
+            <Button
+                android:id="@+id/btnCheckWallet"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="Check Balance" />
+        </LinearLayout>
+
+
+        <!-- CASH -->
+        <LinearLayout
+            android:id="@+id/optionCash"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:padding="18dp"
+            android:orientation="vertical"
+            android:background="@drawable/payment_option_bg"
+            android:layout_marginBottom="24dp">
+
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="Cash / Khata"
+                android:textSize="16sp"
+                android:textStyle="bold" />
+        </LinearLayout>
 
         <Button
             android:id="@+id/buttonPlaceOrder"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:text="Place Order"
-            android:textSize="16sp"
-            android:textStyle="bold"
-            android:backgroundTint="?attr/colorPrimary"
-            android:textColor="?attr/colorOnPrimary"
+            android:text="PLACE ORDER"
             android:padding="12dp"
-            android:textAllCaps="false" />
-
+            android:textAllCaps="true" />
     </LinearLayout>
-
 </ScrollView>
