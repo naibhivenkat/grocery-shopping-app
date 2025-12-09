@@ -10,6 +10,7 @@
         android:orientation="vertical"
         android:gravity="center_horizontal">
 
+        <!-- TITLE -->
         <TextView
             android:id="@+id/textViewTitle"
             android:layout_width="wrap_content"
@@ -36,6 +37,7 @@
             android:textColor="@color/teal_700"
             android:layout_marginBottom="20dp" />
 
+        <!-- PAY NOW -->
         <TextView
             android:id="@+id/textViewPayNowLabel"
             android:layout_width="wrap_content"
@@ -61,43 +63,81 @@
             android:textColor="@android:color/black"
             android:layout_marginBottom="18dp" />
 
-        <!-- UPI -->
+        <!-- UPI CARD -->
         <LinearLayout
             android:id="@+id/optionUpi"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
+            android:orientation="horizontal"
+            android:gravity="center_vertical"
             android:padding="18dp"
-            android:orientation="vertical"
-            android:background="@drawable/payment_option_bg"
+            android:background="@drawable/payment_option_selector"
+            android:elevation="6dp"
+            android:foreground="?attr/selectableItemBackground"
             android:layout_marginBottom="12dp">
 
+            <ImageView
+                android:layout_width="30dp"
+                android:layout_height="30dp"
+                android:src="@drawable/ic_upi"
+                android:layout_marginRight="12dp" />
+
             <TextView
-                android:layout_width="wrap_content"
+                android:layout_width="0dp"
                 android:layout_height="wrap_content"
+                android:layout_weight="1"
                 android:text="UPI / Online Payments"
                 android:textSize="16sp"
                 android:textStyle="bold" />
+
+            <ImageView
+                android:id="@+id/tickUpi"
+                android:layout_width="22dp"
+                android:layout_height="22dp"
+                android:src="@drawable/ic_tick"
+                android:visibility="gone" />
         </LinearLayout>
 
-        <!-- WALLET -->
-        <!-- WALLET -->
+        <!-- WALLET CARD -->
         <LinearLayout
             android:id="@+id/optionWallet"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:padding="18dp"
             android:orientation="vertical"
-            android:background="@drawable/payment_option_bg"
+            android:padding="18dp"
+            android:background="@drawable/payment_option_selector"
+            android:elevation="6dp"
+            android:foreground="?attr/selectableItemBackground"
             android:layout_marginBottom="12dp">
 
-            <TextView
-                android:id="@+id/txtWalletTitle"
-                android:layout_width="wrap_content"
+            <LinearLayout
+                android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:text="Wallet"
-                android:textSize="16sp"
-                android:textStyle="bold"
-                android:layout_marginBottom="6dp" />
+                android:orientation="horizontal"
+                android:gravity="center_vertical">
+
+                <ImageView
+                    android:layout_width="30dp"
+                    android:layout_height="30dp"
+                    android:src="@drawable/ic_wallet"
+                    android:layout_marginRight="12dp" />
+
+                <TextView
+                    android:id="@+id/txtWalletTitle"
+                    android:layout_width="0dp"
+                    android:layout_height="wrap_content"
+                    android:layout_weight="1"
+                    android:text="Wallet"
+                    android:textSize="16sp"
+                    android:textStyle="bold" />
+
+                <ImageView
+                    android:id="@+id/tickWallet"
+                    android:layout_width="22dp"
+                    android:layout_height="22dp"
+                    android:src="@drawable/ic_tick"
+                    android:visibility="gone" />
+            </LinearLayout>
 
             <TextView
                 android:id="@+id/txtWalletBalance"
@@ -108,44 +148,95 @@
                 android:textStyle="bold"
                 android:textColor="@android:color/black"
                 android:visibility="gone"
-                android:layout_marginBottom="6dp" />
+                android:layout_marginTop="8dp" />
 
-            <!-- NEW ERROR MESSAGE -->
             <TextView
                 android:id="@+id/txtWalletError"
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
-                android:text="❌ Insufficient Balance! ❌"
-                android:textColor="@android:color/holo_red_dark"
+                android:text="Insufficient Balance!"
                 android:textStyle="bold"
+                android:textColor="@android:color/holo_red_dark"
                 android:textSize="14sp"
                 android:visibility="gone"
-                android:layout_marginBottom="8dp" />
+                android:layout_marginTop="8dp" />
 
             <Button
                 android:id="@+id/btnCheckWallet"
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
-                android:text="Check Balance" />
+                android:text="Check Balance"
+                android:layout_marginTop="10dp" />
         </LinearLayout>
 
-
-        <!-- CASH -->
+        <!-- CASH CARD -->
         <LinearLayout
             android:id="@+id/optionCash"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
+            android:orientation="horizontal"
+            android:gravity="center_vertical"
             android:padding="18dp"
-            android:orientation="vertical"
-            android:background="@drawable/payment_option_bg"
-            android:layout_marginBottom="24dp">
+            android:background="@drawable/payment_option_selector"
+            android:foreground="?attr/selectableItemBackground"
+            android:elevation="6dp"
+            android:layout_marginBottom="12dp">
+
+            <ImageView
+                android:layout_width="30dp"
+                android:layout_height="30dp"
+                android:src="@drawable/ic_cash"
+                android:layout_marginRight="12dp" />
 
             <TextView
-                android:layout_width="wrap_content"
+                android:layout_width="0dp"
                 android:layout_height="wrap_content"
-                android:text="Cash / Khata"
+                android:layout_weight="1"
+                android:text="Cash"
                 android:textSize="16sp"
                 android:textStyle="bold" />
+
+            <ImageView
+                android:id="@+id/tickCash"
+                android:layout_width="22dp"
+                android:layout_height="22dp"
+                android:src="@drawable/ic_tick"
+                android:visibility="gone" />
+        </LinearLayout>
+
+        <!-- KHATA CARD -->
+        <LinearLayout
+            android:id="@+id/optionKhata"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="horizontal"
+            android:gravity="center_vertical"
+            android:padding="18dp"
+            android:background="@drawable/payment_option_selector"
+            android:foreground="?attr/selectableItemBackground"
+            android:elevation="6dp"
+            android:layout_marginBottom="24dp">
+
+            <ImageView
+                android:layout_width="30dp"
+                android:layout_height="30dp"
+                android:src="@drawable/ic_khata"
+                android:layout_marginRight="12dp" />
+
+            <TextView
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:text="Khata (Credit)"
+                android:textSize="16sp"
+                android:textStyle="bold" />
+
+            <ImageView
+                android:id="@+id/tickKhata"
+                android:layout_width="22dp"
+                android:layout_height="22dp"
+                android:src="@drawable/ic_tick"
+                android:visibility="gone" />
         </LinearLayout>
 
         <Button

@@ -2,6 +2,8 @@ package com.example.groceryshoppingapp
 
 import android.annotation.SuppressLint
 import android.app.AlertDialog
+import android.content.Intent
+import android.graphics.Color
 import android.os.Bundle
 import android.view.animation.AnimationUtils
 import android.widget.*
@@ -16,7 +18,6 @@ import com.example.groceryshoppingapp.network.WalletOrderRequest
 import com.example.groceryshoppingapp.network.WalletOrderResponse
 import com.example.groceryshoppingapp.utils.SessionManager
 import com.google.android.material.bottomsheet.BottomSheetDialog
-import com.google.android.material.card.MaterialCardView
 import com.google.android.material.chip.ChipGroup
 import com.razorpay.Checkout
 import com.razorpay.PaymentData
@@ -24,7 +25,6 @@ import com.razorpay.PaymentResultWithDataListener
 import retrofit2.Call
 import retrofit2.Callback
 import retrofit2.Response
-import android.graphics.Color
 
 class WalletActivity : AppCompatActivity(), PaymentResultWithDataListener {
 
@@ -48,15 +48,11 @@ class WalletActivity : AppCompatActivity(), PaymentResultWithDataListener {
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_wallet)
 
-        // Razorpay preload
         Checkout.preload(applicationContext)
 
-        // Init API + Payment + Session
         api = RetrofitClient.getInstance(this).create(ApiService::class.java)
         paymentManager = PaymentManager(this)
         userId = SessionManager.getCustomerId(this)
-
-        // Bind UI
 
         val walletBg = findViewById<LinearLayout>(R.id.walletCardBg)
         val anim = AnimationUtils.loadAnimation(this, R.anim.wallet_glow)
@@ -67,8 +63,14 @@ class WalletActivity : AppCompatActivity(), PaymentResultWithDataListener {
         btnAddMoney = findViewById(R.id.btnAddMoney)
         chipGroup = findViewById(R.id.chipFilterGroup)
 
+        // ✅ Back Button
+//        val btnBack = findViewById<ImageView>(R.id.btnBack)
+//        btnBack.setOnClickListener { navigateBackHome() }
+        // Make entire back row clickable (arrow + text)
+        val layoutBack = findViewById<LinearLayout>(R.id.layoutBack)
+        layoutBack.setOnClickListener { navigateBackHome() }
 
-        // RecyclerView
+
         adapter = WalletTransactionAdapter(filteredList) { tx ->
             showTransactionDetails(tx)
         }
@@ -76,18 +78,17 @@ class WalletActivity : AppCompatActivity(), PaymentResultWithDataListener {
         rvTransactions.layoutManager = LinearLayoutManager(this)
         rvTransactions.adapter = adapter
 
-        // Filters
         setupFilterListeners()
 
-        // Load data
         fetchWalletBalance()
         fetchTransactions()
 
-        // Add Money
         btnAddMoney.setOnClickListener { openAddMoneyDialog() }
     }
 
-    // ------------------ FILTERS ------------------
+    // ----------------------------------------
+    // FILTERS
+    // ----------------------------------------
 
     private fun setupFilterListeners() {
         chipGroup.setOnCheckedStateChangeListener { _, _ -> applyFilter() }
@@ -112,12 +113,15 @@ class WalletActivity : AppCompatActivity(), PaymentResultWithDataListener {
                     }
                 )
 
-
             else -> filteredList.addAll(transactions)
         }
 
         adapter.notifyDataSetChanged()
     }
+
+    // ----------------------------------------
+    // TRANSACTION DETAILS BOTTOM SHEET
+    // ----------------------------------------
 
     @SuppressLint("SetTextI18n")
     private fun showTransactionDetails(tx: WalletTransaction) {
@@ -130,33 +134,23 @@ class WalletActivity : AppCompatActivity(), PaymentResultWithDataListener {
         val tvDate = view.findViewById<TextView>(R.id.tvDate)
         val tvOrderId = view.findViewById<TextView>(R.id.tvOrderId)
 
-        // Set common fields
         tvType.text = tx.type
         tvAmount.text = "₹${tx.amount}"
         tvDate.text = tx.dateTime
-        tvOrderId.text = tx.orderId ?: "No Order Linked"
+        tvOrderId.text = tx.orderId ?: "Not Linked"
 
-        // --------------------------------------------
-        // 🔥 Highlight Partial Refund in ORANGE
-        // --------------------------------------------
         if (tx.type.equals("Partial Refund", true)) {
             val orange = Color.parseColor("#FF9800")
-
             tvType.setTextColor(orange)
             tvAmount.setTextColor(orange)
-
-            // Format text nicely
-            tvType.text = "Partial Refund"
         }
-
-        // (Normal refund shows purple in the list, but here it stays default)
-        // --------------------------------------------
 
         dialog.show()
     }
 
-
-    // ------------------ ADD MONEY ------------------
+    // ----------------------------------------
+    // ADD MONEY WORKFLOW
+    // ----------------------------------------
 
     private fun openAddMoneyDialog() {
         val dialogView = layoutInflater.inflate(R.layout.dialog_add_money, null)
@@ -174,6 +168,7 @@ class WalletActivity : AppCompatActivity(), PaymentResultWithDataListener {
                 }
 
                 amountToAdd = value.toDoubleOrNull() ?: 0.0
+
                 if (amountToAdd <= 0) {
                     Toast.makeText(this, "Invalid amount", Toast.LENGTH_SHORT).show()
                     return@setPositiveButton
@@ -184,8 +179,6 @@ class WalletActivity : AppCompatActivity(), PaymentResultWithDataListener {
             .setNegativeButton("Cancel", null)
             .show()
     }
-
-    // ------------------ CREATE ORDER ------------------
 
     private fun createBackendOrder(amount: Double) {
         api.createWalletOrder(WalletOrderRequest(userId!!, amount))
@@ -209,7 +202,9 @@ class WalletActivity : AppCompatActivity(), PaymentResultWithDataListener {
             })
     }
 
-    // ------------------ RAZORPAY CALLBACKS ------------------
+    // ----------------------------------------
+    // RAZORPAY CALLBACKS
+    // ----------------------------------------
 
     override fun onPaymentSuccess(paymentId: String?, data: PaymentData?) {
         paymentManager.verifyPayment(
@@ -230,7 +225,9 @@ class WalletActivity : AppCompatActivity(), PaymentResultWithDataListener {
         Toast.makeText(this, "Wallet updated successfully", Toast.LENGTH_SHORT).show()
     }
 
-    // ------------------ FETCH BALANCE ------------------
+    // ----------------------------------------
+    // FETCH BALANCE + TRANSACTIONS
+    // ----------------------------------------
 
     private fun fetchWalletBalance() {
         api.getWalletBalance(userId!!).enqueue(object : Callback<WalletBalanceResponse> {
@@ -243,8 +240,6 @@ class WalletActivity : AppCompatActivity(), PaymentResultWithDataListener {
         })
     }
 
-    // ------------------ FETCH TRANSACTIONS ------------------
-
     private fun fetchTransactions() {
         api.getWalletTransactions(userId!!).enqueue(object : Callback<List<WalletTransaction>> {
 
@@ -256,5 +251,16 @@ class WalletActivity : AppCompatActivity(), PaymentResultWithDataListener {
 
             override fun onFailure(call: Call<List<WalletTransaction>>, t: Throwable) {}
         })
+    }
+
+    // ----------------------------------------
+    // BACK TO HOME
+    // ----------------------------------------
+
+    private fun navigateBackHome() {
+        val intent = Intent(this, CustomerHomeActivity::class.java)
+        intent.flags = Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_NEW_TASK
+        startActivity(intent)
+        finish()
     }
 }

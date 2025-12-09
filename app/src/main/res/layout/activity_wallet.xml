@@ -11,7 +11,33 @@
         android:layout_width="match_parent"
         android:layout_height="wrap_content">
 
+        <!-- BACK BUTTON (Correct position) -->
+        <LinearLayout
+            android:id="@+id/layoutBack"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:orientation="horizontal"
+            android:gravity="center_vertical"
+            android:padding="4dp"
+            android:layout_marginBottom="12dp">
 
+            <ImageView
+                android:id="@+id/btnBack"
+                android:layout_width="28dp"
+                android:layout_height="28dp"
+                android:src="@drawable/ic_arrow_back"
+                app:tint="@android:color/black" />
+
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="Back"
+                android:textSize="16sp"
+                android:layout_marginStart="8dp"
+                android:textColor="@android:color/black"/>
+        </LinearLayout>
+
+        <!-- WALLET CARD -->
         <com.google.android.material.card.MaterialCardView
             android:id="@+id/cardWallet"
             android:layout_width="match_parent"
@@ -34,7 +60,6 @@
                 android:layout_height="wrap_content"
                 android:background="@drawable/bg_wallet_card">
 
-                <!-- TITLE -->
                 <TextView
                     android:id="@+id/tvWalletTitle"
                     android:layout_width="wrap_content"
@@ -44,7 +69,6 @@
                     android:textSize="16sp"
                     android:textColor="@android:color/white" />
 
-                <!-- SUBTITLE -->
                 <TextView
                     android:text="Current Balance"
                     android:layout_width="wrap_content"
@@ -53,7 +77,6 @@
                     android:textSize="13sp"
                     android:textColor="#E0FFFFFF" />
 
-                <!-- BALANCE -->
                 <TextView
                     android:id="@+id/tvBalance"
                     android:layout_width="wrap_content"
@@ -64,7 +87,6 @@
                     android:layout_marginTop="10dp"
                     android:textColor="@android:color/white" />
 
-                <!-- SUBTEXT -->
                 <TextView
                     android:text="Safe • Instant • Secure"
                     android:layout_width="wrap_content"
@@ -74,10 +96,7 @@
                     android:textColor="#CCFFFFFF" />
 
             </LinearLayout>
-
         </com.google.android.material.card.MaterialCardView>
-
-
 
         <!-- ADD MONEY -->
         <com.google.android.material.button.MaterialButton
@@ -132,8 +151,6 @@
 
         </com.google.android.material.chip.ChipGroup>
 
-
-        <!-- HISTORY TITLE -->
         <TextView
             android:id="@+id/tvHistory"
             android:layout_width="wrap_content"
@@ -144,11 +161,11 @@
             android:textColor="?attr/colorOnSurface"
             android:layout_marginBottom="8dp" />
 
-        <!-- TRANSACTION LIST -->
         <androidx.recyclerview.widget.RecyclerView
             android:id="@+id/rvTransactions"
             android:layout_width="match_parent"
             android:layout_height="wrap_content" />
 
     </LinearLayout>
+
 </ScrollView>
