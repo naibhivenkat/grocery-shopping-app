@@ -60,5 +60,5 @@ jobs:
             --region ${{ secrets.GCP_REGION }} \
             --allow-unauthenticated \
             --port 8080 \
-            --set-env-vars FLASK_ENV=production \
+             --set-env-vars FLASK_ENV=production,SECRET_KEY="super-secret-key-change-this" \
             --update-secrets=FIREBASE_CREDENTIALS_JSON=FIREBASE_CREDENTIALS_JSON:latest,SENDINBLUE_API_KEY=SENDINBLUE_API_KEY:latest,FROM_EMAIL=FROM_EMAIL:latest
