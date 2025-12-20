@@ -14,10 +14,17 @@
         android:id="@+id/nav_manage_items"
         android:title="Manage Items"
         android:icon="@android:drawable/ic_menu_edit" />
+
+    <item
+        android:id="@+id/nav_shop_wallet"
+        android:title="Wallet"
+        android:icon="@drawable/ic_wallet" />
+
     <item
         android:id="@+id/nav_khata_book"
         android:title="Khata Book"
         android:icon="@drawable/ic_khata" />
+
 
     <item
         android:id="@+id/nav_logout"

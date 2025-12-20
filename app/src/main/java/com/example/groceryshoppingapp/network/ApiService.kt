@@ -267,6 +267,16 @@ interface ApiService {
     ): Call<ApiResponse>
 
 
+    @GET("/wallet/shop/balance/{shopId}")
+    fun getShopWalletBalance(
+        @Path("shopId") shopId: String
+    ): Call<ShopWalletBalanceResponse>
+
+
+    @GET("wallet/shop/transactions/{shopId}")
+    fun getShopWalletTransactions(@Path("shopId") shopId: String): Call<List<WalletTransaction>>
+
+
 
     data class CreateShopRequest(
         val name: String,
@@ -359,4 +369,9 @@ data class KhataRazorpayVerifyRequest(
     val order_id: String,
     val payment_id: String,
     val signature: String
+)
+
+data class ShopWalletBalanceResponse(
+    val balance: Double,
+    val success: Boolean
 )

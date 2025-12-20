@@ -27,14 +27,20 @@ from reportlab.pdfbase.ttfonts import TTFont
 from reportlab.pdfgen import canvas
 from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle, Image
 from weasyprint import HTML, CSS
+from shop_wallet_routes import add_income_to_shop
 
 import firebase_db
 from khata import khata_bp
 from wallet_routes import wallet_bp
+from shop_wallet_routes import shop_wallet_bp
+
 
 app = Flask(__name__)
 app.register_blueprint(wallet_bp)
+app.register_blueprint(shop_wallet_bp)
 app.register_blueprint(khata_bp, url_prefix="/api/khata")
+
+
 # Initialize limiter
 limiter = Limiter(key_func=get_remote_address)
 limiter.init_app(app)
@@ -602,475 +608,7 @@ def delete_item(item_id):
     firebase_db.db.collection("items").document(item_id).delete()
     return jsonify({'success': True, 'message': 'Item deleted'})
 
-#
-# @app.route("/api/place_orders", methods=["POST"])  # TODO : CHANGED
-# def create_order():
-#     logger.info("🟦 DEBUG: /api/orders endpoint hit")
-#
-#     data = request.json
-#     logger.info(f"🟦 DEBUG: Incoming order data = {data}")
-#
-#     # 1️⃣ Compute total
-#     items = data.get("items", [])
-#     total = 0
-#     detailed_items = []
-#     ist = timezone(timedelta(hours=5, minutes=30))
-#
-#     for entry in items:
-#         item_id = entry.get("item_id")
-#         quantity = float(entry.get("quantity", 1))
-#         item_doc = firebase_db.db.collection("items").document(item_id).get()
-#
-#         if item_doc.exists:
-#             item = item_doc.to_dict()
-#             item_price = float(item.get("price", 0))
-#             total += item_price * quantity
-#             # detailed_items.append({
-#             #     "item_id": item_id,
-#             #     "name": item.get("name", ""),
-#             #     "price": item_price,
-#             #     "quantity": quantity
-#             # })
-#             detailed_items.append({
-#                 "item_id": item_id,
-#                 "name": item.get("name", ""),
-#                 "price": item_price,
-#                 "quantity": quantity,
-#                 "original_quantity": quantity  # 🔹 store original ordered qty for partial refunds
-#             })
-#
-#
-#     # 2️⃣ Current logged-in user
-#     user = getattr(g, "current_user", None)
-#     if not user:
-#         return jsonify({"success": False, "message": "User not logged in"}), 401
-#
-#     user_ref = firebase_db.db.collection("users").document(user["id"])
-#     user_doc = user_ref.get()
-#
-#     # Fallback for users where Firestore ID != customerId
-#     if not user_doc.exists:
-#         fallback = firebase_db.db.collection("users").where("customerId", "==", user["id"]).get()
-#
-#         if len(fallback) == 0:
-#             return jsonify({"success": False, "message": "User not found"}), 404
-#
-#         user_doc = fallback[0]
-#         user_ref = user_doc.reference
-#         user_doc = user_doc.to_dict()
-#
-#     else:
-#         user_doc = user_doc.to_dict()
-#
-#     # 3️⃣ Resolve shop docId from shopId
-#     input_shop_id = data["shopId"]
-#     invoice_url = data.get("invoice_url", "")
-#
-#     shop_query = firebase_db.db.collection("shops").where("id", "==", input_shop_id).stream()
-#     shop_doc_id = None
-#     shop_name = ""
-#
-#     for doc in shop_query:
-#         shop_doc_id = doc.id
-#         shop_name = doc.to_dict().get("name", "")
-#         break
-#
-#     if not shop_doc_id:
-#         return jsonify({"success": False, "message": "Invalid shopId"}), 400
-#
-#     # 4️⃣ Payment logic
-#     payment_method = data.get("payment_method", "Razorpay")
-#     razorpay_order_id = None
-#
-#     # ⭐ WALLET FLOW
-#     if payment_method.lower() == "wallet":
-#
-#         wallet_balance = float(user_doc.get("wallet_balance", 0.0))
-#
-#         if wallet_balance < total:
-#             return jsonify({"success": False, "message": "Insufficient wallet balance"}), 400
-#
-#         new_balance = wallet_balance - total
-#         user_ref.update({"wallet_balance": new_balance})
-#         logger.info(f"🟦 Wallet deduction: {wallet_balance} → {new_balance}")
-#
-#     # ⭐ RAZORPAY FLOW
-#     elif payment_method == "Razorpay":
-#         razorpay_order = razorpay_client.order.create({
-#             "amount": int(total * 100),
-#             "currency": "INR",
-#             "receipt": f"order_{datetime.now(ist).replace(microsecond=0).isoformat()}",
-#             "payment_capture": 1
-#         })
-#         razorpay_order_id = razorpay_order["id"]
-#
-#     # 5️⃣ Save the order
-#     order_dict = {
-#         "shopId": shop_doc_id,
-#         "shopName": shop_name,
-#         "customer_id": user["id"],
-#         "customer": {
-#             "id": user["id"],
-#             "username": user["username"],
-#             "fullName": user_doc.get("fullName", ""),
-#             "email": user_doc.get("email", ""),
-#             "phone": user_doc.get("phone", "")
-#         },
-#         "items": detailed_items,
-#         "total": total,
-#         "payment_method": payment_method,
-#         "transaction_id": (
-#             "" if payment_method == "Razorpay"
-#             else "Wallet" if payment_method.lower() == "wallet"
-#             else "Cash"
-#         ),
-#         "razorpay_order_id": razorpay_order_id or "",
-#         "status": "Pending" if payment_method == "Razorpay" else "Confirmed",
-#         "invoice_url": invoice_url,
-#         "created_at": datetime.now(ist).replace(microsecond=0).isoformat(),
-#     }
-#
-#     new_order = firebase_db.append_order(order_dict)
-#
-#     # 6️⃣ Wallet transaction record
-#     if payment_method.lower() == "wallet":
-#         tx_id = str(uuid.uuid4())
-#         firebase_db.db.collection("transactions").document(tx_id).set({
-#             "userId": user["id"],
-#             "type": "Payment",
-#             "amount": total,
-#             "dateTime": datetime.utcnow(),
-#             "orderId": new_order["order_uuid"]
-#         })
-#
-#     # 🧊 REMOVED (Old notification block for Razorpay)
-#     # 🔥 CHANGE: Now notify ONLY for CASH & WALLET
-#
-#     if payment_method.lower() in ["wallet", "cash"]:
-#         logger.info(f"Order Paid Using Payment method: {payment_method} | {payment_method.lower()}")
-#         try:
-#             shop_doc = firebase_db.db.collection("shops").document(shop_doc_id).get()
-#             if shop_doc.exists:
-#                 logger.info("Shop Exists")
-#                 shopkeeper_id = shop_doc.to_dict().get("shopkeeper_id")
-#                 if shopkeeper_id:
-#                     logger.info("Shopkeeper ID exists")
-#                     tokens = firebase_db.get_fcm_tokens_for_user(shopkeeper_id)
-#                     if tokens:
-#                         logger.info(f"Token available {tokens}")
-#                         firebase_db.send_fcm_notification_to_tokens(
-#                             tokens,
-#                             "New Order Received",
-#                             f"New order from {user_doc.get('fullName') or user['username']}",
-#                             {"order_id": new_order["order_uuid"], "type": "new_order"}
-#                         )
-#                     else:
-#                         logger.info("Token not available")
-#                 else:
-#                     logger.info("No Shopkeeper ID")
-#             else:
-#                 logger.info("Shop document not available")
-#
-#         except Exception as e:
-#             logger.error(f"❌ Notification error: {e}")
-#
-#     else:
-#         logger.info(f"Payment Method: {payment_method}")
-#
-#     # 7️⃣ Final response
-#     if payment_method == "Razorpay":
-#         return jsonify({
-#             "success": True,
-#             "order_id": new_order["order_uuid"],
-#             "razorpay_order_id": razorpay_order_id,
-#             "amount": total,
-#             "shopName": shop_name
-#         })
-#
-#     return jsonify({
-#         "success": True,
-#         "order_id": new_order["order_uuid"],
-#         "amount": total,
-#         "message": f"{payment_method} order placed successfully",
-#         "shopName": shop_name
-#     })
 
-# @app.route("/api/place_orders", methods=["POST"])
-# def create_order():
-#     logger.info("🟦 DEBUG: /api/orders endpoint hit")
-#
-#     data = request.json
-#     logger.info(f"🟦 DEBUG: Incoming order data = {data}")
-#
-#     # ⭐ NEW → Read partial payment fields
-#     pay_now = float(data.get("pay_now", 0))
-#     due_amount = float(data.get("due_amount", 0))
-#
-#     # 1️⃣ Compute total
-#     items = data.get("items", [])
-#     total = 0
-#     detailed_items = []
-#     ist = timezone(timedelta(hours=5, minutes=30))
-#
-#     for entry in items:
-#         item_id = entry.get("item_id")
-#         quantity = float(entry.get("quantity", 1))
-#         item_doc = firebase_db.db.collection("items").document(item_id).get()
-#
-#         if item_doc.exists:
-#             item = item_doc.to_dict()
-#             item_price = float(item.get("price", 0))
-#             total += item_price * quantity
-#             detailed_items.append({
-#                 "item_id": item_id,
-#                 "name": item.get("name", ""),
-#                 "price": item_price,
-#                 "quantity": quantity,
-#                 "original_quantity": quantity
-#             })
-#
-#     # 2️⃣ Current logged-in user
-#     user = getattr(g, "current_user", None)
-#     if not user:
-#         return jsonify({"success": False, "message": "User not logged in"}), 401
-#
-#     user_ref = firebase_db.db.collection("users").document(user["id"])
-#     user_doc = user_ref.get()
-#
-#     # Fallback for users where Firestore ID != customerId
-#     if not user_doc.exists:
-#         fallback = firebase_db.db.collection("users").where("customerId", "==", user["id"]).get()
-#
-#         if len(fallback) == 0:
-#             return jsonify({"success": False, "message": "User not found"}), 404
-#
-#         user_doc = fallback[0]
-#         user_ref = user_doc.reference
-#         user_doc = user_doc.to_dict()
-#
-#     else:
-#         user_doc = user_doc.to_dict()
-#
-#     # 3️⃣ Resolve shop docId from shopId
-#     input_shop_id = data["shopId"]
-#     invoice_url = data.get("invoice_url", "")
-#
-#     shop_query = firebase_db.db.collection("shops").where("id", "==", input_shop_id).stream()
-#     shop_doc_id = None
-#     shop_name = ""
-#
-#     for doc in shop_query:
-#         shop_doc_id = doc.id
-#         shop_name = doc.to_dict().get("name", "")
-#         break
-#
-#     if not shop_doc_id:
-#         return jsonify({"success": False, "message": "Invalid shopId"}), 400
-#
-#     # 4️⃣ Payment logic
-#     payment_method = data.get("payment_method", "Razorpay")
-#     razorpay_order_id = None
-#
-#     # ⭐ UPDATED WALLET FLOW → deduct ONLY pay_now (NOT total)
-#     if payment_method.lower() == "wallet":
-#
-#         wallet_balance = float(user_doc.get("wallet_balance", 0.0))
-#
-#         if wallet_balance < pay_now:
-#             return jsonify({"success": False, "message": "Insufficient wallet balance"}), 400
-#
-#         new_balance = wallet_balance - pay_now
-#         user_ref.update({"wallet_balance": new_balance})
-#         logger.info(f"🟦 Wallet: {wallet_balance} → {new_balance} (deducted {pay_now})")
-#
-#     # ⭐ RAZORPAY FLOW (only for pay_now)
-#     elif payment_method == "Razorpay":
-#         razorpay_order = razorpay_client.order.create({
-#             "amount": int(pay_now * 100),              # ⭐ USE pay_now here
-#             "currency": "INR",
-#             "receipt": f"order_{datetime.now(ist).replace(microsecond=0).isoformat()}",
-#             "payment_capture": 1
-#         })
-#         razorpay_order_id = razorpay_order["id"]
-#
-#     # ⭐ NEW — If due_amount > 0 → Create Khata debit entry
-#     if due_amount > 0:
-#         firebase_db.add_khata_transaction(
-#             shop_id=shop_doc_id,
-#             customer_id=user["id"],
-#             amount=due_amount,
-#             tx_type="debit",
-#             note="Order Due",
-#             order_id=None
-#         )
-#
-#     # 5️⃣ Save the order
-#     order_dict = {
-#         "shopId": shop_doc_id,
-#         "shopName": shop_name,
-#         "customer_id": user["id"],
-#         "customer": {
-#             "id": user["id"],
-#             "username": user["username"],
-#             "fullName": user_doc.get("fullName", ""),
-#             "email": user_doc.get("email", ""),
-#             "phone": user_doc.get("phone", "")
-#         },
-#         "items": detailed_items,
-#         "total": total,
-#
-#         # ⭐ NEW Payment Details
-#         "paid_amount": pay_now,
-#         "due_amount": due_amount,
-#
-#         "payment_method": payment_method,
-#         "transaction_id": (
-#             "" if payment_method == "Razorpay"
-#             else "Wallet" if payment_method.lower() == "wallet"
-#             else "Cash"
-#         ),
-#         "razorpay_order_id": razorpay_order_id or "",
-#         "status": "Pending" if payment_method == "Razorpay" else "Confirmed",
-#         "invoice_url": invoice_url,
-#         "created_at": datetime.now(ist).replace(microsecond=0).isoformat(),
-#     }
-#
-#     new_order = firebase_db.append_order(order_dict)
-#
-#     # 6️⃣ Wallet TX log (ONLY pay_now)
-#     if payment_method.lower() == "wallet" and pay_now > 0:
-#         tx_id = str(uuid.uuid4())
-#         firebase_db.db.collection("transactions").document(tx_id).set({
-#             "userId": user["id"],
-#             "type": "Payment",
-#             "amount": pay_now,                # ⭐ FIXED (was total)
-#             "dateTime": datetime.utcnow(),
-#             "orderId": new_order["order_uuid"]
-#         })
-#
-#     # NOTIFICATIONS — unchanged
-#     if payment_method.lower() in ["wallet", "cash"]:
-#         try:
-#             shop_doc = firebase_db.db.collection("shops").document(shop_doc_id).get()
-#             if shop_doc.exists:
-#                 shopkeeper_id = shop_doc.to_dict().get("shopkeeper_id")
-#                 if shopkeeper_id:
-#                     tokens = firebase_db.get_fcm_tokens_for_user(shopkeeper_id)
-#                     if tokens:
-#                         firebase_db.send_fcm_notification_to_tokens(
-#                             tokens,
-#                             "New Order Received",
-#                             f"New order from {user_doc.get('fullName') or user['username']}",
-#                             {"order_id": new_order["order_uuid"], "type": "new_order"}
-#                         )
-#         except Exception as e:
-#             logger.error(f"❌ Notification Error: {e}")
-#
-#     # 7️⃣ Final response
-#     if payment_method == "Razorpay":
-#         return jsonify({
-#             "success": True,
-#             "order_id": new_order["order_uuid"],
-#             "razorpay_order_id": razorpay_order_id,
-#             "amount": pay_now,      # ⭐ return pay_now amount
-#             "shopName": shop_name
-#         })
-#
-#     return jsonify({
-#         "success": True,
-#         "order_id": new_order["order_uuid"],
-#         "amount": pay_now,
-#         "due_amount": due_amount,
-#         "message": f"{payment_method} order placed successfully",
-#         "shopName": shop_name
-#     })
-
-# @app.route("/api/verify_payment", methods=["POST"])
-# def verify_payment():
-#     data = request.json or {}
-#     order_uuid = data.get("order_id")
-#     razorpay_payment_id = data.get("razorpay_payment_id")
-#     razorpay_order_id = data.get("razorpay_order_id")
-#     razorpay_signature = data.get("razorpay_signature")
-#
-#     if not order_uuid:
-#         return jsonify({"success": False, "message": "Missing order_id"}), 400
-#
-#     order_doc = firebase_db.get_order_by_uuid(order_uuid)
-#     if not order_doc:
-#         return jsonify({"success": False, "message": "Order not found - Verify Payment"}), 404
-#
-#     payment_method = order_doc.get("payment_method", "Razorpay")
-#
-#     # ------------------ RAZORPAY PAYMENT ------------------
-#     if payment_method != "Cash":
-#
-#         if not razorpay_payment_id or not razorpay_order_id or not razorpay_signature:
-#             return jsonify({"success": False, "message": "Missing Razorpay payment details"}), 400
-#
-#         # Verify Signature
-#         try:
-#             razorpay_client.utility.verify_payment_signature({
-#                 "razorpay_order_id": razorpay_order_id,
-#                 "razorpay_payment_id": razorpay_payment_id,
-#                 "razorpay_signature": razorpay_signature
-#             })
-#         except razorpay.errors.SignatureVerificationError:
-#             return jsonify({"success": False, "message": "Payment verification failed"}), 400
-#
-#         # Update order status
-#         firebase_db.update_order_status(order_uuid, "Paid",
-#                                         extra_fields={"transaction_id": razorpay_payment_id})
-#         message = "Payment verified"
-#
-#         # 🔥 ADDED — SEND NOTIFICATION AFTER SUCCESSFUL PAYMENT
-#         try:
-#             shop_id = order_doc.get("shopId")
-#             shop_doc = firebase_db.db.collection("shops").document(shop_id).get()
-#
-#             if shop_doc.exists:
-#                 shopkeeper_id = shop_doc.to_dict().get("shopkeeper_id")
-#
-#                 if shopkeeper_id:
-#                     tokens = firebase_db.get_fcm_tokens_for_user(shopkeeper_id)
-#
-#                     if tokens:
-#                         firebase_db.send_fcm_notification_to_tokens(
-#                             tokens,
-#                             "New Paid Order",
-#                             f"New paid order from {order_doc['customer'].get('fullName')}",
-#                             {"order_id": order_uuid, "type": "new_order"}
-#                         )
-#         except Exception as e:
-#             logger.error(f"❌ Notification error (Razorpay): {e}")
-#
-#     # ------------------ CASH PAYMENT ------------------
-#     else:
-#         firebase_db.update_order_status(order_uuid, "Confirmed")
-#         message = "Cash order confirmed"
-#
-#         # 🔥 ADDED — Notify after cash confirmation
-#         try:
-#             shop_id = order_doc.get("shopId")
-#             shop_doc = firebase_db.db.collection("shops").document(shop_id).get()
-#
-#             if shop_doc.exists:
-#                 shopkeeper_id = shop_doc.to_dict().get("shopkeeper_id")
-#
-#                 if shopkeeper_id:
-#                     tokens = firebase_db.get_fcm_tokens_for_user(shopkeeper_id)
-#                     if tokens:
-#                         firebase_db.send_fcm_notification_to_tokens(
-#                             tokens,
-#                             "New Cash Order",
-#                             f"New cash order from {order_doc['customer'].get('fullName')}",
-#                             {"order_id": order_uuid, "type": "new_order"}
-#                         )
-#         except Exception as e:
-#             logger.error(f"❌ Notification error (Cash): {e}")
-#
-#     return jsonify({"success": True, "message": f"{message} successfully"})
-#-------------------------------⭐⭐⭐⭐⭐⭐⭐⭐⭐⭐⭐⭐⭐-------------------------------
 @app.route("/api/place_orders", methods=["POST"])
 def create_order():
     logger.info("🟦 DEBUG: /api/orders endpoint hit")
@@ -1260,6 +798,132 @@ def create_order():
     })
 
 
+# @app.route("/api/verify_payment", methods=["POST"])
+# def verify_payment():
+#     data = request.json or {}
+#     order_uuid = data.get("order_id")
+#     razorpay_payment_id = data.get("razorpay_payment_id")
+#     razorpay_order_id = data.get("razorpay_order_id")
+#     razorpay_signature = data.get("razorpay_signature")
+#
+#     if not order_uuid:
+#         return jsonify({"success": False, "message": "Missing order_id"}), 400
+#
+#     order_doc = firebase_db.get_order_by_uuid(order_uuid)
+#     if not order_doc:
+#         return jsonify({"success": False, "message": "Order not found - Verify Payment"}), 404
+#
+#     payment_method = order_doc.get("payment_method", "Razorpay")
+#
+#     # ------------------ RAZORPAY PAYMENT ------------------
+#     if payment_method != "Cash":
+#
+#         if not razorpay_payment_id or not razorpay_order_id or not razorpay_signature:
+#             return jsonify({"success": False, "message": "Missing Razorpay payment details"}), 400
+#
+#         # Verify Signature
+#         try:
+#             razorpay_client.utility.verify_payment_signature({
+#                 "razorpay_order_id": razorpay_order_id,
+#                 "razorpay_payment_id": razorpay_payment_id,
+#                 "razorpay_signature": razorpay_signature
+#             })
+#         except razorpay.errors.SignatureVerificationError:
+#             return jsonify({"success": False, "message": "Payment verification failed"}), 400
+#
+#         # Update order status → Paid
+#         firebase_db.update_order_status(
+#             order_uuid,
+#             "Paid",
+#             extra_fields={"transaction_id": razorpay_payment_id}
+#         )
+#         message = "Payment verified"
+#         # ⭐⭐⭐ CREDIT SHOP WALLET HERE ⭐⭐⭐
+#         try:
+#             logger.info("⭐⭐⭐ CREDIT SHOP WALLET HERE ⭐⭐⭐")
+#             from shop_wallet_routes import add_income_to_shop
+#
+#             shop_id = order_doc.get("shopId")
+#
+#             paid_amount = float(order_doc.get("paid_amount", 0) or 0)
+#
+#             if paid_amount > 0:
+#                 add_income_to_shop(
+#                     shop_id=shop_id,
+#                     amount=paid_amount,
+#                     order_id=order_uuid
+#                 )
+#                 logger.info(f"💰 Shop Wallet Credited +₹{paid_amount} (Order {order_uuid}) & shop id {shop_id}")
+#
+#         except Exception as e:
+#             logger.error(f"❌ Shop wallet credit error: {e}")
+#
+#     # ⭐ NEW → Add Khata ONLY AFTER successful Razorpay payment
+#         try:
+#             due_amount = float(order_doc.get("due_amount", 0) or 0)
+#             if due_amount > 0:
+#                 shop_id = order_doc.get("shopId")
+#                 customer_id = order_doc.get("customer_id")
+#
+#                 firebase_db.add_khata_transaction(
+#                     shop_id=shop_id,
+#                     customer_id=customer_id,
+#                     amount=due_amount,
+#                     tx_type="debit",
+#                     note="Order Due",
+#                     order_id=order_uuid
+#                 )
+#         except Exception as e:
+#             logger.error(f"❌ Khata add error (Razorpay): {e}")
+#
+#         # 🔥 SEND NOTIFICATION AFTER SUCCESSFUL PAYMENT
+#         try:
+#             shop_id = order_doc.get("shopId")
+#             shop_doc = firebase_db.db.collection("shops").document(shop_id).get()
+#
+#             if shop_doc.exists:
+#                 shopkeeper_id = shop_doc.to_dict().get("shopkeeper_id")
+#
+#                 if shopkeeper_id:
+#                     tokens = firebase_db.get_fcm_tokens_for_user(shopkeeper_id)
+#
+#                     if tokens:
+#                         firebase_db.send_fcm_notification_to_tokens(
+#                             tokens,
+#                             "New Paid Order",
+#                             f"New paid order from {order_doc['customer'].get('fullName')}",
+#                             {"order_id": order_uuid, "type": "new_order"}
+#                         )
+#         except Exception as e:
+#             logger.error(f"❌ Notification error (Razorpay): {e}")
+#
+#     # ------------------ CASH PAYMENT ------------------
+#     else:
+#         firebase_db.update_order_status(order_uuid, "Confirmed")
+#         message = "Cash order confirmed"
+#
+#         # 🔥 Notify after cash confirmation
+#         try:
+#             shop_id = order_doc.get("shopId")
+#             shop_doc = firebase_db.db.collection("shops").document(shop_id).get()
+#
+#             if shop_doc.exists:
+#                 shopkeeper_id = shop_doc.to_dict().get("shopkeeper_id")
+#
+#                 if shopkeeper_id:
+#                     tokens = firebase_db.get_fcm_tokens_for_user(shopkeeper_id)
+#                     if tokens:
+#                         firebase_db.send_fcm_notification_to_tokens(
+#                             tokens,
+#                             "New Cash Order",
+#                             f"New cash order from {order_doc['customer'].get('fullName')}",
+#                             {"order_id": order_uuid, "type": "new_order"}
+#                         )
+#         except Exception as e:
+#             logger.error(f"❌ Notification error (Cash): {e}")
+#
+#     return jsonify({"success": True, "message": f"{message} successfully"})
+#-------------------------------⭐⭐⭐⭐⭐⭐⭐⭐⭐⭐⭐⭐⭐-------------------------------
 @app.route("/api/verify_payment", methods=["POST"])
 def verify_payment():
     data = request.json or {}
@@ -1300,6 +964,28 @@ def verify_payment():
             extra_fields={"transaction_id": razorpay_payment_id}
         )
         message = "Payment verified"
+
+        # ⭐⭐⭐ CREDIT SHOP WALLET HERE ⭐⭐⭐
+        try:
+            logger.info("⭐⭐⭐ CREDIT SHOP WALLET HERE ⭐⭐⭐")
+
+            # FIX: import module, not function
+            import shop_wallet_routes
+
+            shop_id = order_doc.get("shopId")
+
+            paid_amount = float(order_doc.get("paid_amount", 0) or 0)
+
+            if paid_amount > 0:
+                shop_wallet_routes.add_income_to_shop(
+                    shop_id=shop_id,
+                    amount=paid_amount,
+                    order_id=order_uuid
+                )
+                logger.info(f"💰 Shop Wallet Credited +₹{paid_amount} (Order {order_uuid}) & shop id {shop_id}")
+
+        except Exception as e:
+            logger.error(f"❌ Shop wallet credit error: {e}")
 
         # ⭐ NEW → Add Khata ONLY AFTER successful Razorpay payment
         try:
@@ -1366,7 +1052,6 @@ def verify_payment():
             logger.error(f"❌ Notification error (Cash): {e}")
 
     return jsonify({"success": True, "message": f"{message} successfully"})
-#-------------------------------⭐⭐⭐⭐⭐⭐⭐⭐⭐⭐⭐⭐⭐-------------------------------
 
 def process_wallet_refund(customerId, amount, order_uuid, order_firestore_id, is_partial=False):
     """

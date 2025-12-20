@@ -98,6 +98,7 @@
         <activity android:name="com.example.groceryshoppingapp.KhataCustomerDetailActivity"/>
         <activity android:name="com.example.groceryshoppingapp.CustomerKhataListActivity"/>
         <activity android:name="com.example.groceryshoppingapp.ShopOwnerSelectCustomerActivity"/>
+        <activity android:name="com.example.groceryshoppingapp.ShopOwnerWalletActivity"/>
 
 
     </application>
