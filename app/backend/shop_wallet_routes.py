@@ -142,31 +142,57 @@ def add_income_to_shop(shop_id, amount, order_id):
     }
 
     shop_transactions_ref().document(tx_id).set(tx)
+    logger.info(f"✅✅ ***** Amount Added to Shop Wallet *****")
 
 
 
 # ============================================================
 # 🔹 REFUND / PARTIAL REFUND
-# ============================================================
+# ===========================================================
+
+
+
+
 def deduct_shop_refund(shop_id, amount, order_id, is_partial=False):
+    logger.info(f"✅ deduct_shop_refund activated → shop={shop_id}")
+
     shop_ref = get_shop_ref(shop_id)
-    snap = shop_ref.get()
-
-    if not snap.exists:
-        raise Exception("Shop not found")
-
-    current_balance = float(snap.to_dict().get("wallet_balance", 0.0))
-    new_balance = current_balance - float(amount)
-    shop_ref.update({"wallet_balance": new_balance})
-
     refund_type = "Partial Refund" if is_partial else "Refund"
 
-    # Transaction log
-    tx_id = str(uuid.uuid4())
-    shop_transactions_ref().document(tx_id).set({
-        "shopId": shop_id,
-        "type": refund_type,
-        "amount": amount,
-        "dateTime": datetime.utcnow(),
-        "orderId": order_id
-    })
+    transaction = db.transaction()
+
+    @firestore.transactional
+    def shop_wallet_txn(transaction):
+        snap = shop_ref.get(transaction=transaction)
+        if not snap.exists:
+            raise Exception("Shop not found")
+
+        shop_data = snap.to_dict() or {}
+        current_balance = float(shop_data.get("wallet_balance", 0.0))
+
+        if current_balance < amount:
+            raise Exception("Insufficient shop wallet balance")
+
+        new_balance = current_balance - amount
+
+        transaction.update(shop_ref, {
+            "wallet_balance": new_balance
+        })
+
+        tx_id = str(uuid.uuid4())
+        shop_transactions_ref().document(tx_id).set({
+            "shopId": shop_id,
+            "type": refund_type,
+            "amount": amount,
+            "dateTime": datetime.utcnow(),
+            "orderId": order_id
+        })
+
+        logger.info(
+            f"💸 SHOP WALLET UPDATED → -₹{amount} | new_balance={new_balance}"
+        )
+
+    # ✅ THIS IS THE CORRECT WAY TO EXECUTE
+    shop_wallet_txn(transaction)
+
+

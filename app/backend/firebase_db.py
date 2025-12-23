@@ -9,6 +9,7 @@ import uuid
 from datetime import datetime, timedelta, timezone
 from firebase_admin import credentials, firestore, storage as fb_storage, messaging
 
+
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
 logger = logging.getLogger("order_api")
 # ---------------------------------------------------------------------
@@ -262,7 +263,7 @@ def upload_invoice_to_storage(order_id, pdf_buffer, customer_id=None):
         # 🔥 Generate signed URL instead of blob.make_public()
         url = blob.generate_signed_url(
             version="v4",
-            expiration=datetime.timedelta(days=7),  # link valid for 7 days
+            expiration= timedelta(days=7),  # link valid for 7 days
             method="GET"
         )
 

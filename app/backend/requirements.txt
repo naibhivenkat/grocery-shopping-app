@@ -22,9 +22,14 @@ PyJWT==2.9.0
 elasticsearch==8.15.1
 prometheus-client==0.21.0
 
-# --- PDF Generation ---
-weasyprint==62.3
+
+# --- PDF Generation (LOCKED & STABLE) ---
+weasyprint==61.2
+pydyf==0.10.0
+cairocffi==1.6.1
 reportlab==4.2.2
+
+
 
 python-dotenv==1.0.0
 

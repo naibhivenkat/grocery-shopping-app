@@ -203,103 +203,170 @@ def get_transactions_ref():
 #     except Exception as e:
 #         logger.info(f"[ERROR] /wallet/refund crashed: {e}")
 #         return jsonify({"error": "Refund failed"}), 500
+
+#
+# @wallet_bp.route("/wallet/refund", methods=["POST"])
+# def refund():
+#     try:
+#         data = request.json or {}
+#
+#         firestore_id = data.get("user_id")       # Firestore USER doc id
+#         customer_id = data.get("customerId")     # App customer id
+#         amount = float(data.get("amount", 0))
+#         order_id = data.get("order_id")
+#         shop_id = data.get("shopId")              # 🔥 REQUIRED
+#         logger.info(f"🧪 refund payload → {data}")
+#
+#
+#         if not firestore_id or not shop_id or amount <= 0:
+#             return jsonify({"error": "Invalid refund request"}), 400
+#
+#         # -----------------------------------------
+#         # PARTIAL FLAG
+#         # -----------------------------------------
+#         raw_partial = data.get("is_partial", False)
+#         is_partial = (
+#             raw_partial if isinstance(raw_partial, bool)
+#             else str(raw_partial).lower() == "true"
+#         )
+#
+#         refund_type = "Partial Refund" if is_partial else "Refund"
+#
+#         # -----------------------------------------
+#         # CUSTOMER TRANSACTION (ATOMIC)
+#         # -----------------------------------------
+#         db = firebase_db.db
+#         transaction = db.transaction()
+#
+#         user_ref = db.collection("users").document(firestore_id)
+#
+#         @firebase_db.firestore.transactional
+#         def customer_wallet_txn(transaction):
+#             snap = user_ref.get(transaction=transaction)
+#             if not snap.exists:
+#                 raise Exception("User not found")
+#
+#
+#             user_data = snap.to_dict() or {}
+#             current_balance = float(user_data.get("wallet_balance", 0.0))
+#
+#
+#             new_balance = current_balance + amount
+#
+#             transaction.update(user_ref, {
+#                 "wallet_balance": new_balance
+#             })
+#
+#             tx_id = str(uuid.uuid4())
+#             db.collection("transactions").document(tx_id).set({
+#                 "userId": customer_id,
+#                 "type": refund_type,
+#                 "amount": amount,
+#                 "dateTime": datetime.utcnow(),
+#                 "orderId": order_id,
+#                 "payment_type": "Wallet"
+#             })
+#
+#             return new_balance, tx_id
+#
+#         new_balance, tx_id = customer_wallet_txn(transaction)
+#
+#         # -----------------------------------------
+#         # SHOP WALLET DEDUCTION (MANDATORY)
+#         # -----------------------------------------
+#         from shop_wallet_routes import  deduct_shop_refund
+#         deduct_shop_refund(
+#             shop_id=shop_id,
+#             amount=amount,
+#             order_id=order_id,
+#             is_partial=is_partial
+#         )
+#
+#         logger.info(
+#             f"💰 REFUND OK → +₹{amount} user={customer_id} | -₹{amount} shop={shop_id}"
+#         )
+#
+#         return jsonify({
+#             "success": True,
+#             "balance": new_balance,
+#             "transaction_id": tx_id,
+#             "refund_type": refund_type
+#         }), 200
+#
+#     except Exception as e:
+#         logger.error(f"❌ Refund failed: {e}")
+#         return jsonify({"error": "Refund failed", "message": str(e)}), 500
+
 @wallet_bp.route("/wallet/refund", methods=["POST"])
 def refund():
     try:
         data = request.json or {}
+        logger.info(f"🧪 refund payload → {data}")
 
-        firestore_id = data.get("user_id")      # Firestore user document ID
-        customerId = data.get("customerId")      # App's customerId
-        amount = float(data.get("amount", 0))
+        firestore_id = data.get("user_id")
+        customer_id = data.get("customerId")
+        shop_id = data.get("shopId")
         order_id = data.get("order_id")
+        amount = float(data.get("amount", 0))
+        is_partial = bool(data.get("is_partial", False))
 
-        # ⭐ NEW — shop id must be sent from app
-        shop_id = data.get("shopId")    # <--- NEW LINE
-
-        if not firestore_id or amount <= 0:
+        if not firestore_id or not shop_id or amount <= 0:
             return jsonify({"error": "Invalid refund request"}), 400
-
-        # -----------------------------------------
-        #  GET USER
-        # -----------------------------------------
-        user_ref = firebase_db.db.collection("users").document(firestore_id)
-        snap = user_ref.get()
-
-        if not snap.exists:
-            return jsonify({"error": "User not found"}), 404
-
-        user_data = snap.to_dict()
-
-        # -----------------------------------------
-        #  CHECK PARTIAL REFUND FLAG
-        # -----------------------------------------
-        raw_partial = data.get("is_partial")
-
-        is_partial = False
-        if isinstance(raw_partial, bool):
-            is_partial = raw_partial
-        elif isinstance(raw_partial, str):
-            is_partial = raw_partial.lower() == "true"
-        else:
-            is_partial = False
 
         refund_type = "Partial Refund" if is_partial else "Refund"
 
-        # -----------------------------------------
-        #  UPDATE CUSTOMER WALLET BALANCE
-        # -----------------------------------------
-        new_balance = float(user_data.get("wallet_balance", 0)) + amount
-        user_ref.update({"wallet_balance": new_balance})
+        # 🔒 Idempotency
+        existing = firebase_db.db.collection("transactions") \
+            .where("orderId", "==", order_id) \
+            .where("type", "==", refund_type) \
+            .limit(1) \
+            .get()
 
-        # -----------------------------------------
-        #  CREATE CUSTOMER TRANSACTION LOG
-        # -----------------------------------------
-        tx_id = str(uuid.uuid4())
+        if existing:
+            logger.warning(f"♻️ Duplicate refund blocked → {order_id}")
+            return jsonify({"success": True, "message": "Already refunded"}), 200
 
-        firebase_db.db.collection("transactions").document(tx_id).set({
-            "userId": customerId,
-            "type": refund_type,
-            "amount": amount,
-            "dateTime": datetime.utcnow(),
-            "orderId": order_id,
-            "payment_type": "Wallet"
-        })
+        user_ref = firebase_db.db.collection("users").document(firestore_id)
+        tx = firebase_db.db.transaction()
 
-        logger.info(
-            f"💰 /wallet/refund ({refund_type}) → +₹{amount} → user={customerId}"
+        @firebase_db.firestore.transactional
+        def wallet_tx(transaction):
+            snap = user_ref.get(transaction=transaction)
+            user_data = snap.to_dict() or {}
+            balance = float(user_data.get("wallet_balance", 0))
+            new_balance = balance + amount
+
+            transaction.update(user_ref, {"wallet_balance": new_balance})
+
+            firebase_db.db.collection("transactions").add({
+                "userId": customer_id,
+                "type": refund_type,
+                "amount": amount,
+                "orderId": order_id,
+                "dateTime": datetime.utcnow(),
+                "payment_type": "Wallet"
+            })
+
+            return new_balance
+
+        new_balance = wallet_tx(tx)
+
+        from shop_wallet_routes import deduct_shop_refund
+        deduct_shop_refund(
+            shop_id=shop_id,
+            amount=amount,
+            order_id=order_id,
+            is_partial=is_partial
         )
 
-        # ----------------------------------------------------
-        # ⭐⭐⭐ NEW — DEDUCT FROM SHOP WALLET (MINIMAL CHANGE)
-        # ----------------------------------------------------
-        try:
-            if shop_id:
-                from shop_wallet_routes import deduct_shop_refund
+        logger.info(
+            f"💰 REFUND OK → +₹{amount} user={customer_id} | -₹{amount} shop={shop_id}"
+        )
 
-                deduct_shop_refund(
-                    shop_id=shop_id,
-                    amount=amount,
-                    order_id=order_id,
-                    is_partial=is_partial
-                )
-
-                logger.info(
-                    f"💸 Shop Wallet Deduct ({refund_type}) → -₹{amount} → shop={shop_id}"
-                )
-        except Exception as e:
-            logger.error(f"❌ Shop wallet deduction error: {e}")
-
-        # ----------------------------------------------------
-
-        return jsonify({
-            "success": True,
-            "balance": new_balance,
-            "transaction_id": tx_id,
-            "refund_type": refund_type
-        }), 200
+        return jsonify({"success": True, "balance": new_balance}), 200
 
     except Exception as e:
-        logger.info(f"[ERROR] /wallet/refund crashed: {e}")
+        logger.error(f"❌ Refund failed: {e}")
         return jsonify({"error": "Refund failed"}), 500
 
 
