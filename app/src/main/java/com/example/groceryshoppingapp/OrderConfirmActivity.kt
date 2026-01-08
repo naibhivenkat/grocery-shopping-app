@@ -5,6 +5,7 @@ import android.os.Bundle
 import android.text.Editable
 import android.text.TextWatcher
 import android.view.View
+import android.util.Log
 import android.view.animation.AnimationUtils
 import android.widget.Toast
 import androidx.appcompat.app.AppCompatActivity
@@ -312,9 +313,37 @@ class OrderConfirmActivity : AppCompatActivity(), PaymentResultWithDataListener 
         }
     }
 
+//    override fun onPaymentSuccess(paymentId: String?, data: PaymentData?) {
+//        paymentManager.verifyPayment(backendOrderId, paymentId, data?.orderId, data?.signature)
+//    }
+
     override fun onPaymentSuccess(paymentId: String?, data: PaymentData?) {
-        paymentManager.verifyPayment(backendOrderId, paymentId, data?.orderId, data?.signature)
+
+        Log.e("RAZORPAY", "paymentId=$paymentId")
+        Log.e("RAZORPAY", "orderId=${data?.orderId}")
+        Log.e("RAZORPAY", "signature=${data?.signature}")
+
+        // ✅ IMPORTANT FIX: fallback to backend Razorpay orderId
+        val finalOrderId = data?.orderId ?: razorpayOrderId
+        val finalSignature = data?.signature
+
+        if (paymentId.isNullOrBlank() ||
+            finalOrderId.isNullOrBlank() ||
+            finalSignature.isNullOrBlank()
+        ) {
+            Toast.makeText(this, "Payment verification failed. Retry.", Toast.LENGTH_LONG).show()
+            return
+        }
+
+        paymentManager.verifyPayment(
+            backendOrderId = backendOrderId,
+            paymentId = paymentId,
+            rpOrderId = finalOrderId,
+            rpSignature = finalSignature
+        )
     }
+
+
 
     override fun onPaymentError(code: Int, response: String?, data: PaymentData?) {
         Toast.makeText(this, "Payment Failed!", Toast.LENGTH_SHORT).show()

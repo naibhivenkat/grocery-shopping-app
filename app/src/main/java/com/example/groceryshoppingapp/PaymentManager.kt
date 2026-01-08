@@ -36,6 +36,9 @@ class PaymentManager(private val activity: Activity) {
         val checkout = Checkout()
         checkout.setKeyID("rzp_test_RKK3DuGSaxK9fR")
 
+        // 🔧 FIX: ensure Razorpay SDK is ready
+        Checkout.preload(activity.applicationContext)
+
         val options = JSONObject()
         options.put("name", shopName)
         options.put("description", "Grocery Order")
@@ -61,6 +64,9 @@ class PaymentManager(private val activity: Activity) {
 
         val checkout = Checkout()
         checkout.setKeyID("rzp_test_RKK3DuGSaxK9fR")
+
+        // 🔧 FIX: same preload for wallet flow
+        Checkout.preload(activity.applicationContext)
 
         val options = JSONObject()
         options.put("name", "Wallet Recharge")
@@ -94,6 +100,21 @@ class PaymentManager(private val activity: Activity) {
         Log.e("PAYMENT_MANAGER", "rpSignature=$rpSignature")
         Log.e("PAYMENT_MANAGER", "activity=${activity::class.java.simpleName}")
 
+        // 🔧 FIX: strict guard (prevents bad API call)
+        if (
+            backendOrderId.isNullOrBlank() ||
+            paymentId.isNullOrBlank() ||
+            rpOrderId.isNullOrBlank() ||
+            rpSignature.isNullOrBlank()
+        ) {
+            Toast.makeText(
+                activity,
+                "Payment verification failed. Please retry.",
+                Toast.LENGTH_LONG
+            ).show()
+            return
+        }
+
         val api = RetrofitClient.getInstance(activity).create(ApiService::class.java)
 
         // -------------------------------------------------------------
@@ -102,10 +123,10 @@ class PaymentManager(private val activity: Activity) {
         if (activity is OrderConfirmActivity) {
 
             val verifyData = mapOf(
-                "order_id" to (backendOrderId ?: ""),
-                "razorpay_payment_id" to (paymentId ?: ""),
-                "razorpay_order_id" to (rpOrderId ?: ""),
-                "razorpay_signature" to (rpSignature ?: "")
+                "order_id" to backendOrderId,
+                "razorpay_payment_id" to paymentId,
+                "razorpay_order_id" to rpOrderId,
+                "razorpay_signature" to rpSignature
             )
 
             Log.e("PAYMENT_MANAGER", "Sending verifyPayment (ORDER): $verifyData")
@@ -113,8 +134,11 @@ class PaymentManager(private val activity: Activity) {
             api.verifyPayment(verifyData)
                 .enqueue(object : Callback<Map<String, Any>> {
 
-                    override fun onResponse(call: Call<Map<String, Any>>, response: Response<Map<String, Any>>) {
-                        Log.e("PAYMENT_MANAGER", "ORDER verify response code=${response.code()}")
+                    override fun onResponse(
+                        call: Call<Map<String, Any>>,
+                        response: Response<Map<String, Any>>
+                    ) {
+                        Log.e("PAYMENT_MANAGER", "ORDER verify code=${response.code()}")
                         Log.e("PAYMENT_MANAGER", "ORDER verify body=${response.body()}")
                         Log.e("PAYMENT_MANAGER", "ORDER verify error=${response.errorBody()?.string()}")
 
@@ -122,13 +146,21 @@ class PaymentManager(private val activity: Activity) {
                             Log.e("PAYMENT_MANAGER", "Order verified successfully")
                             activity.onPaymentVerified()
                         } else {
-                            Toast.makeText(activity, "Order payment verification failed", Toast.LENGTH_LONG).show()
+                            Toast.makeText(
+                                activity,
+                                "Order payment verification failed",
+                                Toast.LENGTH_LONG
+                            ).show()
                         }
                     }
 
                     override fun onFailure(call: Call<Map<String, Any>>, t: Throwable) {
                         Log.e("PAYMENT_MANAGER", "ORDER verify error=${t.message}")
-                        Toast.makeText(activity, "Verify error: ${t.message}", Toast.LENGTH_LONG).show()
+                        Toast.makeText(
+                            activity,
+                            "Verify error: ${t.message}",
+                            Toast.LENGTH_LONG
+                        ).show()
                     }
                 })
 
@@ -141,10 +173,10 @@ class PaymentManager(private val activity: Activity) {
         if (activity is WalletActivity) {
 
             val verifyWalletData = WalletVerifyRequest(
-                backend_order_id = backendOrderId ?: "",
-                payment_id = paymentId ?: "",
-                order_id = rpOrderId ?: "",
-                signature = rpSignature ?: ""
+                backend_order_id = backendOrderId,
+                payment_id = paymentId,
+                order_id = rpOrderId,
+                signature = rpSignature
             )
 
             Log.e("PAYMENT_MANAGER", "Sending verifyWalletPayment: $verifyWalletData")
@@ -152,8 +184,11 @@ class PaymentManager(private val activity: Activity) {
             api.verifyWalletPayment(verifyWalletData)
                 .enqueue(object : Callback<Map<String, Any>> {
 
-                    override fun onResponse(call: Call<Map<String, Any>>, response: Response<Map<String, Any>>) {
-                        Log.e("PAYMENT_MANAGER", "WALLET verify response code=${response.code()}")
+                    override fun onResponse(
+                        call: Call<Map<String, Any>>,
+                        response: Response<Map<String, Any>>
+                    ) {
+                        Log.e("PAYMENT_MANAGER", "WALLET verify code=${response.code()}")
                         Log.e("PAYMENT_MANAGER", "WALLET verify body=${response.body()}")
                         Log.e("PAYMENT_MANAGER", "WALLET verify error=${response.errorBody()?.string()}")
 
@@ -161,13 +196,21 @@ class PaymentManager(private val activity: Activity) {
                             Log.e("PAYMENT_MANAGER", "Wallet payment verified successfully")
                             activity.onPaymentVerified()
                         } else {
-                            Toast.makeText(activity, "Wallet payment verification failed", Toast.LENGTH_LONG).show()
+                            Toast.makeText(
+                                activity,
+                                "Wallet payment verification failed",
+                                Toast.LENGTH_LONG
+                            ).show()
                         }
                     }
 
                     override fun onFailure(call: Call<Map<String, Any>>, t: Throwable) {
                         Log.e("PAYMENT_MANAGER", "WALLET verify error=${t.message}")
-                        Toast.makeText(activity, "Verification error: ${t.message}", Toast.LENGTH_LONG).show()
+                        Toast.makeText(
+                            activity,
+                            "Verification error: ${t.message}",
+                            Toast.LENGTH_LONG
+                        ).show()
                     }
                 })
 

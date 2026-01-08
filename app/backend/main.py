@@ -42,7 +42,6 @@ app.register_blueprint(khata_bp, url_prefix="/api/khata")
 
 app.register_blueprint(ratings_bp)
 
-
 # Initialize limiter
 limiter = Limiter(key_func=get_remote_address)
 limiter.init_app(app)
@@ -56,7 +55,6 @@ logger = logging.getLogger("order_api")
 logging.getLogger("fontTools").setLevel(logging.WARNING)
 logging.getLogger("weasyprint").setLevel(logging.WARNING)
 logging.getLogger("weasyprint.progress").setLevel(logging.WARNING)
-
 
 SENDINBLUE_API_KEY = os.getenv("SENDINBLUE_API_KEY")
 FROM_EMAIL = os.getenv("FROM_EMAIL")
@@ -630,6 +628,7 @@ def create_order():
     detailed_items = []
     ist = timezone(timedelta(hours=5, minutes=30))
 
+    # 1️⃣ Compute total
     for entry in items:
         item_id = entry.get("item_id")
         quantity = float(entry.get("quantity", 1))
@@ -647,6 +646,7 @@ def create_order():
                 "original_quantity": quantity
             })
 
+    # 2️⃣ Current user
     user = getattr(g, "current_user", None)
     if not user:
         return jsonify({"success": False, "message": "User not logged in"}), 401
@@ -663,11 +663,14 @@ def create_order():
     else:
         user_doc = user_doc.to_dict()
 
+    # 3️⃣ Resolve shop
     input_shop_id = data["shopId"]
-    shop_query = firebase_db.db.collection("shops").where("id", "==", input_shop_id).stream()
+    invoice_url = data.get("invoice_url", "")  # 🔧 PATCH: restored
 
+    shop_query = firebase_db.db.collection("shops").where("id", "==", input_shop_id).stream()
     shop_doc_id = None
     shop_name = ""
+
     for doc in shop_query:
         shop_doc_id = doc.id
         shop_name = doc.to_dict().get("name", "")
@@ -676,10 +679,11 @@ def create_order():
     if not shop_doc_id:
         return jsonify({"success": False, "message": "Invalid shopId"}), 400
 
+    # 4️⃣ Payment logic
     payment_method = data.get("payment_method", "Razorpay")
     razorpay_order_id = None
 
-    # ---------------- WALLET PAYMENT ----------------
+    # ⭐ WALLET
     if payment_method.lower() == "wallet":
         wallet_balance = float(user_doc.get("wallet_balance", 0))
         if wallet_balance < pay_now:
@@ -688,16 +692,17 @@ def create_order():
         user_ref.update({"wallet_balance": wallet_balance - pay_now})
         logger.info(f"🟦 Wallet deducted ₹{pay_now}")
 
-    # ---------------- RAZORPAY ----------------
+    # ⭐ RAZORPAY
     elif payment_method == "Razorpay":
         razorpay_order = razorpay_client.order.create({
             "amount": int(pay_now * 100),
             "currency": "INR",
-            "receipt": f"order_{datetime.now(ist).isoformat()}",
+            "receipt": f"order_{datetime.now(ist).replace(microsecond=0).isoformat()}",
             "payment_capture": 1
         })
         razorpay_order_id = razorpay_order["id"]
 
+    # 5️⃣ Save order
     order_dict = {
         "shopId": shop_doc_id,
         "shopName": shop_name,
@@ -714,15 +719,25 @@ def create_order():
         "paid_amount": pay_now,
         "due_amount": due_amount,
         "payment_method": payment_method,
-        "transaction_id": "Wallet" if payment_method.lower() == "wallet" else "",
+        "transaction_id": (  # 🔧 PATCH
+            "Wallet" if payment_method.lower() == "wallet"
+            else "Cash" if payment_method.lower() == "cash"
+            else "Khata" if payment_method.lower() == "khata"
+            else ""
+        ),
         "razorpay_order_id": razorpay_order_id or "",
-        "status": "Confirmed" if payment_method.lower() == "wallet" else "Pending",
+        "status": (  # 🔧 PATCH
+            "Confirmed"
+            if payment_method.lower() in ["wallet", "cash", "khata"]
+            else "Pending"
+        ),
+        "invoice_url": invoice_url,  # 🔧 PATCH
         "created_at": datetime.now(ist).replace(microsecond=0).isoformat(),
     }
 
     new_order = firebase_db.append_order(order_dict)
 
-    # ---------------- WALLET TX ----------------
+    # 6️⃣ Wallet transaction
     if payment_method.lower() == "wallet" and pay_now > 0:
         firebase_db.db.collection("transactions").add({
             "userId": user["id"],
@@ -732,7 +747,7 @@ def create_order():
             "orderId": new_order["order_uuid"]
         })
 
-        # ⭐⭐⭐ CREDIT SHOP WALLET (MINIMAL FIX) ⭐⭐⭐
+        # 🔧 PATCH: credit shop wallet immediately for wallet
         try:
             import shop_wallet_routes
             shop_wallet_routes.add_income_to_shop(
@@ -740,11 +755,10 @@ def create_order():
                 amount=pay_now,
                 order_id=new_order["order_uuid"]
             )
-            logger.info(f"💰 Shop wallet credited +₹{pay_now} (Wallet order)")
         except Exception as e:
             logger.error(f"❌ Shop wallet credit failed (wallet): {e}")
 
-    # 7️⃣ KHATA ENTRY — Wallet, Cash & Khata
+    # 7️⃣ KHATA ENTRY (same as old behavior)
     if due_amount > 0 and payment_method.lower() in ["wallet", "cash", "khata"]:
         try:
             firebase_db.add_khata_transaction(
@@ -755,24 +769,43 @@ def create_order():
                 note="Order Due",
                 order_id=new_order["order_uuid"]
             )
-            logger.info(
-                f"📒 Khata DEBIT added → ₹{due_amount} | "
-                f"user={user['id']} shop={shop_doc_id}"
-            )
         except Exception as e:
             logger.error(f"❌ Khata debit failed: {e}")
 
+    # 🔧 PATCH: RESTORED NOTIFICATION (old workflow)
+    if payment_method.lower() in ["wallet", "cash", "khata"]:
+        try:
+            shop_doc = firebase_db.db.collection("shops").document(shop_doc_id).get()
+            if shop_doc.exists:
+                shopkeeper_id = shop_doc.to_dict().get("shopkeeper_id")
+                if shopkeeper_id:
+                    tokens = firebase_db.get_fcm_tokens_for_user(shopkeeper_id)
+                    if tokens:
+                        firebase_db.send_fcm_notification_to_tokens(
+                            tokens,
+                            "New Order Received",
+                            f"New order from {user_doc.get('fullName') or user['username']}",
+                            {"order_id": new_order["order_uuid"], "type": "new_order"}
+                        )
+        except Exception as e:
+            logger.error(f"❌ Notification error: {e}")
+
+    # 8️⃣ Final response (unchanged behavior)
     return jsonify({
         "success": True,
         "order_id": new_order["order_uuid"],
+        "razorpay_order_id": razorpay_order_id,
         "amount": pay_now,
         "due_amount": due_amount,
         "shopName": shop_name
     })
 
+
 @app.route("/api/verify_payment", methods=["POST"])
 def verify_payment():
     data = request.json or {}
+    logger.info(f"🔎 VERIFY PAYMENT DATA: {data}")
+
     order_uuid = data.get("order_id")
     razorpay_payment_id = data.get("razorpay_payment_id")
     razorpay_order_id = data.get("razorpay_order_id")
@@ -828,7 +861,8 @@ def verify_payment():
                     amount=paid_amount,
                     order_id=order_uuid
                 )
-                logger.info(f"💰 Shop Wallet Credited +₹{paid_amount} (Order {order_uuid}) & shop id {shop_id}")
+                logger.info(
+                    f"💰 Shop Wallet Credited +₹{paid_amount} (Order {order_uuid}) & shop id {shop_id}")
 
         except Exception as e:
             logger.error(f"❌ Shop wallet credit error: {e}")
@@ -937,7 +971,7 @@ def process_wallet_refund(
         payload = {
             "user_id": firestore_user_id,
             "customerId": customerId,
-            "shopId": shop_id,          # ✅ REQUIRED
+            "shopId": shop_id,  # ✅ REQUIRED
             "amount": float(amount),
             "order_id": order_uuid,
             "is_partial": bool(is_partial)
@@ -952,7 +986,7 @@ def process_wallet_refund(
         for attempt in range(2):
             try:
                 response = requests.post(refund_url, json=payload, timeout=7)
-                logger.info(f"🔁 Refund attempt {attempt+1} → {response.status_code}")
+                logger.info(f"🔁 Refund attempt {attempt + 1} → {response.status_code}")
 
                 if response.status_code == 200:
                     break
@@ -983,7 +1017,8 @@ def process_wallet_refund(
         logger.error(f"[ERROR] process_wallet_refund crashed: {e}")
         return False
 
-@app.route("/api/get_shopkeeper_orders/shopkeeper/<shop_id>", methods=["GET"]) # todo : Changed
+
+@app.route("/api/get_shopkeeper_orders/shopkeeper/<shop_id>", methods=["GET"])  # todo : Changed
 def get_shop_orders(shop_id):
     orders = firebase_db.get_orders_by_shop(shop_id)
 
@@ -1004,7 +1039,7 @@ def get_shop_orders(shop_id):
     return jsonify(enriched_orders)
 
 
-@app.route("/api/get_customers_orders/customer/<customer_id>", methods=["GET"]) # TODO : CHANGED
+@app.route("/api/get_customers_orders/customer/<customer_id>", methods=["GET"])  # TODO : CHANGED
 def get_customer_orders(customer_id):
     orders = firebase_db.get_orders_by_customer(customer_id)
     for order in orders:
@@ -1012,7 +1047,7 @@ def get_customer_orders(customer_id):
     return jsonify(orders)
 
 
-@app.route('/api/get_order_details/<order_uuid>', methods=['GET']) # TODO : CHANGED
+@app.route('/api/get_order_details/<order_uuid>', methods=['GET'])  # TODO : CHANGED
 def get_order_details(order_uuid):
     orders_ref = firebase_db.db.collection("orders")
 
@@ -1493,7 +1528,6 @@ def require_authentication():
         return jsonify({"message": "Invalid token", "code": "unauthorized"}), 401
 
 
-
 @app.route("/api/update_order_items/<order_uuid>", methods=["PATCH"])
 def update_order_items(order_uuid):
     """
@@ -1546,6 +1580,7 @@ def update_order_items(order_uuid):
     except Exception as e:
         logger.info(f"[ERROR] update_order_items failed: {e}")
         return jsonify({"success": False, "message": "Failed to update items"}), 500
+
 
 def prepare_basic_invoice_data(order_data):
     """Compute totals and payment info (no GST)."""
@@ -2286,7 +2321,6 @@ def safe_update_status(order_firestore_id: str, new_status: str):
         return False
 
 
-
 def handle_invoice(order_doc, normalized_status: str):
     """Generates and sends invoice for delivered orders."""
     if normalized_status != "delivered":
@@ -2335,8 +2369,6 @@ def send_customer_notification(order_doc, new_status: str):
 
     except Exception as e:
         logger.error(f"❌ Notification error: {e}")
-
-
 
 
 @app.route("/api/update_order_status", methods=["POST"])
@@ -2402,7 +2434,6 @@ def update_order_status():
     }), 200
 
 
-
 def handle_refund(order_doc, refund_mode: str):
     order_uuid = order_doc["order_uuid"]
 
@@ -2452,6 +2483,7 @@ def handle_refund(order_doc, refund_mode: str):
     })
 
     logger.info(f"✅ FULL REFUND COMPLETED → {order_uuid}")
+
 
 def handle_partial_refund(order_doc, refund_mode: str):
     order_uuid = order_doc.get("order_uuid")
@@ -2523,6 +2555,7 @@ def credit_customer_wallet_only(customer_id, amount, order_uuid):
         reference=f"Razorpay refund for order {order_uuid}"
     )
 
+
 def razorpay_refund(order_doc, refund_amount):
     """
     Performs REAL Razorpay refund.
@@ -2563,7 +2596,7 @@ def razorpay_refund(order_doc, refund_amount):
 def rate_shop():
     data = request.json
 
-    success, message =firebase_db.add_shop_rating(data)
+    success, message = firebase_db.add_shop_rating(data)
 
     status = 200 if success else 409
     return jsonify({
@@ -2580,6 +2613,7 @@ def shop_rating_analytics(shop_id):
         return jsonify({"message": "Failed to fetch analytics"}), 500
 
     return jsonify(analytics), 200
+
 
 if __name__ == "__main__":
     logger.info("Gunicorn setup complete, about to run...")
