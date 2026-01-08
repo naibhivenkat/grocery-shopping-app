@@ -6,6 +6,7 @@ import android.os.Bundle
 import android.view.View
 import android.widget.*
 import androidx.annotation.RequiresApi
+import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
 import androidx.recyclerview.widget.LinearLayoutManager
 import androidx.recyclerview.widget.RecyclerView
@@ -38,9 +39,13 @@ class OrderDetailActivity : AppCompatActivity() {
     private lateinit var textCreatedAt: TextView
     private lateinit var btnViewInvoice: Button
 
-    // 🔥 ADDED: partial refund section UI
     private lateinit var textPartialRefund: TextView
+    private lateinit var textOrderTotal: TextView
 
+    // 🔴 ADDED
+    private lateinit var textRefundInfo: TextView
+
+    private var selectedRefundMode: String? = null
     private lateinit var adapter: OrderItemAdapter
 
     private var updateItemsCall: Call<Map<String, Any>>? = null
@@ -53,7 +58,6 @@ class OrderDetailActivity : AppCompatActivity() {
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_order_details)
 
-        // Init views
         textShopName = findViewById(R.id.text_shop_name)
         textStatus = findViewById(R.id.text_status)
         textCreatedAt = findViewById(R.id.text_created_at)
@@ -65,12 +69,13 @@ class OrderDetailActivity : AppCompatActivity() {
         btnRefresh = findViewById(R.id.btn_refresh)
         btnSaveItems = findViewById(R.id.btn_save_items)
         btnViewInvoice = findViewById(R.id.btn_invoice)
-
-        // 🔥 ADDED: get reference to new TextView
         textPartialRefund = findViewById(R.id.text_partial_refund)
+        textOrderTotal = findViewById(R.id.text_order_total)
+
+        // 🔴 ADDED
+        textRefundInfo = findViewById(R.id.text_refund_info)
 
         val btnBack = findViewById<Button>(R.id.btn_back)
-
         order = intent.getParcelableExtra("order")!!
 
         setupUI()
@@ -81,7 +86,6 @@ class OrderDetailActivity : AppCompatActivity() {
         btnUpdateStatus.setOnClickListener { updateOrderStatus() }
         btnSaveItems.setOnClickListener { saveItemChanges() }
 
-        // Invoice page
         btnViewInvoice.setOnClickListener {
             val intent = Intent(this, InvoiceViewActivity::class.java)
             intent.putExtra("order_id", order.orderUuid)
@@ -97,6 +101,21 @@ class OrderDetailActivity : AppCompatActivity() {
         loadShopCall?.cancel()
     }
 
+    private fun calculateTotals() {
+        var total = 0.0
+        var refund = 0.0
+
+        order.items.forEach {
+            total += it.originalQuantity * it.price
+            if (it.originalQuantity > it.quantity) {
+                refund += (it.originalQuantity - it.quantity) * it.price
+            }
+        }
+
+        textOrderTotal.text = "Total: ₹ %.2f".format(total)
+        order.partialRefundAmount = refund
+    }
+
     @RequiresApi(Build.VERSION_CODES.O)
     private fun setupUI() {
         updateStatusText(order.status)
@@ -108,22 +127,26 @@ class OrderDetailActivity : AppCompatActivity() {
         recyclerItems.layoutManager = LinearLayoutManager(this)
         recyclerItems.adapter = adapter
 
+        calculateTotals()
+
         textCreatedAt.text = "Created At: ${order.createdAt?.let { formatToIST(it) }}"
+
         order.transaction_id?.let {
-            textPayment.text = "Payment: ${order.payment_method ?: "UPI"} (TxnRef: $it)"
+            textPayment.text =
+                "Payment: ${order.payment_method ?: "UPI"} (TxnRef: $it)"
             textPayment.visibility = View.VISIBLE
         } ?: run { textPayment.visibility = View.GONE }
 
-        // Show invoice button only to customer
-        if (!isShopOwner && order.status.equals("delivered", ignoreCase = true)) {
+        if (!isShopOwner && order.status.equals("delivered", true)) {
             btnViewInvoice.visibility = View.VISIBLE
-            btnViewInvoice.isEnabled = true
         } else {
             btnViewInvoice.visibility = View.GONE
         }
 
-        // 🔥🔥 ADDED: show partial refund breakdown
         showPartialRefundUI()
+
+        // 🔴 ADDED
+//        showRefundInfoIfNeeded(isShopOwner)
 
         if (isShopOwner) {
             spinnerStatus.visibility = View.VISIBLE
@@ -131,20 +154,23 @@ class OrderDetailActivity : AppCompatActivity() {
             btnSaveItems.visibility = View.VISIBLE
 
             val options = listOf("Pending", "Packed", "Delivered", "Cancelled")
-            val spinnerAdapter = ArrayAdapter(this, android.R.layout.simple_spinner_item, options)
-            spinnerAdapter.setDropDownViewResource(android.R.layout.simple_spinner_dropdown_item)
-            spinnerStatus.adapter = spinnerAdapter
+            spinnerStatus.adapter =
+                ArrayAdapter(this, android.R.layout.simple_spinner_item, options)
 
-            val currentIndex = options.indexOfFirst { it.equals(order.status, ignoreCase = true) }
-            if (currentIndex >= 0) spinnerStatus.setSelection(currentIndex)
+            spinnerStatus.onItemSelectedListener =
+                object : AdapterView.OnItemSelectedListener {
+                    override fun onItemSelected(
+                        parent: AdapterView<*>,
+                        view: View?,
+                        pos: Int,
+                        id: Long
+                    ) {
+                        editCancelMsg.visibility =
+                            if (options[pos] == "Cancelled") View.VISIBLE else View.GONE
+                    }
 
-            spinnerStatus.onItemSelectedListener = object : AdapterView.OnItemSelectedListener {
-                override fun onItemSelected(parent: AdapterView<*>, view: View?, pos: Int, id: Long) {
-                    editCancelMsg.visibility = if (options[pos] == "Cancelled") View.VISIBLE else View.GONE
+                    override fun onNothingSelected(parent: AdapterView<*>) {}
                 }
-
-                override fun onNothingSelected(parent: AdapterView<*>) {}
-            }
         } else {
             spinnerStatus.visibility = View.GONE
             btnUpdateStatus.visibility = View.GONE
@@ -152,22 +178,101 @@ class OrderDetailActivity : AppCompatActivity() {
         }
     }
 
-    // 🔥🔥 ADDED FUNCTION — displays partial refund
-    private fun showPartialRefundUI() {
 
-        val refund = order.partialRefundAmount
-        val shortages = order.shortageItems
+    private fun updateOrderStatus() {
+        val selectedStatus = spinnerStatus.selectedItem.toString()
+        if (selectedStatus.equals("Cancelled", true)) {
+            showRefundModeDialog { sendStatusUpdate(selectedStatus) }
+            return
+        }
+        sendStatusUpdate(selectedStatus)
+    }
 
-        if (refund != null && refund > 0) {
-            var text = "Partial Refund: ₹$refund\n"
+    private fun showRefundModeDialog(onConfirm: () -> Unit) {
+        val options = arrayOf("Razorpay", "Shop Wallet", "Cash Paid")
+        AlertDialog.Builder(this)
+            .setTitle("Refund Method")
+            .setSingleChoiceItems(options, -1) { _, which ->
+                selectedRefundMode = when (which) {
+                    0 -> "RAZORPAY"
+                    1 -> "SHOP_WALLET"
+                    else -> "CASH"
+                }
+            }
+            .setPositiveButton("Confirm") { _, _ ->
+                if (selectedRefundMode != null) onConfirm()
+            }
+            .setNegativeButton("Cancel", null)
+            .show()
+    }
 
-            shortages?.forEach { s ->
-                text += "\n• ${s.name ?: "Item"}: Ordered ${s.orderedQty}, Delivered ${s.deliveredQty}, Refund ₹${s.refundAmount}"
+    private fun sendStatusUpdate(status: String) {
+        val body = mutableMapOf(
+            "order_id" to order.orderUuid,
+            "status" to status
+        )
+        selectedRefundMode?.let { body["refund_mode"] = it }
+
+        updateStatusCall = RetrofitClient.getInstance(this)
+            .create(ApiService::class.java)
+            .updateOrderStatusFinal(body)
+
+        updateStatusCall?.enqueue(object : Callback<Map<String, Any>> {
+            override fun onResponse(
+                call: Call<Map<String, Any>>,
+                response: Response<Map<String, Any>>
+            ) {
+                refreshOrder()
             }
 
-            textPartialRefund.text = text
-            textPartialRefund.visibility = View.VISIBLE
+            override fun onFailure(call: Call<Map<String, Any>>, t: Throwable) {}
+        })
+    }
 
+    private fun saveItemChanges() {
+        if (order.partialRefundAmount != null && order.partialRefundAmount!! > 0) {
+            showRefundModeDialog { proceedSaveItems() }
+            return
+        }
+        proceedSaveItems()
+    }
+
+    private fun proceedSaveItems() {
+        val updatedItems = adapter.getUpdatedItems()
+        val itemsPayload = updatedItems.map {
+            com.example.groceryshoppingapp.network.OrderItemPayload(
+                item_id = it.itemId,
+                quantity = it.quantity,
+                price = it.price,
+                comment = it.comment ?: ""
+            )
+        }
+
+        val payload =
+            com.example.groceryshoppingapp.network.UpdateOrderItemsRequest(itemsPayload)
+
+        updateItemsCall =
+            RetrofitClient.getInstance(this)
+                .create(ApiService::class.java)
+                .updateOrderItems(order.orderUuid, payload)
+
+        updateItemsCall?.enqueue(object : Callback<Map<String, Any>> {
+            override fun onResponse(
+                call: Call<Map<String, Any>>,
+                response: Response<Map<String, Any>>
+            ) {
+                refreshOrder()
+            }
+
+            override fun onFailure(call: Call<Map<String, Any>>, t: Throwable) {}
+        })
+    }
+
+    private fun showPartialRefundUI() {
+        val refund = order.partialRefundAmount
+        if (refund != null && refund > 0) {
+            textPartialRefund.text = "Partial Refund: ₹ %.2f".format(refund)
+            textPartialRefund.visibility = View.VISIBLE
         } else {
             textPartialRefund.visibility = View.GONE
         }
@@ -179,22 +284,13 @@ class OrderDetailActivity : AppCompatActivity() {
             "pending" -> android.R.color.holo_orange_dark
             "packed" -> android.R.color.holo_blue_dark
             "delivered" -> android.R.color.holo_green_dark
-            "cancelled" -> android.R.color.holo_red_dark
+           "cancelled" -> android.R.color.holo_red_dark
             else -> android.R.color.black
-        }
+
+    }
         textStatus.setTextColor(resources.getColor(colorRes))
     }
 
-    @RequiresApi(Build.VERSION_CODES.O)
-    private fun formatToIST(utcTime: String): String {
-        return try {
-            val zdt = ZonedDateTime.parse(utcTime)
-            val istZdt = zdt.withZoneSameInstant(ZoneId.of("Asia/Kolkata"))
-            istZdt.format(DateTimeFormatter.ofPattern("dd MMM yyyy, hh:mm a"))
-        } catch (e: Exception) {
-            utcTime
-        }
-    }
 
     private fun loadShopName() {
         if (!order.shopName.isNullOrEmpty()) {
@@ -203,118 +299,44 @@ class OrderDetailActivity : AppCompatActivity() {
         }
 
         order.shopId?.let {
-            loadShopCall = RetrofitClient.getInstance(this).create(ApiService::class.java)
-                .getShop(it)
+            loadShopCall =
+                RetrofitClient.getInstance(this)
+                    .create(ApiService::class.java)
+                    .getShop(it)
+
             loadShopCall?.enqueue(object : Callback<Shop> {
                 override fun onResponse(call: Call<Shop>, response: Response<Shop>) {
-                    if (!isFinishing && !isDestroyed) {
-                        val shop = response.body()
-                        textShopName.text = "Shop: ${shop?.name ?: "Unknown"}"
-                    }
+                    textShopName.text =
+                        "Shop: ${response.body()?.name ?: "Unknown"}"
                 }
 
                 override fun onFailure(call: Call<Shop>, t: Throwable) {
-                    if (!isFinishing && !isDestroyed) {
-                        textShopName.text = "Shop: Unknown"
-                    }
+                    textShopName.text = "Shop: Unknown"
                 }
             })
         }
     }
 
     private fun refreshOrder() {
-        refreshOrderCall = RetrofitClient.getInstance(this).create(ApiService::class.java)
-            .getOrderById(order.orderUuid)
+        refreshOrderCall =
+            RetrofitClient.getInstance(this)
+                .create(ApiService::class.java)
+                .getOrderById(order.orderUuid)
+
         refreshOrderCall?.enqueue(object : Callback<Order> {
             override fun onResponse(call: Call<Order>, response: Response<Order>) {
-                if (!isFinishing && !isDestroyed) {
-                    if (response.isSuccessful) {
-                        order = response.body()!!
-                        setupUI()
-                        Toast.makeText(this@OrderDetailActivity, "Order refreshed", Toast.LENGTH_SHORT).show()
-                    } else {
-                        Toast.makeText(this@OrderDetailActivity, "Failed to refresh order", Toast.LENGTH_SHORT).show()
-                    }
-                }
+                order = response.body() ?: return
+                setupUI()
             }
 
-            override fun onFailure(call: Call<Order>, t: Throwable) {
-                if (!isFinishing && !isDestroyed) {
-                    Toast.makeText(this@OrderDetailActivity, "Error: ${t.message}", Toast.LENGTH_SHORT).show()
-                }
-            }
+            override fun onFailure(call: Call<Order>, t: Throwable) {}
         })
     }
 
-    private fun updateOrderStatus() {
-        val selectedStatus = spinnerStatus.selectedItem.toString()
-
-        val body = mapOf(
-            "order_id" to order.orderUuid,
-            "status" to selectedStatus
-        )
-
-        updateStatusCall = RetrofitClient.getInstance(this)
-            .create(ApiService::class.java)
-            .updateOrderStatusFinal(body)
-
-        updateStatusCall?.enqueue(object : Callback<Map<String, Any>> {
-            override fun onResponse(call: Call<Map<String, Any>>, response: Response<Map<String, Any>>) {
-                if (!isFinishing && !isDestroyed) {
-                    if (response.isSuccessful) {
-                        Toast.makeText(this@OrderDetailActivity, "Order updated!", Toast.LENGTH_SHORT).show()
-                        refreshOrder()
-
-                        if (selectedStatus.equals("Delivered", ignoreCase = true)) {
-                            btnViewInvoice.postDelayed({
-                                refreshOrder()
-                            }, 4000)
-                        }
-                    } else {
-                        Toast.makeText(this@OrderDetailActivity, "Failed to update", Toast.LENGTH_SHORT).show()
-                    }
-                }
-            }
-
-            override fun onFailure(call: Call<Map<String, Any>>, t: Throwable) {
-                if (!isFinishing && !isDestroyed) {
-                    Toast.makeText(this@OrderDetailActivity, "Failed to update", Toast.LENGTH_SHORT).show()
-                }
-            }
-        })
-    }
-
-    private fun saveItemChanges() {
-        val updatedItems: List<ItemQuantity> = adapter.getUpdatedItems()
-        val itemsPayload = updatedItems.map {
-            com.example.groceryshoppingapp.network.OrderItemPayload(
-                item_id = it.itemId,
-                quantity = it.quantity.toDouble(),
-                price = it.price,
-                comment = it.comment ?: ""
-            )
-        }
-        val payload = com.example.groceryshoppingapp.network.UpdateOrderItemsRequest(items = itemsPayload)
-
-        updateItemsCall = RetrofitClient.getInstance(this).create(ApiService::class.java)
-            .updateOrderItems(order.orderUuid, payload)
-        updateItemsCall?.enqueue(object : Callback<Map<String, Any>> {
-            override fun onResponse(call: Call<Map<String, Any>>, response: Response<Map<String, Any>>) {
-                if (!isFinishing && !isDestroyed) {
-                    if (response.isSuccessful) {
-                        Toast.makeText(this@OrderDetailActivity, "Items updated successfully!", Toast.LENGTH_SHORT).show()
-                        refreshOrder()
-                    } else {
-                        Toast.makeText(this@OrderDetailActivity, "Failed to update items", Toast.LENGTH_SHORT).show()
-                    }
-                }
-            }
-
-            override fun onFailure(call: Call<Map<String, Any>>, t: Throwable) {
-                if (!isFinishing && !isDestroyed) {
-                    Toast.makeText(this@OrderDetailActivity, "Failed to save changes: ${t.message}", Toast.LENGTH_SHORT).show()
-                }
-            }
-        })
+    @RequiresApi(Build.VERSION_CODES.O)
+    private fun formatToIST(utcTime: String): String {
+        return ZonedDateTime.parse(utcTime)
+            .withZoneSameInstant(ZoneId.of("Asia/Kolkata"))
+            .format(DateTimeFormatter.ofPattern("dd MMM yyyy, hh:mm a"))
     }
 }

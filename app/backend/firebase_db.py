@@ -624,3 +624,161 @@ def list_khata_customers_for_shop(shop_id):
 def list_khata_accounts_for_customer(customer_id):
     snap = db.collection("khata_accounts").where("customer_id", "==", customer_id).get()
     return [doc.to_dict() for doc in snap]
+
+def credit_customer_wallet_only(customer_id, amount, order_uuid):
+    """
+    Credit customer wallet WITHOUT debiting shop wallet.
+    Used ONLY for Razorpay refunds (ledger consistency).
+    """
+
+    if not customer_id or amount <= 0:
+        return False
+
+    try:
+        logger.info(
+            f"👛 Customer wallet credit (Razorpay) → customer={customer_id} | amount={amount}"
+        )
+
+        customer_ref =db.collection("customers").document(customer_id)
+
+        db.run_transaction(lambda tx: _credit_wallet_tx(
+            tx, customer_ref, amount, order_uuid
+        ))
+
+        return True
+
+    except Exception:
+        logger.exception("❌ Customer wallet credit failed")
+        return False
+
+
+def _credit_wallet_tx(tx, customer_ref, amount, order_uuid):
+    snap = customer_ref.get(transaction=tx)
+    current_balance = snap.get("wallet_balance", 0)
+
+    tx.update(customer_ref, {
+        "wallet_balance": current_balance + amount,
+        "wallet_last_updated": firestore.SERVER_TIMESTAMP
+    })
+
+    # Optional ledger entry
+    customer_ref.collection("wallet_ledger").add({
+        "type": "CREDIT",
+        "amount": amount,
+        "reason": "Razorpay refund",
+        "order_uuid": order_uuid,
+        "created_at": firestore.SERVER_TIMESTAMP
+    })
+
+
+# ---------------------------------------------------------------------
+# 🔹 RATING FUNCTIONS
+# ---------------------------------------------------------------------
+def add_shop_rating(rating_data: dict):
+    try:
+        order_id = rating_data.get("order_id")
+        customer_id = rating_data.get("customer_id")
+
+        if not order_id or not customer_id:
+            return False, "Missing order_id or customer_id"
+
+        # ⭐ NEW: safely read customer_name
+        customer_name = rating_data.get("customer_name", "Customer")
+
+        # 🔐 Prevent duplicate rating
+        existing = (
+            db.collection("ratings")
+            .where("order_id", "==", order_id)
+            .where("customer_id", "==", customer_id)
+            .limit(1)
+            .stream()
+        )
+
+        for _ in existing:
+            return False, "Rating already submitted"
+
+        IST = timezone(timedelta(hours=5, minutes=30))
+        rating_data["created_at"] = datetime.now(IST).replace(microsecond=0).isoformat()
+
+        # ⭐ ENSURE customer_name IS SAVED
+        rating_data["customer_name"] = customer_name
+
+        db.collection("ratings").add(rating_data)
+
+        logger.info(
+            f"⭐ Rating saved → shop={rating_data.get('shop_id')} "
+            f"order={order_id} rating={rating_data.get('rating')}"
+        )
+
+        return True, "Rating saved"
+
+    except Exception as e:
+        logger.error(f"[ERROR] add_shop_rating: {e}")
+        return False, str(e)
+
+
+
+def get_shop_rating_analytics(shop_id: str):
+    """
+    Returns emoji analytics + average rating for a shop.
+    """
+
+    try:
+        ratings = (
+            db.collection("ratings")
+            .where("shop_id", "==", shop_id)
+            .stream()
+        )
+
+        total = 0
+        rating_sum = 0
+
+        emoji_counts = {
+            "😡": 0,
+            "😐": 0,
+            "🙂": 0,
+            "😍": 0
+        }
+
+        for r in ratings:
+            data = r.to_dict()
+            total += 1
+            rating_sum += int(data.get("rating", 0))
+            emoji = data.get("emoji")
+            if emoji in emoji_counts:
+                emoji_counts[emoji] += 1
+
+        if total == 0:
+            return {
+                "shop_id": shop_id,
+                "total_ratings": 0,
+                "average_rating": 0,
+                "emoji_breakdown": emoji_counts
+            }
+
+        return {
+            "shop_id": shop_id,
+            "total_ratings": total,
+            "average_rating": round(rating_sum / total, 2),
+            "emoji_breakdown": emoji_counts
+        }
+
+    except Exception as e:
+        logger.error(f"[ERROR] get_shop_rating_analytics: {e}")
+        return None
+
+
+def get_shop_reviews_by_emoji(shop_id, emoji, limit=20, last_created_at=None):
+
+    query = (
+        db.collection("ratings")
+        .where("shop_id", "==", shop_id)
+        .where("emoji", "==", emoji)
+        .order_by("created_at", direction=firestore.Query.DESCENDING)
+        .limit(limit)
+    )
+
+    if last_created_at:
+        query = query.start_after({"created_at": last_created_at})
+
+    return [r.to_dict() for r in query.stream()]

@@ -276,6 +276,23 @@ interface ApiService {
     @GET("wallet/shop/transactions/{shopId}")
     fun getShopWalletTransactions(@Path("shopId") shopId: String): Call<List<WalletTransaction>>
 
+    @POST("rate_shop")
+    fun rateShop(
+        @Body request: ShopRatingRequest
+    ): Call<ApiResponse>
+
+    @GET("shop_rating_analytics/{shopId}")
+    fun getShopRatingAnalytics(
+        @Path("shopId") shopId: String
+    ): Call<ShopRatingAnalyticsResponse>
+
+    @GET("/shop/reviews")
+    fun getShopReviewsByRating(
+        @Query("shop_id") shopId: String,
+        @Query("rating") rating: Int
+    ): Call<ShopReviewsResponse>
+
+
 
 
     data class CreateShopRequest(
@@ -374,4 +391,37 @@ data class KhataRazorpayVerifyRequest(
 data class ShopWalletBalanceResponse(
     val balance: Double,
     val success: Boolean
+)
+
+data class ShopRatingRequest(
+    val order_id: String,
+    val shop_id: String,
+    val customer_id: String,
+    val customer_name: String, // ⭐ ADD THIS
+    val rating: Float,
+    val review: String,
+    val emoji: String
+)
+
+
+data class ShopRatingAnalyticsResponse(
+    val shop_id: String,
+    val total_ratings: Int,
+    val average_rating: Double,
+    val emoji_breakdown: Map<String, Int>
+)
+
+data class ShopReview(
+    val customer_id: String,
+    val customer_name: String? = null,
+    val rating: Int,
+    val emoji: String,
+    val review: String,
+    val created_at: String
+)
+
+data class ShopReviewsResponse(
+    val shop_id: String,
+    val emoji: String,
+    val reviews: List<ShopReview>
 )

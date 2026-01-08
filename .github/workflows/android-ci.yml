@@ -3,7 +3,8 @@ name: Android CI (APK Build + Release)
 on:
   push:
     paths:
-      - "app/**"
+      - "app/src/**"
+      - "app/build.gradle"
       - "**/*.kt"
       - "**/*.xml"
       - "version.properties"

@@ -25,6 +25,12 @@
         android:title="Khata Book"
         android:icon="@drawable/ic_khata" />
 
+    <item
+        android:id="@+id/nav_shop_analytics"
+        android:icon="@drawable/ic_analytics"
+        android:title="Shop Analytics" />
+
+
 
     <item
         android:id="@+id/nav_logout"

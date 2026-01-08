@@ -72,6 +72,8 @@ class ShopOwnerDashboardActivity : AppCompatActivity() {
                     // ⭐ NEW: Open Khata Book
                     startActivity(Intent(this, ShopKhataListActivity::class.java))
 
+                R.id.nav_shop_analytics ->
+                    startActivity(Intent(this, ShopkeeperAnalyticsActivity::class.java))
 
                 R.id.nav_logout -> {
                     SessionManager.logout(this)
@@ -221,4 +223,5 @@ class ShopOwnerDashboardActivity : AppCompatActivity() {
             super.onBackPressed()
         }
     }
+
 }

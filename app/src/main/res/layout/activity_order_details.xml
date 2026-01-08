@@ -45,6 +45,27 @@
         android:visibility="gone"
         android:background="#FFF3E0"/>
 
+    <!-- 🔴 ADDED: Order total -->
+    <TextView
+        android:id="@+id/text_order_total"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:textStyle="bold"
+        android:text="Total: ₹0.00"
+        android:layout_marginTop="6dp"/>
+    <!-- 🔴 ADDED: Refund info for customer -->
+    <TextView
+        android:id="@+id/text_refund_info"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:textSize="14sp"
+        android:textColor="#2E7D32"
+        android:padding="8dp"
+        android:visibility="gone"
+        android:layout_marginTop="6dp"/>
+
+
+
 
     <!-- Spinner + Cancel msg -->
     <Spinner

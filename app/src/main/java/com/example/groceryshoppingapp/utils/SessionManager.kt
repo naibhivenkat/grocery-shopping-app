@@ -244,5 +244,16 @@ object SessionManager {
         return prefs.getFloat("wallet_balance", 0f).toDouble()
     }
 
+    fun markOrderRated(context: Context, orderId: String) {
+        val prefs = context.getSharedPreferences("ratings", Context.MODE_PRIVATE)
+        prefs.edit().putBoolean(orderId, true).apply()
+    }
+
+    fun isOrderRated(context: Context, orderId: String): Boolean {
+        val prefs = context.getSharedPreferences("ratings", Context.MODE_PRIVATE)
+        return prefs.getBoolean(orderId, false)
+    }
+
+
 
 }

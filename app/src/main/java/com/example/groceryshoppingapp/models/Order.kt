@@ -40,10 +40,18 @@ data class Order(
     val invoiceUrl: String? = null,
 
     @SerializedName("partial_refund_amount")
-    val partialRefundAmount: Double? = null,
+    var partialRefundAmount: Double? = null,
 
     @SerializedName("partial_items")
-    val shortageItems: List<ShortageItem>? = null
+    val shortageItems: List<ShortageItem>? = null,
+
+//    @SerializedName("refund_mode")
+//    val refundMode: String? = null,
+//
+//    // 🔴 ADDED (FIX)
+//    @SerializedName("refund_processed")
+//    val refundProcessed: Boolean? = null
+
 
 
 

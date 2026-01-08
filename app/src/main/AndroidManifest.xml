@@ -99,6 +99,7 @@
         <activity android:name="com.example.groceryshoppingapp.CustomerKhataListActivity"/>
         <activity android:name="com.example.groceryshoppingapp.ShopOwnerSelectCustomerActivity"/>
         <activity android:name="com.example.groceryshoppingapp.ShopOwnerWalletActivity"/>
+        <activity android:name="com.example.groceryshoppingapp.ShopkeeperAnalyticsActivity"/>
 
 
     </application>
