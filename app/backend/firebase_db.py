@@ -85,20 +85,28 @@ def get_user_by_email(email: str):
 
 
 def upload_base64_image(base64_str, folder="images"):
-    """Uploads a Base64 image string to Firebase Storage and returns public URL."""
+    """Uploads Base64 to GCS and returns a Signed URL (works with Public Access Prevention)."""
     if not base64_str:
         return ""
+
+    # ✅ handle "data:image/jpeg;base64,...."
+    if "," in base64_str:
+        base64_str = base64_str.split(",")[1]
+
     image_bytes = base64.b64decode(base64_str)
     filename = f"{folder}/{uuid.uuid4()}.jpg"
+
     blob = bucket.blob(filename)
     blob.upload_from_string(image_bytes, content_type="image/jpeg")
-    blob.make_public()
-    return blob.public_url
 
+    # ✅ Signed URL (valid 7 days)
+    signed_url = blob.generate_signed_url(
+        version="v4",
+        expiration=timedelta(days=7),
+        method="GET"
+    )
+    return signed_url
 
-# ---------------------------------------------------------------------
-# 🔹 SHOP FUNCTIONS
-# ---------------------------------------------------------------------
 def get_all_shops():
     return [doc.to_dict() for doc in db.collection("shops").stream()]
 
@@ -662,7 +670,7 @@ def _credit_wallet_tx(tx, customer_ref, amount, order_uuid):
     })
 
     # Optional ledger entry
-    customer_ref.collection("wallet_ledger").add({
+    customer_ref.collection("wallet_orders").add({
         "type": "CREDIT",
         "amount": amount,
         "reason": "Razorpay refund",
@@ -782,3 +790,46 @@ def get_shop_reviews_by_emoji(shop_id, emoji, limit=20, last_created_at=None):
         query = query.start_after({"created_at": last_created_at})
 
     return [r.to_dict() for r in query.stream()]
+
+
+def log_transaction(user_id, shop_id, amount, tx_type, description, source="wallet", order_id=None):
+    """
+    Logs a transaction in SAME FORMAT used by wallet/transactions API
+    so that it appears in Flutter wallet history.
+    """
+    IST = timezone(timedelta(hours=5, minutes=30))
+    created_at = datetime.now(IST).replace(microsecond=0).isoformat()
+    try:
+        tx_id = str(uuid.uuid4())
+
+        # ✅ Map Credit into Refund type (because your UI expects Refund)
+        txn_type = "Refund" if tx_type.lower() == "credit" else "Payment"
+
+        transaction_data = {
+            "userId": user_id,
+            "type": txn_type,  # ✅ must be Refund/Payment/Deposit
+            "amount": float(amount),
+            "orderId": order_id,
+            "dateTime": created_at,
+            "payment_type": source if source else "Wallet",
+            "shopId": shop_id
+        }
+
+        db.collection("transactions").document(tx_id).set(transaction_data)
+
+        logger.info(f"✅ Transaction Logged: {txn_type} ₹{amount} for {user_id}")
+        return True
+
+    except Exception as e:
+        logger.error(f"🔥 Error logging transaction: {e}")
+        return False
+
+
+def credit_customer_wallet(customer_id, amount, reference=""):
+    user_ref = db.collection("users").document(customer_id)
+    user_data = user_ref.get().to_dict() or {}
+    bal = float(user_data.get("wallet_balance", 0))
+    user_ref.update({"wallet_balance": bal + float(amount)})
+
+    logger.info(f"Credited to Customer Wallet --> Rs. {amount}/-")
+
