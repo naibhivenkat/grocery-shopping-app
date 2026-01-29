@@ -32,6 +32,7 @@ from weasyprint import HTML, CSS
 import firebase_db
 from khata import khata_bp
 from ratings import ratings_bp
+from service_routes import service_bp
 from shop_wallet_routes import shop_wallet_bp
 from wallet_routes import wallet_bp
 
@@ -39,6 +40,11 @@ app = Flask(__name__)
 app.register_blueprint(wallet_bp)
 app.register_blueprint(shop_wallet_bp)
 app.register_blueprint(khata_bp, url_prefix="/api/khata")
+
+#app.register_blueprint(service_bp)
+
+app.register_blueprint(service_bp, url_prefix="/service")
+
 
 app.register_blueprint(ratings_bp)
 
