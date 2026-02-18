@@ -4,6 +4,8 @@ on:
   push:
     branches:
       - "**"
+    tags:
+      - "v*"
     paths:
       - "app/backend/**"
       - "Dockerfile"
@@ -48,20 +50,38 @@ jobs:
             ${{ env.REGION }}-docker.pkg.dev \
             --quiet
 
-      # 5️⃣ Generate TAG (same as local)
-      - name: Generate build tag
-        run: |
-          TAG=$(date +%s)
-          echo "TAG=$TAG" >> $GITHUB_ENV
+      # 5️⃣ Install jq (needed for cleanup)
+      - name: Install jq
+        run: sudo apt-get install jq -y
 
-      # 6️⃣ Build & Push (timestamp + latest)
+      # 6️⃣ Detect tag vs branch build
+      - name: Detect release tag
+        run: |
+          if [[ "${GITHUB_REF}" == refs/tags/* ]]; then
+            echo "IS_TAG=true" >> $GITHUB_ENV
+            VERSION_TAG=${GITHUB_REF#refs/tags/}
+            echo "VERSION_TAG=$VERSION_TAG" >> $GITHUB_ENV
+          else
+            echo "IS_TAG=false" >> $GITHUB_ENV
+          fi
+
+      # 7️⃣ Build & Push image
       - name: Build & Push image
         run: |
-          gcloud builds submit app/backend \
-            --tag ${{ env.REGION }}-docker.pkg.dev/${{ secrets.GCP_PROJECT_ID }}/${{ env.REPOSITORY }}/${{ env.IMAGE_NAME }}:$TAG \
-            --tag ${{ env.REGION }}-docker.pkg.dev/${{ secrets.GCP_PROJECT_ID }}/${{ env.REPOSITORY }}/${{ env.IMAGE_NAME }}:latest
+          IMAGE_BASE="${{ env.REGION }}-docker.pkg.dev/${{ secrets.GCP_PROJECT_ID }}/${{ env.REPOSITORY }}/${{ env.IMAGE_NAME }}"
 
-      # 7️⃣ Deploy (same as local)
+          if [ "$IS_TAG" = "true" ]; then
+            echo "Building RELEASE image: $VERSION_TAG"
+            gcloud builds submit app/backend \
+              --tag "$IMAGE_BASE:latest" \
+              --tag "$IMAGE_BASE:$VERSION_TAG"
+          else
+            echo "Building branch image"
+            gcloud builds submit app/backend \
+              --tag "$IMAGE_BASE:latest"
+          fi
+
+      # 8️⃣ Deploy to Cloud Run
       - name: Deploy to Cloud Run
         run: |
           gcloud run deploy ${{ env.SERVICE_NAME }} \
@@ -72,29 +92,52 @@ jobs:
             --set-env-vars=FLASK_ENV=production,JWT_SECRET=${{ secrets.JWT_SECRET }} \
             --update-secrets=FIREBASE_CREDENTIALS_JSON=FIREBASE_CREDENTIALS_JSON:latest,SENDINBLUE_API_KEY=SENDINBLUE_API_KEY:latest,FROM_EMAIL=FROM_EMAIL:latest
 
-
-      - name: Cleanup old untagged images (SAFE)
+      # 9️⃣ Cleanup registry → KEEP ONLY latest + newest v* tag
+      - name: Cleanup images (keep latest + newest version only)
         run: |
-          echo "🧹 Cleaning old untagged images..."
+          echo "🧹 Cleaning registry..."
 
           IMAGE_PATH="${{ env.REGION }}-docker.pkg.dev/${{ secrets.GCP_PROJECT_ID }}/${{ env.REPOSITORY }}/${{ env.IMAGE_NAME }}"
 
-          gcloud artifacts docker images list "$IMAGE_PATH" \
+          IMAGES=$(gcloud artifacts docker images list "$IMAGE_PATH" \
             --include-tags \
-            --format="json" \
-          | jq -r '.[] | select(.digest != null and (.tags == null or .tags == [])) | .digest' \
+            --format="json")
+
+          TOTAL=$(echo "$IMAGES" | jq length)
+
+          if [ "$TOTAL" -le 2 ]; then
+            echo "Only 2 images exist — skipping cleanup"
+            exit 0
+          fi
+
+          KEEP_VERSION=$(echo "$IMAGES" \
+            | jq -r '
+                .[]
+                | select(.tags != null)
+                | .tags[]
+                | select(test("^v[0-9]"))
+              ' \
+            | sort -Vr \
+            | head -n 1)
+
+          echo "Keeping version tag: $KEEP_VERSION"
+
+          echo "$IMAGES" \
+          | jq -r '.[] | .digest' \
           | while read digest; do
-              if [ -z "$digest" ]; then
+
+              TAGS=$(echo "$IMAGES" | jq -r ".[] | select(.digest==\"$digest\") | .tags | join(\",\")")
+
+              if [[ "$TAGS" == *"latest"* ]]; then
+                echo "Keeping latest: $digest"
                 continue
               fi
 
-              echo "Deleting untagged digest: $digest"
+              if [[ "$TAGS" == *"$KEEP_VERSION"* ]]; then
+                echo "Keeping newest version: $digest"
+                continue
+              fi
 
-              gcloud artifacts docker images delete "$IMAGE_PATH@$digest" \
-                --quiet || true
+              echo "Deleting old image: $digest"
+              gcloud artifacts docker images delete "$IMAGE_PATH@$digest" --quiet || true
             done
-      
-      
-      
-      
-      
