@@ -338,37 +338,53 @@ jobs:
           PROJECT="${{ secrets.GCP_PROJECT_ID }}"
           REPO="${{ env.REPOSITORY }}"
           IMAGE="${{ env.IMAGE_NAME }}"
-          IMAGE_PATH="$REGION-docker.pkg.dev/$PROJECT/$REPO/$IMAGE"
 
-          echo "Target image: $IMAGE_PATH"
+          PACKAGE_PATH="projects/$PROJECT/locations/$REGION/repositories/$REPO/packages/$IMAGE"
 
-          gcloud artifacts docker images list "$IMAGE_PATH" --include-tags --format=json > images.json
+          echo "Reading Artifact Registry package: $PACKAGE_PATH"
 
-          # Latest digest
-          LATEST_DIGEST=$(jq -r '.[] | select(.tags!=null and (.tags[]=="latest")) | .digest' images.json)
+          # Get all image versions with tags
+          gcloud artifacts versions list \
+            --package="$IMAGE" \
+            --repository="$REPO" \
+            --location="$REGION" \
+            --format=json > versions.json
 
-          # Latest version tag
-          NEWEST_V_TAG=$(jq -r '.[] | .tags[]?' images.json | grep '^v' | sort -Vr | head -n1)
+          cat versions.json
 
-          NEWEST_V_DIGEST=$(jq -r --arg TAG "$NEWEST_V_TAG" \
-            '.[] | select(.tags!=null and (.tags[]==$TAG)) | .digest' images.json)
+          # Latest tag version
+          LATEST_VERSION=$(jq -r '.[] | select(.tags!=null and (.tags[]=="latest")) | .name')
 
-          echo "Protect latest: $LATEST_DIGEST"
-          echo "Protect version: $NEWEST_V_TAG -> $NEWEST_V_DIGEST"
-          echo "Protect deployed: $DEPLOYED_DIGEST"
+          # Latest v* tag
+          NEWEST_V_TAG=$(jq -r '.[] | .tags[]?' versions.json | grep '^v' | sort -Vr | head -n1)
 
-          for DIGEST in $(jq -r '.[].digest' images.json); do
+          NEWEST_V_VERSION=$(jq -r --arg TAG "$NEWEST_V_TAG" \
+            '.[] | select(.tags!=null and (.tags[]==$TAG)) | .name' versions.json)
 
-            if [[ "$DIGEST" == "$LATEST_DIGEST" ]]; then continue; fi
-            if [[ "$DIGEST" == "$NEWEST_V_DIGEST" ]]; then continue; fi
-            if [[ "$DIGEST" == "$DEPLOYED_DIGEST" ]]; then continue; fi
+          echo "Protect latest version: $LATEST_VERSION"
+          echo "Protect release version: $NEWEST_V_VERSION"
+          echo "Protect deployed digest: $DEPLOYED_DIGEST"
 
-            echo "Deleting old image: $DIGEST"
+          # Loop through versions
+          for VERSION in $(jq -r '.[].name' versions.json); do
 
-            gcloud artifacts docker images delete \
-              "$IMAGE_PATH@$DIGEST" \
-              --quiet \
-              --delete-tags || true
+            if [[ "$VERSION" == "$LATEST_VERSION" ]]; then continue; fi
+            if [[ "$VERSION" == "$NEWEST_V_VERSION" ]]; then continue; fi
+
+            # Skip deployed image
+            if [[ "$VERSION" == *"${DEPLOYED_DIGEST##*@}"* ]]; then
+              echo "Skipping deployed image"
+              continue
+            fi
+
+            echo "Deleting version: $VERSION"
+
+            gcloud artifacts versions delete "$VERSION" \
+              --repository="$REPO" \
+              --location="$REGION" \
+              --quiet || true
+
           done
 
           echo "✅ Cleanup finished"
+      
