@@ -159,82 +159,57 @@ jobs:
 #          done
 #
 #
-      - name: Cleanup registry (FINAL WORKING)
+      - name: Cleanup old docker images
         run: |
           echo "🧹 Artifact cleanup started..."
 
           REGION="${{ env.REGION }}"
           PROJECT="${{ secrets.GCP_PROJECT_ID }}"
           REPO="${{ env.REPOSITORY }}"
-          PACKAGE="${{ env.IMAGE_NAME }}"
+          IMAGE="${{ env.IMAGE_NAME }}"
 
-          # Fetch all versions
-          VERSIONS=$(gcloud artifacts versions list \
-            --location="$REGION" \
-            --repository="$REPO" \
-            --package="$PACKAGE" \
-            --format=json)
+          IMAGE_PATH="$REGION-docker.pkg.dev/$PROJECT/$REPO/$IMAGE"
 
-          # --- Find latest branch build ---
-          LATEST_VERSION=$(echo "$VERSIONS" \
-            | jq -r '.[] | select(.tags!=null and (.tags[]=="latest")) | .name')
+          echo "Target image: $IMAGE_PATH"
 
-          echo "Protect latest build: $LATEST_VERSION"
+          # Pull docker images list
+          gcloud artifacts docker images list "$IMAGE_PATH" --include-tags --format=json > images.json
 
-          # --- Find newest v* release ---
-          NEWEST_V_TAG=$(echo "$VERSIONS" \
-            | jq -r '.[] | .tags[]?' \
-            | grep '^v' \
-            | sort -Vr \
-            | head -n 1)
+          # Latest digest
+          LATEST_DIGEST=$(jq -r '.[] | select(.tags!=null and (.tags[]=="latest")) | .digest' images.json)
 
-          echo "Newest release tag: $NEWEST_V_TAG"
+          # Latest version tag
+          NEWEST_V_TAG=$(jq -r '.[] | .tags[]?' images.json | grep '^v' | sort -Vr | head -n1)
 
-          NEWEST_V_VERSION=$(echo "$VERSIONS" \
-            | jq -r --arg TAG "$NEWEST_V_TAG" \
-              '.[] | select(.tags!=null and (.tags[]==$TAG)) | .name')
+          NEWEST_V_DIGEST=$(jq -r --arg TAG "$NEWEST_V_TAG" \
+            '.[] | select(.tags!=null and (.tags[]==$TAG)) | .digest' images.json)
 
-          echo "Protect release version: $NEWEST_V_VERSION"
+          echo "Protect latest: $LATEST_DIGEST"
+          echo "Protect version: $NEWEST_V_TAG -> $NEWEST_V_DIGEST"
 
-          # --- Loop through ALL versions ---
-          mapfile -t ALL_VERSIONS < <(echo "$VERSIONS" | jq -r '.[].name')
+          # Loop through all digests
+          ALL_DIGESTS=$(jq -r '.[].digest' images.json)
 
-          for VERSION in "${ALL_VERSIONS[@]}"; do
+          for DIGEST in $ALL_DIGESTS; do
 
-            if [[ "$VERSION" == "$LATEST_VERSION" ]]; then
-              echo "Skipping latest build"
+            if [[ "$DIGEST" == "$LATEST_DIGEST" ]]; then
+              echo "Skipping latest"
               continue
             fi
 
-            if [[ "$VERSION" == "$NEWEST_V_VERSION" ]]; then
+            if [[ "$DIGEST" == "$NEWEST_V_DIGEST" ]]; then
               echo "Skipping newest release"
               continue
             fi
 
-            echo "Cleaning old version: $VERSION"
+            echo "Deleting old image: $DIGEST"
 
-            # remove tags first
-            TAGS=$(echo "$VERSIONS" \
-              | jq -r --arg V "$VERSION" '.[] | select(.name==$V) | .tags[]?')
+            gcloud artifacts docker images delete \
+              "$IMAGE_PATH@$DIGEST" \
+              --quiet \
+              --delete-tags
 
-            for TAG in $TAGS; do
-              echo "Removing tag $TAG from version"
-
-              gcloud artifacts tags delete "$TAG" \
-                --package="$PACKAGE" \
-                --repository="$REPO" \
-                --location="$REGION" \
-                --quiet || true
-            done
-
-            # now delete version
-            echo "Deleting version $VERSION"
-
-            gcloud artifacts versions delete "$VERSION" \
-              --package="$PACKAGE" \
-              --repository="$REPO" \
-              --location="$REGION" \
-              --quiet || true
           done
 
           echo "✅ Cleanup finished"
+      
