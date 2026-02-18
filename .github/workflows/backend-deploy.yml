@@ -98,13 +98,16 @@ jobs:
         run: |
           echo "🧹 Cleaning registry (keeping only last 2 builds)..."
           
-          IMAGE_PATH="${{ env.REGION }}-docker.pkg.dev/${{ secrets.GCP_PROJECT_ID }}/${{ env.REPOSITORY }}/${{ env.IMAGE_NAME }}"
+          IMAGE_NAME="${{ env.IMAGE_NAME }}"
+          REGION="${{ env.REGION }}"
+          REPO="${{ env.REPOSITORY }}"
+          PROJECT="${{ secrets.GCP_PROJECT_ID }}"
           
           # Get digests sorted newest first
-          DIGESTS=$(gcloud artifacts docker images list "$IMAGE_PATH" \
-            --include-tags \
-            --sort-by=~updateTime \
-            --format="value(digest)")
+          DIGESTS=$(gcloud artifacts docker images list \
+            "$REGION-docker.pkg.dev/$PROJECT/$REPO/$IMAGE_NAME" \
+            --sort-by=~UPDATE_TIME \
+            --format="value(DIGEST)")
           
           COUNT=0
           
@@ -117,7 +120,9 @@ jobs:
             fi
           
             echo "Deleting old image $digest"
-            gcloud artifacts docker images delete "$IMAGE_PATH@$digest" \
+            gcloud artifacts docker images delete \
+              "$REGION-docker.pkg.dev/$PROJECT/$REPO/$IMAGE_NAME@$digest" \
               --quiet --delete-tags || true
           done
+     
 
