@@ -159,14 +159,13 @@ jobs:
 #          done
 #
 #
-      - name: Cleanup registry (delete old tags + versions)
+      - name: Cleanup registry
         run: |
           echo "🧹 Cleanup starting..."
 
           REGION="${{ env.REGION }}"
           REPO="${{ env.REPOSITORY }}"
           IMAGE="${{ env.IMAGE_NAME }}"
-          PROJECT="${{ secrets.GCP_PROJECT_ID }}"
 
           VERSIONS=$(gcloud artifacts versions list \
             --location=$REGION \
@@ -174,55 +173,59 @@ jobs:
             --package=$IMAGE \
             --format=json)
 
-          # Get latest tag digest
-          LATEST_DIGEST=$(echo "$VERSIONS" \
+          # Protect latest branch build
+          LATEST_VERSION=$(echo "$VERSIONS" \
             | jq -r '.[] | select(.tags!=null and (.tags[]=="latest")) | .name')
 
-          # Get newest release tag
-          LATEST_VERSION_TAG=$(echo "$VERSIONS" \
+          # Protect newest release (v*)
+          NEWEST_V_TAG=$(echo "$VERSIONS" \
             | jq -r '.[] | .tags[]?' \
             | grep '^v' \
             | sort -Vr \
             | head -n 1)
 
-          VERSION_DIGEST=$(echo "$VERSIONS" \
-            | jq -r --arg TAG "$LATEST_VERSION_TAG" \
+          NEWEST_V_VERSION=$(echo "$VERSIONS" \
+            | jq -r --arg TAG "$NEWEST_V_TAG" \
               '.[] | select(.tags!=null and (.tags[]==$TAG)) | .name')
 
-          echo "Protect latest: $LATEST_DIGEST"
-          echo "Protect release: $VERSION_DIGEST"
+          echo "Protect latest build: $LATEST_VERSION"
+          echo "Protect newest release: $NEWEST_V_VERSION"
 
           mapfile -t ALL_VERSIONS < <(echo "$VERSIONS" | jq -r '.[].name')
 
           for version in "${ALL_VERSIONS[@]}"; do
 
-            if [[ "$version" == "$LATEST_DIGEST" ]]; then
+            if [[ "$version" == "$LATEST_VERSION" ]]; then
               continue
             fi
 
-            if [[ "$version" == "$VERSION_DIGEST" ]]; then
+            if [[ "$version" == "$NEWEST_V_VERSION" ]]; then
               continue
             fi
 
-            echo "Removing tags from $version"
+            echo "Processing old version: $version"
 
-            # remove all tags attached
+            # Get tags attached to this version
             TAGS=$(echo "$VERSIONS" \
               | jq -r --arg V "$version" '.[] | select(.name==$V) | .tags[]?')
 
+            # Remove tags first
             for tag in $TAGS; do
-              echo "Deleting tag: $tag"
+              echo "Deleting tag $tag from $version"
               gcloud artifacts tags delete "$tag" \
-                --location=$REGION \
-                --repository=$REPO \
+                --package="$IMAGE" \
+                --repository="$REPO" \
+                --location="$REGION" \
                 --quiet || true
             done
 
-            echo "Deleting version: $version"
-
+            # Now delete version
+            echo "Deleting version $version"
             gcloud artifacts versions delete "$version" \
-              --location=$REGION \
-              --repository=$REPO \
+              --package="$IMAGE" \
+              --repository="$REPO" \
+              --location="$REGION" \
               --quiet || true
           done
+      
 
