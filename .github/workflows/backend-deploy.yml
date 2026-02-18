@@ -97,65 +97,131 @@ jobs:
       - name: Wait for deployment
         run: sleep 45
 
-      # 9️⃣ Cleanup registry → KEEP latest + newest v*
-      - name: Cleanup registry (correct version-based cleanup)
+#      # 9️⃣ Cleanup registry → KEEP latest + newest v*
+#      - name: Cleanup registry (correct version-based cleanup)
+#        run: |
+#          echo "🧹 Cleanup starting (version-based)..."
+#
+#          REGION="${{ env.REGION }}"
+#          PROJECT="${{ secrets.GCP_PROJECT_ID }}"
+#          REPO="${{ env.REPOSITORY }}"
+#          IMAGE="${{ env.IMAGE_NAME }}"
+#
+#          # Get versions list (correct API)
+#          VERSIONS=$(gcloud artifacts versions list \
+#            --location=$REGION \
+#            --repository=$REPO \
+#            --package=$IMAGE \
+#            --format=json)
+#
+#          # Identify latest tag digest
+#          LATEST_DIGEST=$(echo "$VERSIONS" \
+#            | jq -r '.[] | select(.tags!=null and (.tags[]=="latest")) | .name')
+#
+#          echo "Protect latest: $LATEST_DIGEST"
+#
+#          # Identify newest v* tag
+#          LATEST_VERSION_TAG=$(echo "$VERSIONS" \
+#            | jq -r '.[] | .tags[]?' \
+#            | grep '^v' \
+#            | sort -Vr \
+#            | head -n 1)
+#
+#          echo "Newest release tag: $LATEST_VERSION_TAG"
+#
+#          VERSION_DIGEST=$(echo "$VERSIONS" \
+#            | jq -r --arg TAG "$LATEST_VERSION_TAG" \
+#              '.[] | select(.tags!=null and (.tags[]==$TAG)) | .name')
+#
+#          echo "Protect version: $VERSION_DIGEST"
+#
+#          # Loop through all versions
+#          mapfile -t ALL_VERSIONS < <(echo "$VERSIONS" | jq -r '.[].name')
+#
+#          for version in "${ALL_VERSIONS[@]}"; do
+#
+#            if [[ "$version" == "$LATEST_DIGEST" ]]; then
+#              echo "Keeping latest build"
+#              continue
+#            fi
+#
+#            if [[ "$version" == "$VERSION_DIGEST" ]]; then
+#              echo "Keeping newest release"
+#              continue
+#            fi
+#
+#            echo "Deleting old version: $version"
+#
+#            gcloud artifacts versions delete "$version" \
+#              --location=$REGION \
+#              --repository=$REPO \
+#              --quiet || true
+#          done
+#
+#
+      - name: Cleanup registry (delete old tags + versions)
         run: |
-          echo "🧹 Cleanup starting (version-based)..."
-          
+          echo "🧹 Cleanup starting..."
+
           REGION="${{ env.REGION }}"
-          PROJECT="${{ secrets.GCP_PROJECT_ID }}"
           REPO="${{ env.REPOSITORY }}"
           IMAGE="${{ env.IMAGE_NAME }}"
-          
-          # Get versions list (correct API)
+          PROJECT="${{ secrets.GCP_PROJECT_ID }}"
+
           VERSIONS=$(gcloud artifacts versions list \
             --location=$REGION \
             --repository=$REPO \
             --package=$IMAGE \
             --format=json)
-          
-          # Identify latest tag digest
+
+          # Get latest tag digest
           LATEST_DIGEST=$(echo "$VERSIONS" \
             | jq -r '.[] | select(.tags!=null and (.tags[]=="latest")) | .name')
-          
-          echo "Protect latest: $LATEST_DIGEST"
-          
-          # Identify newest v* tag
+
+          # Get newest release tag
           LATEST_VERSION_TAG=$(echo "$VERSIONS" \
             | jq -r '.[] | .tags[]?' \
             | grep '^v' \
             | sort -Vr \
             | head -n 1)
-          
-          echo "Newest release tag: $LATEST_VERSION_TAG"
-          
+
           VERSION_DIGEST=$(echo "$VERSIONS" \
             | jq -r --arg TAG "$LATEST_VERSION_TAG" \
               '.[] | select(.tags!=null and (.tags[]==$TAG)) | .name')
-          
-          echo "Protect version: $VERSION_DIGEST"
-          
-          # Loop through all versions
+
+          echo "Protect latest: $LATEST_DIGEST"
+          echo "Protect release: $VERSION_DIGEST"
+
           mapfile -t ALL_VERSIONS < <(echo "$VERSIONS" | jq -r '.[].name')
-          
+
           for version in "${ALL_VERSIONS[@]}"; do
-          
+
             if [[ "$version" == "$LATEST_DIGEST" ]]; then
-              echo "Keeping latest build"
               continue
             fi
-          
+
             if [[ "$version" == "$VERSION_DIGEST" ]]; then
-              echo "Keeping newest release"
               continue
             fi
-          
-            echo "Deleting old version: $version"
-          
+
+            echo "Removing tags from $version"
+
+            # remove all tags attached
+            TAGS=$(echo "$VERSIONS" \
+              | jq -r --arg V "$version" '.[] | select(.name==$V) | .tags[]?')
+
+            for tag in $TAGS; do
+              echo "Deleting tag: $tag"
+              gcloud artifacts tags delete "$tag" \
+                --location=$REGION \
+                --repository=$REPO \
+                --quiet || true
+            done
+
+            echo "Deleting version: $version"
+
             gcloud artifacts versions delete "$version" \
               --location=$REGION \
               --repository=$REPO \
               --quiet || true
           done
-     
-     
