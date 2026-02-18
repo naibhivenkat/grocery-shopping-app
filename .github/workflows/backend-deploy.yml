@@ -97,26 +97,31 @@ jobs:
       - name: Wait for deployment
         run: sleep 45
 
-      # 9️⃣ Cleanup registry → KEEP ONLY latest + newest v*
-      - name: Cleanup registry (keep latest + latest release only)
+      # 9️⃣ Cleanup registry → KEEP latest + newest v*
+      - name: Cleanup registry (correct version-based cleanup)
         run: |
-          echo "🧹 Smart cleanup started..."
+          echo "🧹 Cleanup starting (version-based)..."
           
-          IMAGE_PATH="${{ env.REGION }}-docker.pkg.dev/${{ secrets.GCP_PROJECT_ID }}/${{ env.REPOSITORY }}/${{ env.IMAGE_NAME }}"
+          REGION="${{ env.REGION }}"
+          PROJECT="${{ secrets.GCP_PROJECT_ID }}"
+          REPO="${{ env.REPOSITORY }}"
+          IMAGE="${{ env.IMAGE_NAME }}"
           
-          # Fetch all images JSON
-          IMAGES=$(gcloud artifacts docker images list "$IMAGE_PATH" \
-            --include-tags \
+          # Get versions list (correct API)
+          VERSIONS=$(gcloud artifacts versions list \
+            --location=$REGION \
+            --repository=$REPO \
+            --package=$IMAGE \
             --format=json)
           
-          # Latest branch build (latest tag)
-          LATEST_DIGEST=$(echo "$IMAGES" \
-            | jq -r '.[] | select(.tags!=null and (.tags[]=="latest")) | .digest')
+          # Identify latest tag digest
+          LATEST_DIGEST=$(echo "$VERSIONS" \
+            | jq -r '.[] | select(.tags!=null and (.tags[]=="latest")) | .name')
           
-          echo "Protect latest branch build: $LATEST_DIGEST"
+          echo "Protect latest: $LATEST_DIGEST"
           
-          # Latest release tag (v*)
-          LATEST_VERSION_TAG=$(echo "$IMAGES" \
+          # Identify newest v* tag
+          LATEST_VERSION_TAG=$(echo "$VERSIONS" \
             | jq -r '.[] | .tags[]?' \
             | grep '^v' \
             | sort -Vr \
@@ -124,30 +129,32 @@ jobs:
           
           echo "Newest release tag: $LATEST_VERSION_TAG"
           
-          # Get digest for that tag
-          VERSION_DIGEST=$(echo "$IMAGES" \
+          VERSION_DIGEST=$(echo "$VERSIONS" \
             | jq -r --arg TAG "$LATEST_VERSION_TAG" \
-              '.[] | select(.tags!=null and (.tags[]==$TAG)) | .digest')
+              '.[] | select(.tags!=null and (.tags[]==$TAG)) | .name')
           
-          echo "Protect release digest: $VERSION_DIGEST"
+          echo "Protect version: $VERSION_DIGEST"
           
-          # Extract all digests safely
-          mapfile -t DIGESTS < <(echo "$IMAGES" | jq -r '.[].digest')
+          # Loop through all versions
+          mapfile -t ALL_VERSIONS < <(echo "$VERSIONS" | jq -r '.[].name')
           
-          for digest in "${DIGESTS[@]}"; do
+          for version in "${ALL_VERSIONS[@]}"; do
           
-            if [[ "$digest" == "$LATEST_DIGEST" ]]; then
+            if [[ "$version" == "$LATEST_DIGEST" ]]; then
               echo "Keeping latest build"
               continue
             fi
           
-            if [[ "$digest" == "$VERSION_DIGEST" ]]; then
-              echo "Keeping latest release"
+            if [[ "$version" == "$VERSION_DIGEST" ]]; then
+              echo "Keeping newest release"
               continue
             fi
           
-            echo "Deleting old image: $digest"
-            gcloud artifacts docker images delete "$IMAGE_PATH@$digest" \
-              --delete-tags --quiet || true
+            echo "Deleting old version: $version"
+          
+            gcloud artifacts versions delete "$version" \
+              --location=$REGION \
+              --repository=$REPO \
+              --quiet || true
           done
      
