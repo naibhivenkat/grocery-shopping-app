@@ -285,31 +285,31 @@ jobs:
           fi
 
       # 7️⃣ Build & Push
-      - name: Build & Push image
-        run: |
-          IMAGE_BASE="${{ env.REGION }}-docker.pkg.dev/${{ secrets.GCP_PROJECT_ID }}/${{ env.REPOSITORY }}/${{ env.IMAGE_NAME }}"
-
-          if [ "$IS_TAG" = "true" ]; then
-            echo "Building RELEASE image: $VERSION_TAG"
-            gcloud builds submit app/backend \
-              --tag "$IMAGE_BASE:latest" \
-              --tag "$IMAGE_BASE:$VERSION_TAG"
-          else
-            echo "Building branch image"
-            gcloud builds submit app/backend \
-              --tag "$IMAGE_BASE:latest"
-          fi
-
-      # 8️⃣ Deploy Cloud Run
-      - name: Deploy to Cloud Run
-        run: |
-          gcloud run deploy ${{ env.SERVICE_NAME }} \
-            --image=${{ env.REGION }}-docker.pkg.dev/${{ secrets.GCP_PROJECT_ID }}/${{ env.REPOSITORY }}/${{ env.IMAGE_NAME }}:latest \
-            --region=${{ env.REGION }} \
-            --allow-unauthenticated \
-            --port=8080 \
-            --set-env-vars=FLASK_ENV=production,JWT_SECRET=${{ secrets.JWT_SECRET }} \
-            --update-secrets=FIREBASE_CREDENTIALS_JSON=FIREBASE_CREDENTIALS_JSON:latest,SENDINBLUE_API_KEY=SENDINBLUE_API_KEY:latest,FROM_EMAIL=FROM_EMAIL:latest
+#      - name: Build & Push image
+#        run: |
+#          IMAGE_BASE="${{ env.REGION }}-docker.pkg.dev/${{ secrets.GCP_PROJECT_ID }}/${{ env.REPOSITORY }}/${{ env.IMAGE_NAME }}"
+#
+#          if [ "$IS_TAG" = "true" ]; then
+#            echo "Building RELEASE image: $VERSION_TAG"
+#            gcloud builds submit app/backend \
+#              --tag "$IMAGE_BASE:latest" \
+#              --tag "$IMAGE_BASE:$VERSION_TAG"
+#          else
+#            echo "Building branch image"
+#            gcloud builds submit app/backend \
+#              --tag "$IMAGE_BASE:latest"
+#          fi
+#
+#      # 8️⃣ Deploy Cloud Run
+#      - name: Deploy to Cloud Run
+#        run: |
+#          gcloud run deploy ${{ env.SERVICE_NAME }} \
+#            --image=${{ env.REGION }}-docker.pkg.dev/${{ secrets.GCP_PROJECT_ID }}/${{ env.REPOSITORY }}/${{ env.IMAGE_NAME }}:latest \
+#            --region=${{ env.REGION }} \
+#            --allow-unauthenticated \
+#            --port=8080 \
+#            --set-env-vars=FLASK_ENV=production,JWT_SECRET=${{ secrets.JWT_SECRET }} \
+#            --update-secrets=FIREBASE_CREDENTIALS_JSON=FIREBASE_CREDENTIALS_JSON:latest,SENDINBLUE_API_KEY=SENDINBLUE_API_KEY:latest,FROM_EMAIL=FROM_EMAIL:latest
 
       # 9️⃣ Wait for Cloud Run to stabilize
       - name: Wait for deployment
@@ -329,7 +329,65 @@ jobs:
           echo "DEPLOYED_DIGEST=$DEPLOYED_DIGEST" >> $GITHUB_ENV
           echo "Deployed digest protected: $DEPLOYED_DIGEST"
 
-      # 1️⃣1️⃣ Cleanup Artifact Registry
+#      # 1️⃣1️⃣ Cleanup Artifact Registry
+#      - name: Cleanup old docker images
+#        run: |
+#          echo "🧹 Artifact cleanup started..."
+#
+#          REGION="${{ env.REGION }}"
+#          PROJECT="${{ secrets.GCP_PROJECT_ID }}"
+#          REPO="${{ env.REPOSITORY }}"
+#          IMAGE="${{ env.IMAGE_NAME }}"
+#
+#          PACKAGE_PATH="projects/$PROJECT/locations/$REGION/repositories/$REPO/packages/$IMAGE"
+#
+#          echo "Reading Artifact Registry package: $PACKAGE_PATH"
+#
+#          # Get all image versions with tags
+#          gcloud artifacts versions list \
+#            --package="$IMAGE" \
+#            --repository="$REPO" \
+#            --location="$REGION" \
+#            --format=json > versions.json
+#
+#          cat versions.json
+#
+#          # Latest tag version
+#          LATEST_VERSION=$(jq -r '.[] | select(.tags!=null and (.tags[]=="latest")) | .name')
+#
+#          # Latest v* tag
+#          NEWEST_V_TAG=$(jq -r '.[] | .tags[]?' versions.json | grep '^v' | sort -Vr | head -n1)
+#
+#          NEWEST_V_VERSION=$(jq -r --arg TAG "$NEWEST_V_TAG" \
+#            '.[] | select(.tags!=null and (.tags[]==$TAG)) | .name' versions.json)
+#
+#          echo "Protect latest version: $LATEST_VERSION"
+#          echo "Protect release version: $NEWEST_V_VERSION"
+#          echo "Protect deployed digest: $DEPLOYED_DIGEST"
+#
+#          # Loop through versions
+#          for VERSION in $(jq -r '.[].name' versions.json); do
+#
+#            if [[ "$VERSION" == "$LATEST_VERSION" ]]; then continue; fi
+#            if [[ "$VERSION" == "$NEWEST_V_VERSION" ]]; then continue; fi
+#
+#            # Skip deployed image
+#            if [[ "$VERSION" == *"${DEPLOYED_DIGEST##*@}"* ]]; then
+#              echo "Skipping deployed image"
+#              continue
+#            fi
+#
+#            echo "Deleting version: $VERSION"
+#
+#            gcloud artifacts versions delete "$VERSION" \
+#              --repository="$REPO" \
+#              --location="$REGION" \
+#              --quiet || true
+#
+#          done
+#
+#          echo "✅ Cleanup finished"
+
       - name: Cleanup old docker images
         run: |
           echo "🧹 Artifact cleanup started..."
@@ -339,44 +397,48 @@ jobs:
           REPO="${{ env.REPOSITORY }}"
           IMAGE="${{ env.IMAGE_NAME }}"
 
-          PACKAGE_PATH="projects/$PROJECT/locations/$REGION/repositories/$REPO/packages/$IMAGE"
-
-          echo "Reading Artifact Registry package: $PACKAGE_PATH"
-
-          # Get all image versions with tags
+          # Get versions
           gcloud artifacts versions list \
             --package="$IMAGE" \
             --repository="$REPO" \
             --location="$REGION" \
             --format=json > versions.json
 
-          cat versions.json
-
-          # Latest tag version
+          # Find latest
           LATEST_VERSION=$(jq -r '.[] | select(.tags!=null and (.tags[]=="latest")) | .name')
 
-          # Latest v* tag
+          # Find newest v*
           NEWEST_V_TAG=$(jq -r '.[] | .tags[]?' versions.json | grep '^v' | sort -Vr | head -n1)
 
           NEWEST_V_VERSION=$(jq -r --arg TAG "$NEWEST_V_TAG" \
             '.[] | select(.tags!=null and (.tags[]==$TAG)) | .name' versions.json)
 
-          echo "Protect latest version: $LATEST_VERSION"
-          echo "Protect release version: $NEWEST_V_VERSION"
-          echo "Protect deployed digest: $DEPLOYED_DIGEST"
+          echo "Keep latest: $LATEST_VERSION"
+          echo "Keep newest tag: $NEWEST_V_TAG"
 
-          # Loop through versions
+          # Loop all versions
           for VERSION in $(jq -r '.[].name' versions.json); do
 
             if [[ "$VERSION" == "$LATEST_VERSION" ]]; then continue; fi
             if [[ "$VERSION" == "$NEWEST_V_VERSION" ]]; then continue; fi
 
-            # Skip deployed image
-            if [[ "$VERSION" == *"${DEPLOYED_DIGEST##*@}"* ]]; then
-              echo "Skipping deployed image"
-              continue
-            fi
+            echo "Processing old version: $VERSION"
 
+            # REMOVE TAGS FIRST
+            TAGS=$(jq -r --arg V "$VERSION" \
+              '.[] | select(.name==$V) | .tags[]?' versions.json)
+
+            for TAG in $TAGS; do
+              echo "Removing tag: $TAG"
+
+              gcloud artifacts tags delete "$TAG" \
+                --package="$IMAGE" \
+                --repository="$REPO" \
+                --location="$REGION" \
+                --quiet || true
+            done
+
+            # NOW DELETE VERSION
             echo "Deleting version: $VERSION"
 
             gcloud artifacts versions delete "$VERSION" \
@@ -387,4 +449,3 @@ jobs:
           done
 
           echo "✅ Cleanup finished"
-      
