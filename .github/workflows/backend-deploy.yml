@@ -1,64 +1,73 @@
-name: Backend Deploy (Cloud Run)
+name: Backend Deploy (Cloud Run – Artifact Registry)
 
 on:
   push:
+    branches:
+      - "**"
     paths:
       - "app/backend/**"
       - "Dockerfile"
       - ".dockerignore"
       - ".github/workflows/backend-deploy.yml"
-    branches:
-      - "**"
 
 permissions:
   contents: read
+  id-token: write
+
+env:
+  REGION: asia-south1
+  REPOSITORY: backend-images
+  IMAGE_NAME: backend
+  SERVICE_NAME: grocery-backend
 
 jobs:
-  backend-deploy:
+  deploy:
     runs-on: ubuntu-latest
 
     steps:
-      - name: Checkout
-        uses: actions/checkout@v3
+      # 1️⃣ Checkout
+      - name: Checkout source
+        uses: actions/checkout@v4
 
-      # Google Auth
+      # 2️⃣ Authenticate to GCP
       - name: Authenticate to Google Cloud
         uses: google-github-actions/auth@v2
         with:
           credentials_json: ${{ secrets.GCP_SA_KEY }}
 
-      - name: Set up gcloud
+      # 3️⃣ Setup gcloud
+      - name: Setup gcloud
         uses: google-github-actions/setup-gcloud@v2
         with:
           project_id: ${{ secrets.GCP_PROJECT_ID }}
 
-      - name: Docker auth
-        run: gcloud auth configure-docker gcr.io --quiet
-
-      # Optional IAM diagnostics
-      - name: Check IAM
+      # 4️⃣ Docker auth
+      - name: Configure Docker auth
         run: |
-          echo "$GCP_SA_KEY_JSON" > sa.json
-          SA_EMAIL=$(jq -r '.client_email' sa.json)
-          gcloud projects get-iam-policy "${{ secrets.GCP_PROJECT_ID }}" \
-            --flatten="bindings[].members" \
-            --filter="bindings.members:serviceAccount:$SA_EMAIL" \
-            --format="table(bindings.role)"
-        env:
-          GCP_SA_KEY_JSON: ${{ secrets.GCP_SA_KEY_JSON }}
+          gcloud auth configure-docker \
+            ${{ env.REGION }}-docker.pkg.dev \
+            --quiet
 
-      - name: Build via Cloud Build
+      # 5️⃣ Generate TAG (same as local)
+      - name: Generate build tag
         run: |
-          IMAGE_NAME=gcr.io/${{ secrets.GCP_PROJECT_ID }}/backend:${GITHUB_SHA}
-          echo "IMAGE_NAME=$IMAGE_NAME" >> $GITHUB_ENV
-          gcloud builds submit app/backend --tag $IMAGE_NAME
+          TAG=$(date +%s)
+          echo "TAG=$TAG" >> $GITHUB_ENV
 
+      # 6️⃣ Build & Push (timestamp + latest)
+      - name: Build & Push image
+        run: |
+          gcloud builds submit app/backend \
+            --tag ${{ env.REGION }}-docker.pkg.dev/${{ secrets.GCP_PROJECT_ID }}/${{ env.REPOSITORY }}/${{ env.IMAGE_NAME }}:$TAG \
+            --tag ${{ env.REGION }}-docker.pkg.dev/${{ secrets.GCP_PROJECT_ID }}/${{ env.REPOSITORY }}/${{ env.IMAGE_NAME }}:latest
+
+      # 7️⃣ Deploy (same as local)
       - name: Deploy to Cloud Run
         run: |
-          gcloud run deploy ${{ secrets.GCP_SERVICE_NAME }} \
-            --image $IMAGE_NAME \
-            --region ${{ secrets.GCP_REGION }} \
+          gcloud run deploy ${{ env.SERVICE_NAME }} \
+            --image=${{ env.REGION }}-docker.pkg.dev/${{ secrets.GCP_PROJECT_ID }}/${{ env.REPOSITORY }}/${{ env.IMAGE_NAME }}:latest \
+            --region=${{ env.REGION }} \
             --allow-unauthenticated \
-            --port 8080 \
-             --set-env-vars FLASK_ENV=production,SECRET_KEY="super-secret-key-change-this" \
+            --port=8080 \
+            --set-env-vars=FLASK_ENV=production,JWT_SECRET=${{ secrets.JWT_SECRET }} \
             --update-secrets=FIREBASE_CREDENTIALS_JSON=FIREBASE_CREDENTIALS_JSON:latest,SENDINBLUE_API_KEY=SENDINBLUE_API_KEY:latest,FROM_EMAIL=FROM_EMAIL:latest

@@ -41,7 +41,6 @@ app.register_blueprint(wallet_bp)
 app.register_blueprint(shop_wallet_bp)
 app.register_blueprint(khata_bp, url_prefix="/api/khata")
 
-#app.register_blueprint(service_bp)
 
 app.register_blueprint(service_bp, url_prefix="/service")
 
@@ -53,7 +52,7 @@ limiter = Limiter(key_func=get_remote_address)
 limiter.init_app(app)
 
 CORS(app)
-SECRET_KEY = os.getenv("SECRET_KEY")  # keep secret and safe!
+
 
 # logging.basicConfig(level=logging.INFO)
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
@@ -68,7 +67,11 @@ logo_url = "https://cdn-icons-png.flaticon.com/512/263/263142.png"
 otp_store = {}
 forgot_password_otp_store = {}
 
-GITHUB_REPO = "naibhivenkat/grocery-shopping-app"
+#GITHUB_REPO = "naibhivenkat/grocery-shopping-app"
+
+GITHUB_REPO = "naibhivenkat/grocery-shopping-app-flutter"
+GITHUB_API = "https://api.github.com/repos"
+
 
 # 🔹 Initialize Razorpay client
 RAZORPAY_KEY_ID = "rzp_test_RKK3DuGSaxK9fR"
@@ -89,6 +92,11 @@ REQUEST_LATENCY = Histogram(
     ["endpoint"]
 )
 
+
+SECRET_KEY = os.environ.get("JWT_SECRET")
+
+if not SECRET_KEY:
+    raise RuntimeError("JWT_SECRET missing in environment")
 
 @app.route("/")
 def index():
@@ -134,29 +142,50 @@ def record_metrics(response):
     return response
 
 
+
+
 @app.before_request
 def load_current_user():
     auth_header = request.headers.get("Authorization", "")
+
+    if not SECRET_KEY:
+        g.current_user = None
+        return
+
     if auth_header.startswith("Bearer "):
         token = auth_header[7:]
+
         try:
-            # ✅ decode with same algorithm
             payload = jwt.decode(token, SECRET_KEY, algorithms=["HS256"])
             g.current_user = payload
+
         except jwt.ExpiredSignatureError:
             g.current_user = None
+
         except jwt.InvalidTokenError:
+            g.current_user = None
+
+        except Exception as e:
+            logger.info("JWT decode error:", e)
             g.current_user = None
     else:
         g.current_user = None
 
 
+
 def generate_token(user):
+    import os
+    from datetime import datetime, timedelta, timezone
+    import uuid
+
+    SECRET_KEY = os.environ.get("JWT_SECRET")
+    if not SECRET_KEY:
+        raise RuntimeError("JWT_SECRET not configured in Cloud Run")
+
     IST = timezone(timedelta(hours=5, minutes=30))
     exp_time = datetime.now(IST) + timedelta(days=7)
 
-    # ✅ Use correct ID field based on role
-    user_id = user.get("customerId") or user.get("shopkeeperId") or user.get("id")
+    user_id = user.get("customerId") or user.get("shopkeeperId") or str(uuid.uuid4())
 
     payload = {
         "id": user_id,
@@ -166,6 +195,7 @@ def generate_token(user):
     }
 
     token = jwt.encode(payload, SECRET_KEY, algorithm="HS256")
+
     if isinstance(token, bytes):
         token = token.decode("utf-8")
 
@@ -455,33 +485,7 @@ def change_password():
         return jsonify({"success": False, "message": str(e)}), 500
 
 
-# @app.route('/update_profile', methods=['POST'])
-# def update_profile():
-#     data = request.get_json()
-#     username = data.get('username')
-#     user_docs = firebase_db.db.collection("users").where("username", "==", username).stream()
-#     uid = None
-#     for doc in user_docs:
-#         uid = doc.id
-#         break
-#     if not uid:
-#         return jsonify({'success': False, 'message': 'User not found'})
-#     update_fields = {
-#         "full_name": data.get("name", ""),
-#         "email": data.get("email", ""),
-#         "phone": data.get("phone", ""),
-#         "address": data.get("address", ""),
-#         "location": data.get("location", "")
-#     }
-#     if data.get("photo_base64"):
-#         update_fields["photo_url"] = firebase_db.upload_base64_image(data["photo_base64"],
-#                                                                      folder="profile_photos")
-#         update_fields["photo_base64"] = data["photo_base64"]
-#     firebase_db.db.collection("users").document(uid).update(update_fields)
-#     return jsonify({'success': True})
 
-
-# ----------- SHOPS -----------
 
 @app.route('/update_profile', methods=['POST'])
 def update_profile():
@@ -1143,53 +1147,71 @@ def get_shop_orders_multi():
 @app.route("/check_update", methods=["GET"])
 def check_update():
     try:
-        # Get user role from query parameter
-        role = request.args.get("role", "customer").lower()
-        if role not in ["customer", "shopowner"]:
-            return jsonify({"error": "Invalid role"}), 400
+        platform = request.args.get("platform", "").lower()
+        abi = request.args.get("abi", "").lower()
 
-        # Fetch the latest release from GitHub
-        api_url = f"https://api.github.com/repos/{GITHUB_REPO}/releases/latest"
-        r = requests.get(api_url, timeout=10)
+        if platform != "android":
+            return jsonify({"error": "Only Android supported"}), 400
+
+        if abi not in ["arm64-v8a", "armeabi-v7a", "x86_64"]:
+            return jsonify({"error": "Invalid or missing ABI"}), 400
+
+        headers = {}
+        if os.getenv("GITHUB_TOKEN"):
+            headers["Authorization"] = f"token {os.getenv('GITHUB_TOKEN')}"
+
+        # 🔹 Fetch latest GitHub release
+        api_url = f"{GITHUB_API}/{GITHUB_REPO}/releases/latest"
+        r = requests.get(api_url, headers=headers, timeout=10)
         r.raise_for_status()
         release = r.json()
 
-        # Extract version info from tag
-        version_name = release.get("tag_name", "0.1")
-        if version_name.startswith("v"):
-            version_name = version_name[1:]
+        # 🔹 Parse version
+        tag = release.get("tag_name", "0.1.0+1").lstrip("v")
 
-        # Convert version_name to Android versionCode (1.153 -> 1153)
-        parts = version_name.split(".")
-        version_code = int("".join(f"{int(p):02d}" for p in parts))
+        if "+" in tag:
+            version_name, version_code = tag.split("+", 1)
+            version_code = int(version_code)
+        else:
+            version_name = tag
+            version_code = int("".join(f"{int(p):02d}" for p in tag.split(".")))
 
-        # Find APK asset dynamically based on role
+        # 🔹 Find matching APK by ABI
         apk_url = None
         apk_size = 0
+
         for asset in release.get("assets", []):
-            if role in asset["name"].lower() and asset["name"].endswith(".apk"):
+            name = asset.get("name", "").lower()
+
+            if (
+                    name.endswith(".apk")
+                    and abi in name
+                    and "release" in name
+            ):
                 apk_url = asset["browser_download_url"]
                 apk_size = asset.get("size", 0)
                 break
 
         if not apk_url:
-            logging.error("No APK found for role %s in latest release", role)
-            return jsonify({"error": f"No APK found for role {role}"}), 500
+            logging.error("No APK found for ABI: %s", abi)
+            return jsonify({"error": f"No APK found for ABI {abi}"}), 500
 
-        logging.info("Returning version %s (code %d) with size %d for role %s",
-                     version_name, version_code, apk_size, role)
+        logging.info(
+            "Update OK | ABI=%s | version=%s | code=%d | size=%d",
+            abi, version_name, version_code, apk_size
+        )
+
         return jsonify({
-            "versionCode": version_code,
             "versionName": version_name,
+            "versionCode": version_code,
             "apkUrl": apk_url,
-            "apkSize": apk_size
+            "apkSize": apk_size,
+            "abi": abi
         })
 
     except Exception as e:
-        logging.exception("Error checking update")
+        logging.exception("Update check failed")
         return jsonify({"error": str(e)}), 500
-
-
 def send_email_otp(email, otp):
     try:
         logger.info(f"SENDINBLUE_API_KEY {SENDINBLUE_API_KEY}")
@@ -1289,6 +1311,7 @@ def verify_otp():
     if str(record["otp"]) == otp_input:
         # delete after success
         firebase_db.db.collection("otp").document(email).delete()
+
         logger.info("OTP DELETED SUCCESSFULLY FROM FIREBASE STORAGE")
         return jsonify({"status": "success", "message": "OTP verified"}), 200
 
