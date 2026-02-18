@@ -285,21 +285,21 @@ jobs:
           fi
 
       # 7️⃣ Build & Push
-#      - name: Build & Push image
-#        run: |
-#          IMAGE_BASE="${{ env.REGION }}-docker.pkg.dev/${{ secrets.GCP_PROJECT_ID }}/${{ env.REPOSITORY }}/${{ env.IMAGE_NAME }}"
+      - name: Build & Push image
+        run: |
+          IMAGE_BASE="${{ env.REGION }}-docker.pkg.dev/${{ secrets.GCP_PROJECT_ID }}/${{ env.REPOSITORY }}/${{ env.IMAGE_NAME }}"
+
+          if [ "$IS_TAG" = "true" ]; then
+            echo "Building RELEASE image: $VERSION_TAG"
+            gcloud builds submit app/backend \
+              --tag "$IMAGE_BASE:latest" \
+              --tag "$IMAGE_BASE:$VERSION_TAG"
+          else
+            echo "Building branch image"
+            gcloud builds submit app/backend \
+              --tag "$IMAGE_BASE:latest"
+          fi
 #
-#          if [ "$IS_TAG" = "true" ]; then
-#            echo "Building RELEASE image: $VERSION_TAG"
-#            gcloud builds submit app/backend \
-#              --tag "$IMAGE_BASE:latest" \
-#              --tag "$IMAGE_BASE:$VERSION_TAG"
-#          else
-#            echo "Building branch image"
-#            gcloud builds submit app/backend \
-#              --tag "$IMAGE_BASE:latest"
-#          fi
-##
 #      # 8️⃣ Deploy Cloud Run
 #      - name: Deploy to Cloud Run
 #        run: |
