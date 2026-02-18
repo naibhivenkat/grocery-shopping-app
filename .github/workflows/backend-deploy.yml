@@ -329,7 +329,6 @@ jobs:
           echo "DEPLOYED_DIGEST=$DEPLOYED_DIGEST" >> $GITHUB_ENV
           echo "Deployed digest protected: $DEPLOYED_DIGEST"
 
-
       - name: Cleanup docker images (tags + branch builds)
         run: |
           echo "🧹 Artifact cleanup started..."
@@ -389,48 +388,6 @@ jobs:
           --quiet || true
           
           done
-
-#                    ########################################
-#                    # STEP 2 — DELETE UNTAGGED BRANCH DIGESTS
-#                    ########################################
-#
-#                    echo "Finding untagged branch images..."
-#
-#                      # Get versions
-#                    gcloud artifacts versions list \
-#                    --package="$IMAGE" \
-#                    --repository="$REPO" \
-#                    --location="$REGION" \
-#                    --format=json > versions.json
-#
-#                    # Find latest
-#                    LATEST_VERSION=$(jq -r '.[] | select(.tags!=null and (.tags[]=="latest")) | .name')
-#
-#                    echo "✅ Keep latest: $LATEST_VERSION"
-#
-#
-#                    for VERSION in $(jq -r '.[].name' versions.json); do
-#
-#                    if [[ "$VERSION" == "$LATEST_VERSION" ]]; then continue; fi
-#                    if [[ "$VERSION" == "$NEWEST_V_VERSION" ]]; then continue; fi
-#
-#                    echo "Processing old version: $VERSION"
-#
-#
-#                    echo "Deleting version: $VERSION"
-#
-#                    gcloud artifacts versions delete "$VERSION" \
-#                     --repository="$REPO" \
-#                     --location="$REGION" \
-#                     --quiet || true
-#
-#                    done
-
-
-
-
-
-
           echo "✅✅ Cleanup finished ✅✅"
           
 
