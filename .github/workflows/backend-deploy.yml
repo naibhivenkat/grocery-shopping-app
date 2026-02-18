@@ -73,26 +73,22 @@ jobs:
             --update-secrets=FIREBASE_CREDENTIALS_JSON=FIREBASE_CREDENTIALS_JSON:latest,SENDINBLUE_API_KEY=SENDINBLUE_API_KEY:latest,FROM_EMAIL=FROM_EMAIL:latest
 
 
-      - name: Cleanup old images (safe mode)
+      - name: Cleanup old untagged images (SAFE)
         run: |
           echo "🧹 Cleaning old untagged images..."
 
-          gcloud artifacts docker images list \
-            ${{ env.REGION }}-docker.pkg.dev/${{ secrets.GCP_PROJECT_ID }}/${{ env.REPOSITORY }}/${{ env.IMAGE_NAME }} \
+          IMAGE_PATH="${{ env.REGION }}-docker.pkg.dev/${{ secrets.GCP_PROJECT_ID }}/${{ env.REPOSITORY }}/${{ env.IMAGE_NAME }}"
+
+          gcloud artifacts docker images list "$IMAGE_PATH" \
             --include-tags \
-            --format="get(digest,tags)" \
-          | while read digest tags; do
+            --format="json" \
+          | jq -r '.[] | select(.tags == null or .tags == []) | .digest' \
+          | while read digest; do
+              echo "Deleting untagged digest: $digest"
 
-              if [[ "$tags" == "" ]]; then
-                echo "Deleting untagged digest: $digest"
-
-                gcloud artifacts docker images delete \
-                  ${{ env.REGION }}-docker.pkg.dev/${{ secrets.GCP_PROJECT_ID }}/${{ env.REPOSITORY }}/${{ env.IMAGE_NAME }}@$digest \
-                  --quiet || true
-              else
-                echo "Keeping tagged image: $digest [$tags]"
-              fi
-
+              gcloud artifacts docker images delete "$IMAGE_PATH@$digest" \
+                --quiet || true
             done
+      
       
       
