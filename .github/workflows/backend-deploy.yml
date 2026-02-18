@@ -71,9 +71,9 @@ jobs:
             --port=8080 \
             --set-env-vars=FLASK_ENV=production,JWT_SECRET=${{ secrets.JWT_SECRET }} \
             --update-secrets=FIREBASE_CREDENTIALS_JSON=FIREBASE_CREDENTIALS_JSON:latest,SENDINBLUE_API_KEY=SENDINBLUE_API_KEY:latest,FROM_EMAIL=FROM_EMAIL:latest
-      
 
-      - name: Cleanup old images (keep last 2)
+
+      - name: Cleanup old images (keep last 2, protect latest)
         run: |
           echo "🧹 Cleaning old images, keeping latest 2..."
 
@@ -82,12 +82,20 @@ jobs:
             --repository=${{ env.REPOSITORY }} \
             --package=${{ env.IMAGE_NAME }} \
             --sort-by=~createTime \
-            --format="value(name)" \
+            --format="value(name,tags)" \
           | tail -n +3 \
-          | while read version; do
+          | while read version tags; do
+              if [[ "$tags" == *"latest"* ]]; then
+                echo "Skipping latest-tagged image: $version"
+                continue
+              fi
+
               echo "Deleting $version"
               gcloud artifacts versions delete "$version" \
-                --location=${{ env.REGION }} \
+                --package=${{ env.IMAGE_NAME }} \
                 --repository=${{ env.REPOSITORY }} \
+                --location=${{ env.REGION }} \
                 --quiet || true
             done
+      
+      
