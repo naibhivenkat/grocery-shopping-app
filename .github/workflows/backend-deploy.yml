@@ -73,29 +73,26 @@ jobs:
             --update-secrets=FIREBASE_CREDENTIALS_JSON=FIREBASE_CREDENTIALS_JSON:latest,SENDINBLUE_API_KEY=SENDINBLUE_API_KEY:latest,FROM_EMAIL=FROM_EMAIL:latest
 
 
-      - name: Cleanup old images (keep last 2, protect latest)
+      - name: Cleanup old images (safe mode)
         run: |
-          echo "🧹 Cleaning old images, keeping latest 2..."
+          echo "🧹 Cleaning old untagged images..."
 
-          gcloud artifacts versions list \
-            --location=${{ env.REGION }} \
-            --repository=${{ env.REPOSITORY }} \
-            --package=${{ env.IMAGE_NAME }} \
-            --sort-by=~createTime \
-            --format="value(name,tags)" \
-          | tail -n +3 \
-          | while read version tags; do
-              if [[ "$tags" == *"latest"* ]]; then
-                echo "Skipping latest-tagged image: $version"
-                continue
+          gcloud artifacts docker images list \
+            ${{ env.REGION }}-docker.pkg.dev/${{ secrets.GCP_PROJECT_ID }}/${{ env.REPOSITORY }}/${{ env.IMAGE_NAME }} \
+            --include-tags \
+            --format="get(digest,tags)" \
+          | while read digest tags; do
+
+              if [[ "$tags" == "" ]]; then
+                echo "Deleting untagged digest: $digest"
+
+                gcloud artifacts docker images delete \
+                  ${{ env.REGION }}-docker.pkg.dev/${{ secrets.GCP_PROJECT_ID }}/${{ env.REPOSITORY }}/${{ env.IMAGE_NAME }}@$digest \
+                  --quiet || true
+              else
+                echo "Keeping tagged image: $digest [$tags]"
               fi
 
-              echo "Deleting $version"
-              gcloud artifacts versions delete "$version" \
-                --package=${{ env.IMAGE_NAME }} \
-                --repository=${{ env.REPOSITORY }} \
-                --location=${{ env.REGION }} \
-                --quiet || true
             done
       
       
