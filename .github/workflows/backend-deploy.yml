@@ -93,36 +93,43 @@ jobs:
             --update-secrets=FIREBASE_CREDENTIALS_JSON=FIREBASE_CREDENTIALS_JSON:latest,SENDINBLUE_API_KEY=SENDINBLUE_API_KEY:latest,FROM_EMAIL=FROM_EMAIL:latest
 
 
-      # 9️⃣ Cleanup registry → keep only last 2 builds
-      - name: Cleanup images (keep last 2 builds only)
+
+      - name: Wait for deployment
+        run: sleep 45
+
+        # 9️⃣ Cleanup registry → SAFE
+      - name: Cleanup images (safe cleanup keep latest + previous)
         run: |
-          echo "🧹 Cleaning registry (keeping only last 2 builds)..."
+          echo "🧹 Safe cleanup starting..."
           
-          IMAGE_NAME="${{ env.IMAGE_NAME }}"
-          REGION="${{ env.REGION }}"
-          REPO="${{ env.REPOSITORY }}"
-          PROJECT="${{ secrets.GCP_PROJECT_ID }}"
+          IMAGE_PATH="${{ env.REGION }}-docker.pkg.dev/${{ secrets.GCP_PROJECT_ID }}/${{ env.REPOSITORY }}/${{ env.IMAGE_NAME }}"
           
-          # Get digests sorted newest first
-          DIGESTS=$(gcloud artifacts docker images list \
-            "$REGION-docker.pkg.dev/$PROJECT/$REPO/$IMAGE_NAME" \
-            --sort-by=~UPDATE_TIME \
-            --format="value(DIGEST)")
+          # Get all digests with tags
+          IMAGES=$(gcloud artifacts docker images list "$IMAGE_PATH" \
+            --include-tags \
+            --format="json")
+          
+          # Identify latest-tagged digest
+          LATEST_DIGEST=$(echo "$IMAGES" | jq -r '.[] | select(.tags != null and (.tags[]=="latest")) | .digest')
+          
+          echo "Protecting latest digest: $LATEST_DIGEST"
           
           COUNT=0
           
-          for digest in $DIGESTS; do
-            COUNT=$((COUNT+1))
-          
-            if [ $COUNT -le 2 ]; then
-              echo "Keeping image $digest"
+          echo "$IMAGES" | jq -r '.[].digest' | while read digest; do
+            if [ "$digest" = "$LATEST_DIGEST" ]; then
+              echo "Keeping latest image"
               continue
             fi
           
-            echo "Deleting old image $digest"
-            gcloud artifacts docker images delete \
-              "$REGION-docker.pkg.dev/$PROJECT/$REPO/$IMAGE_NAME@$digest" \
+            COUNT=$((COUNT+1))
+          
+            if [ $COUNT -le 1 ]; then
+              echo "Keeping previous image: $digest"
+              continue
+            fi
+          
+            echo "Deleting old image: $digest"
+            gcloud artifacts docker images delete "$IMAGE_PATH@$digest" \
               --quiet --delete-tags || true
           done
-     
-
