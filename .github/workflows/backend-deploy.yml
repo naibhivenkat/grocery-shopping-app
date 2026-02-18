@@ -92,52 +92,29 @@ jobs:
             --set-env-vars=FLASK_ENV=production,JWT_SECRET=${{ secrets.JWT_SECRET }} \
             --update-secrets=FIREBASE_CREDENTIALS_JSON=FIREBASE_CREDENTIALS_JSON:latest,SENDINBLUE_API_KEY=SENDINBLUE_API_KEY:latest,FROM_EMAIL=FROM_EMAIL:latest
 
-      # 9️⃣ Cleanup registry → KEEP ONLY latest + newest v* tag
-      - name: Cleanup images (keep latest + newest version only)
+
+      # 9️⃣ Cleanup registry → keep only last 2 builds
+      - name: Cleanup images (keep last 2 builds only)
         run: |
-          echo "🧹 Cleaning registry..."
+          echo "🧹 Cleaning registry (keeping only last 2 builds)..."
 
           IMAGE_PATH="${{ env.REGION }}-docker.pkg.dev/${{ secrets.GCP_PROJECT_ID }}/${{ env.REPOSITORY }}/${{ env.IMAGE_NAME }}"
 
-          IMAGES=$(gcloud artifacts docker images list "$IMAGE_PATH" \
+          DIGESTS=$(gcloud artifacts docker images list "$IMAGE_PATH" \
             --include-tags \
-            --format="json")
+            --sort-by=~updateTime \
+            --format="value(digest)")
 
-          TOTAL=$(echo "$IMAGES" | jq length)
+          COUNT=0
 
-          if [ "$TOTAL" -le 2 ]; then
-            echo "Only 2 images exist — skipping cleanup"
-            exit 0
-          fi
+          echo "$DIGESTS" | while read digest; do
+            COUNT=$((COUNT+1))
 
-          KEEP_VERSION=$(echo "$IMAGES" \
-            | jq -r '
-                .[]
-                | select(.tags != null)
-                | .tags[]
-                | select(test("^v[0-9]"))
-              ' \
-            | sort -Vr \
-            | head -n 1)
+            if [ $COUNT -le 2 ]; then
+              echo "Keeping image $digest"
+              continue
+            fi
 
-          echo "Keeping version tag: $KEEP_VERSION"
-
-          echo "$IMAGES" \
-          | jq -r '.[] | .digest' \
-          | while read digest; do
-
-              TAGS=$(echo "$IMAGES" | jq -r ".[] | select(.digest==\"$digest\") | .tags | join(\",\")")
-
-              if [[ "$TAGS" == *"latest"* ]]; then
-                echo "Keeping latest: $digest"
-                continue
-              fi
-
-              if [[ "$TAGS" == *"$KEEP_VERSION"* ]]; then
-                echo "Keeping newest version: $digest"
-                continue
-              fi
-
-              echo "Deleting old image: $digest"
-              gcloud artifacts docker images delete "$IMAGE_PATH@$digest" --quiet || true
-            done
+            echo "Deleting old image $digest"
+            gcloud artifacts docker images delete "$IMAGE_PATH@$digest" --quiet || true
+          done
