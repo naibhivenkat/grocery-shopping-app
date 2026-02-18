@@ -285,21 +285,21 @@ jobs:
           fi
 
       # 7️⃣ Build & Push
-      - name: Build & Push image
-        run: |
-          IMAGE_BASE="${{ env.REGION }}-docker.pkg.dev/${{ secrets.GCP_PROJECT_ID }}/${{ env.REPOSITORY }}/${{ env.IMAGE_NAME }}"
-
-          if [ "$IS_TAG" = "true" ]; then
-            echo "Building RELEASE image: $VERSION_TAG"
-            gcloud builds submit app/backend \
-              --tag "$IMAGE_BASE:latest" \
-              --tag "$IMAGE_BASE:$VERSION_TAG"
-          else
-            echo "Building branch image"
-            gcloud builds submit app/backend \
-              --tag "$IMAGE_BASE:latest"
-          fi
+#      - name: Build & Push image
+#        run: |
+#          IMAGE_BASE="${{ env.REGION }}-docker.pkg.dev/${{ secrets.GCP_PROJECT_ID }}/${{ env.REPOSITORY }}/${{ env.IMAGE_NAME }}"
 #
+#          if [ "$IS_TAG" = "true" ]; then
+#            echo "Building RELEASE image: $VERSION_TAG"
+#            gcloud builds submit app/backend \
+#              --tag "$IMAGE_BASE:latest" \
+#              --tag "$IMAGE_BASE:$VERSION_TAG"
+#          else
+#            echo "Building branch image"
+#            gcloud builds submit app/backend \
+#              --tag "$IMAGE_BASE:latest"
+#          fi
+##
 #      # 8️⃣ Deploy Cloud Run
 #      - name: Deploy to Cloud Run
 #        run: |
@@ -450,7 +450,43 @@ jobs:
 #
 #          echo "✅ Cleanup finished"
 
-      - name: Cleanup old docker images
+#      - name: Cleanup old docker images
+#        run: |
+#          echo "🧹 Artifact cleanup started..."
+#
+#          REGION="${{ env.REGION }}"
+#          PROJECT="${{ secrets.GCP_PROJECT_ID }}"
+#          REPO="${{ env.REPOSITORY }}"
+#          IMAGE="${{ env.IMAGE_NAME }}"
+#
+#          IMAGE_PATH="$REGION-docker.pkg.dev/$PROJECT/$REPO/$IMAGE"
+#
+#          # Get tag list
+#          TAGS=$(gcloud artifacts docker tags list "$IMAGE_PATH" --format="value(tag)")
+#
+#          echo "All tags:"
+#          echo "$TAGS"
+#
+#          # Find newest v* tag
+#          NEWEST_V=$(echo "$TAGS" | grep '^v' | sort -Vr | head -n1)
+#
+#          echo "Keep latest + $NEWEST_V"
+#
+#          for TAG in $TAGS; do
+#
+#            if [[ "$TAG" == "latest" ]]; then continue; fi
+#            if [[ "$TAG" == "$NEWEST_V" ]]; then continue; fi
+#
+#            echo "Deleting old tag: $TAG"
+#
+#            gcloud artifacts docker images delete \
+#              "$IMAGE_PATH:$TAG" \
+#              --quiet --delete-tags
+#
+#          done
+#
+#          echo "✅ Cleanup finished"
+      - name: Cleanup docker images (tags + branch builds)
         run: |
           echo "🧹 Artifact cleanup started..."
 
@@ -461,13 +497,15 @@ jobs:
 
           IMAGE_PATH="$REGION-docker.pkg.dev/$PROJECT/$REPO/$IMAGE"
 
-          # Get tag list
+          ########################################
+          # STEP 1 — CLEAN OLD VERSION TAGS
+          ########################################
+
           TAGS=$(gcloud artifacts docker tags list "$IMAGE_PATH" --format="value(tag)")
 
           echo "All tags:"
           echo "$TAGS"
 
-          # Find newest v* tag
           NEWEST_V=$(echo "$TAGS" | grep '^v' | sort -Vr | head -n1)
 
           echo "Keep latest + $NEWEST_V"
@@ -482,6 +520,33 @@ jobs:
             gcloud artifacts docker images delete \
               "$IMAGE_PATH:$TAG" \
               --quiet --delete-tags
+
+          done
+
+          ########################################
+          # STEP 2 — DELETE UNTAGGED BRANCH DIGESTS
+          ########################################
+
+          echo "Finding untagged branch images..."
+
+          gcloud artifacts docker images list "$IMAGE_PATH" \
+            --include-tags \
+            --format=json > images.json
+
+          # digest behind latest
+          LATEST_DIGEST=$(jq -r '.[] | select(.tags!=null and (.tags[]=="latest")) | .digest' images.json)
+
+          echo "Latest digest protected: $LATEST_DIGEST"
+
+          for DIGEST in $(jq -r '.[] | select(.tags==null) | .digest' images.json); do
+
+            if [[ "$DIGEST" == "$LATEST_DIGEST" ]]; then continue; fi
+
+            echo "Deleting branch image digest: $DIGEST"
+
+            gcloud artifacts docker images delete \
+              "$IMAGE_PATH@$DIGEST" \
+              --quiet
 
           done
 
