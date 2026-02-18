@@ -93,7 +93,7 @@ jobs:
             --update-secrets=FIREBASE_CREDENTIALS_JSON=FIREBASE_CREDENTIALS_JSON:latest,SENDINBLUE_API_KEY=SENDINBLUE_API_KEY:latest,FROM_EMAIL=FROM_EMAIL:latest
 
 
-
+      # 8 Delay for cleaning
       - name: Wait for deployment
         run: sleep 45
 
