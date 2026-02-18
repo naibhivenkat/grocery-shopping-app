@@ -66,20 +66,20 @@ jobs:
           fi
 
       # 7️⃣ Build & Push
-      - name: Build & Push image
-        run: |
-          IMAGE_BASE="${{ env.REGION }}-docker.pkg.dev/${{ secrets.GCP_PROJECT_ID }}/${{ env.REPOSITORY }}/${{ env.IMAGE_NAME }}"
-
-          if [ "$IS_TAG" = "true" ]; then
-          echo "Building RELEASE image: $VERSION_TAG"
-          gcloud builds submit app/backend \
-           --tag "$IMAGE_BASE:latest" \
-           --tag "$IMAGE_BASE:$VERSION_TAG"
-          else
-          echo "Building branch image"
-          gcloud builds submit app/backend \
-           --tag "$IMAGE_BASE:latest"
-          fi
+#      - name: Build & Push image
+#        run: |
+#          IMAGE_BASE="${{ env.REGION }}-docker.pkg.dev/${{ secrets.GCP_PROJECT_ID }}/${{ env.REPOSITORY }}/${{ env.IMAGE_NAME }}"
+#
+#          if [ "$IS_TAG" = "true" ]; then
+#          echo "Building RELEASE image: $VERSION_TAG"
+#          gcloud builds submit app/backend \
+#           --tag "$IMAGE_BASE:latest" \
+#           --tag "$IMAGE_BASE:$VERSION_TAG"
+#          else
+#          echo "Building branch image"
+#          gcloud builds submit app/backend \
+#           --tag "$IMAGE_BASE:latest"
+#          fi
 
       # 8️⃣ Deploy Cloud Run
 #      - name: Deploy to Cloud Run
@@ -216,33 +216,37 @@ jobs:
           done
           
           ########################################
-          # STEP 2 — DELETE UNTAGGED BRANCH DIGESTS (FINAL)
+          # STEP 2 — DELETE UNTAGGED BRANCH DIGESTS (FINAL FIX)
           ########################################
             
-            echo "Finding untagged branch images..."
-            
-            gcloud artifacts versions list \
-            --package="$IMAGE" \
-            --repository="$REPO" \
-            --location="$REGION" \
-            --format=json > versions.json
-            
-            for VERSION in $(jq -r '.[] | select(.tags==null or (.tags|length==0)) | .name' versions.json); do
+          echo "Finding untagged branch images..."
           
-            # skip deployed digest
-            if [[ "$VERSION" == *"${DEPLOYED_DIGEST##*@}"* ]]; then
-            echo "Skipping deployed digest"
-            continue
-            fi
+          DEPLOYED_SHA=$(echo "$DEPLOYED_DIGEST" | awk -F@ '{print $2}')
           
-            echo "Deleting untagged version: $VERSION"
+          gcloud artifacts versions list \
+          --package="$IMAGE" \
+          --repository="$REPO" \
+          --location="$REGION" \
+          --format=json > versions.json
           
-            gcloud artifacts versions delete "$VERSION" \
-            --repository="$REPO" \
-            --location="$REGION" \
-            --quiet 2>/dev/null || true
-            
-            done
-  
+          for VERSION in $(jq -r '.[] | select(.tags==null or (.tags|length==0)) | .name' versions.json); do
+        
+          VERSION_SHA=$(echo "$VERSION" | awk -F: '{print $2}')
+        
+          # skip ONLY exact deployed digest
+          if [[ "$VERSION_SHA" == "$DEPLOYED_SHA" ]]; then
+          echo "Skipping deployed digest: $VERSION_SHA"
+          continue
+          fi
+        
+          echo "Deleting untagged version: $VERSION_SHA"
+        
+          gcloud artifacts versions delete "$VERSION" \
+          --repository="$REPO" \
+          --location="$REGION" \
+          --quiet 2>/dev/null || true
+          
+          done
+
           echo "✅✅ Cleanup finished ✅✅"
 
