@@ -311,23 +311,23 @@ jobs:
 #            --set-env-vars=FLASK_ENV=production,JWT_SECRET=${{ secrets.JWT_SECRET }} \
 #            --update-secrets=FIREBASE_CREDENTIALS_JSON=FIREBASE_CREDENTIALS_JSON:latest,SENDINBLUE_API_KEY=SENDINBLUE_API_KEY:latest,FROM_EMAIL=FROM_EMAIL:latest
 
-      # 9️⃣ Wait for Cloud Run to stabilize
-      - name: Wait for deployment
-        run: sleep 45
-
-      # 🔟 Get currently deployed digest (IMPORTANT)
-      - name: Get deployed digest
-        run: |
-          DEPLOYED_IMAGE=$(gcloud run services describe ${{ env.SERVICE_NAME }} \
-            --region=${{ env.REGION }} \
-            --format='value(status.latestReadyRevisionName)')
-
-          DEPLOYED_DIGEST=$(gcloud run revisions describe $DEPLOYED_IMAGE \
-            --region=${{ env.REGION }} \
-            --format='value(status.imageDigest)')
-
-          echo "DEPLOYED_DIGEST=$DEPLOYED_DIGEST" >> $GITHUB_ENV
-          echo "Deployed digest protected: $DEPLOYED_DIGEST"
+#      # 9️⃣ Wait for Cloud Run to stabilize
+#      - name: Wait for deployment
+#        run: sleep 45
+#
+#      # 🔟 Get currently deployed digest (IMPORTANT)
+#      - name: Get deployed digest
+#        run: |
+#          DEPLOYED_IMAGE=$(gcloud run services describe ${{ env.SERVICE_NAME }} \
+#            --region=${{ env.REGION }} \
+#            --format='value(status.latestReadyRevisionName)')
+#
+#          DEPLOYED_DIGEST=$(gcloud run revisions describe $DEPLOYED_IMAGE \
+#            --region=${{ env.REGION }} \
+#            --format='value(status.imageDigest)')
+#
+#          echo "DEPLOYED_DIGEST=$DEPLOYED_DIGEST" >> $GITHUB_ENV
+#          echo "Deployed digest protected: $DEPLOYED_DIGEST"
 
 #      # 1️⃣1️⃣ Cleanup Artifact Registry
 #      - name: Cleanup old docker images
@@ -388,6 +388,68 @@ jobs:
 #
 #          echo "✅ Cleanup finished"
 
+#      - name: Cleanup old docker images
+#        run: |
+#          echo "🧹 Artifact cleanup started..."
+#
+#          REGION="${{ env.REGION }}"
+#          PROJECT="${{ secrets.GCP_PROJECT_ID }}"
+#          REPO="${{ env.REPOSITORY }}"
+#          IMAGE="${{ env.IMAGE_NAME }}"
+#
+#          # Get versions
+#          gcloud artifacts versions list \
+#            --package="$IMAGE" \
+#            --repository="$REPO" \
+#            --location="$REGION" \
+#            --format=json > versions.json
+#
+#          # Find latest
+#          LATEST_VERSION=$(jq -r '.[] | select(.tags!=null and (.tags[]=="latest")) | .name')
+#
+#          # Find newest v*
+#          NEWEST_V_TAG=$(jq -r '.[] | .tags[]?' versions.json | grep '^v' | sort -Vr | head -n1)
+#
+#          NEWEST_V_VERSION=$(jq -r --arg TAG "$NEWEST_V_TAG" \
+#            '.[] | select(.tags!=null and (.tags[]==$TAG)) | .name' versions.json)
+#
+#          echo "Keep latest: $LATEST_VERSION"
+#          echo "Keep newest tag: $NEWEST_V_TAG"
+#
+#          # Loop all versions
+#          for VERSION in $(jq -r '.[].name' versions.json); do
+#
+#            if [[ "$VERSION" == "$LATEST_VERSION" ]]; then continue; fi
+#            if [[ "$VERSION" == "$NEWEST_V_VERSION" ]]; then continue; fi
+#
+#            echo "Processing old version: $VERSION"
+#
+#            # REMOVE TAGS FIRST
+#            TAGS=$(jq -r --arg V "$VERSION" \
+#              '.[] | select(.name==$V) | .tags[]?' versions.json)
+#
+#            for TAG in $TAGS; do
+#              echo "Removing tag: $TAG"
+#
+#              gcloud artifacts tags delete "$TAG" \
+#                --package="$IMAGE" \
+#                --repository="$REPO" \
+#                --location="$REGION" \
+#                --quiet || true
+#            done
+#
+#            # NOW DELETE VERSION
+#            echo "Deleting version: $VERSION"
+#
+#            gcloud artifacts versions delete "$VERSION" \
+#              --repository="$REPO" \
+#              --location="$REGION" \
+#              --quiet || true
+#
+#          done
+#
+#          echo "✅ Cleanup finished"
+
       - name: Cleanup old docker images
         run: |
           echo "🧹 Artifact cleanup started..."
@@ -397,55 +459,31 @@ jobs:
           REPO="${{ env.REPOSITORY }}"
           IMAGE="${{ env.IMAGE_NAME }}"
 
-          # Get versions
-          gcloud artifacts versions list \
-            --package="$IMAGE" \
-            --repository="$REPO" \
-            --location="$REGION" \
-            --format=json > versions.json
+          IMAGE_PATH="$REGION-docker.pkg.dev/$PROJECT/$REPO/$IMAGE"
 
-          # Find latest
-          LATEST_VERSION=$(jq -r '.[] | select(.tags!=null and (.tags[]=="latest")) | .name')
+          # Get tag list
+          TAGS=$(gcloud artifacts docker tags list "$IMAGE_PATH" --format="value(tag)")
 
-          # Find newest v*
-          NEWEST_V_TAG=$(jq -r '.[] | .tags[]?' versions.json | grep '^v' | sort -Vr | head -n1)
+          echo "All tags:"
+          echo "$TAGS"
 
-          NEWEST_V_VERSION=$(jq -r --arg TAG "$NEWEST_V_TAG" \
-            '.[] | select(.tags!=null and (.tags[]==$TAG)) | .name' versions.json)
+          # Find newest v* tag
+          NEWEST_V=$(echo "$TAGS" | grep '^v' | sort -Vr | head -n1)
 
-          echo "Keep latest: $LATEST_VERSION"
-          echo "Keep newest tag: $NEWEST_V_TAG"
+          echo "Keep latest + $NEWEST_V"
 
-          # Loop all versions
-          for VERSION in $(jq -r '.[].name' versions.json); do
+          for TAG in $TAGS; do
 
-            if [[ "$VERSION" == "$LATEST_VERSION" ]]; then continue; fi
-            if [[ "$VERSION" == "$NEWEST_V_VERSION" ]]; then continue; fi
+            if [[ "$TAG" == "latest" ]]; then continue; fi
+            if [[ "$TAG" == "$NEWEST_V" ]]; then continue; fi
 
-            echo "Processing old version: $VERSION"
+            echo "Deleting old tag: $TAG"
 
-            # REMOVE TAGS FIRST
-            TAGS=$(jq -r --arg V "$VERSION" \
-              '.[] | select(.name==$V) | .tags[]?' versions.json)
-
-            for TAG in $TAGS; do
-              echo "Removing tag: $TAG"
-
-              gcloud artifacts tags delete "$TAG" \
-                --package="$IMAGE" \
-                --repository="$REPO" \
-                --location="$REGION" \
-                --quiet || true
-            done
-
-            # NOW DELETE VERSION
-            echo "Deleting version: $VERSION"
-
-            gcloud artifacts versions delete "$VERSION" \
-              --repository="$REPO" \
-              --location="$REGION" \
-              --quiet || true
+            gcloud artifacts docker images delete \
+              "$IMAGE_PATH:$TAG" \
+              --quiet --delete-tags
 
           done
 
           echo "✅ Cleanup finished"
+
