@@ -97,24 +97,27 @@ jobs:
       - name: Cleanup images (keep last 2 builds only)
         run: |
           echo "🧹 Cleaning registry (keeping only last 2 builds)..."
-
+          
           IMAGE_PATH="${{ env.REGION }}-docker.pkg.dev/${{ secrets.GCP_PROJECT_ID }}/${{ env.REPOSITORY }}/${{ env.IMAGE_NAME }}"
-
+          
+          # Get digests sorted newest first
           DIGESTS=$(gcloud artifacts docker images list "$IMAGE_PATH" \
             --include-tags \
             --sort-by=~updateTime \
             --format="value(digest)")
-
+          
           COUNT=0
-
-          echo "$DIGESTS" | while read digest; do
+          
+          for digest in $DIGESTS; do
             COUNT=$((COUNT+1))
-
+          
             if [ $COUNT -le 2 ]; then
               echo "Keeping image $digest"
               continue
             fi
-
+          
             echo "Deleting old image $digest"
-            gcloud artifacts docker images delete "$IMAGE_PATH@$digest" --quiet || true
+            gcloud artifacts docker images delete "$IMAGE_PATH@$digest" \
+              --quiet --delete-tags || true
           done
+
