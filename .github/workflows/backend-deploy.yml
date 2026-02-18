@@ -82,13 +82,19 @@ jobs:
           gcloud artifacts docker images list "$IMAGE_PATH" \
             --include-tags \
             --format="json" \
-          | jq -r '.[] | select(.tags == null or .tags == []) | .digest' \
+          | jq -r '.[] | select(.digest != null and (.tags == null or .tags == [])) | .digest' \
           | while read digest; do
+              if [ -z "$digest" ]; then
+                continue
+              fi
+
               echo "Deleting untagged digest: $digest"
 
               gcloud artifacts docker images delete "$IMAGE_PATH@$digest" \
                 --quiet || true
             done
+      
+      
       
       
       
