@@ -66,49 +66,49 @@ jobs:
           fi
 
       # 7️⃣ Build & Push
-#      - name: Build & Push image
-#        run: |
-#          IMAGE_BASE="${{ env.REGION }}-docker.pkg.dev/${{ secrets.GCP_PROJECT_ID }}/${{ env.REPOSITORY }}/${{ env.IMAGE_NAME }}"
-#
-#          if [ "$IS_TAG" = "true" ]; then
-#          echo "Building RELEASE image: $VERSION_TAG"
-#          gcloud builds submit app/backend \
-#           --tag "$IMAGE_BASE:latest" \
-#           --tag "$IMAGE_BASE:$VERSION_TAG"
-#          else
-#          echo "Building branch image"
-#          gcloud builds submit app/backend \
-#           --tag "$IMAGE_BASE:latest"
-#          fi
+      - name: Build & Push image
+        run: |
+          IMAGE_BASE="${{ env.REGION }}-docker.pkg.dev/${{ secrets.GCP_PROJECT_ID }}/${{ env.REPOSITORY }}/${{ env.IMAGE_NAME }}"
+
+          if [ "$IS_TAG" = "true" ]; then
+          echo "Building RELEASE image: $VERSION_TAG"
+          gcloud builds submit app/backend \
+           --tag "$IMAGE_BASE:latest" \
+           --tag "$IMAGE_BASE:$VERSION_TAG"
+          else
+          echo "Building branch image"
+          gcloud builds submit app/backend \
+           --tag "$IMAGE_BASE:latest"
+          fi
 
       # 8️⃣ Deploy Cloud Run
-#      - name: Deploy to Cloud Run
-#        run: |
-#          gcloud run deploy ${{ env.SERVICE_NAME }} \
-#            --image=${{ env.REGION }}-docker.pkg.dev/${{ secrets.GCP_PROJECT_ID }}/${{ env.REPOSITORY }}/${{ env.IMAGE_NAME }}:latest \
-#            --region=${{ env.REGION }} \
-#            --allow-unauthenticated \
-#            --port=8080 \
-#            --set-env-vars=FLASK_ENV=production,JWT_SECRET=${{ secrets.JWT_SECRET }} \
-#            --update-secrets=FIREBASE_CREDENTIALS_JSON=FIREBASE_CREDENTIALS_JSON:latest,SENDINBLUE_API_KEY=SENDINBLUE_API_KEY:latest,FROM_EMAIL=FROM_EMAIL:latest
-#
-#      # 9️⃣ Wait for Cloud Run to stabilize
-#      - name: Wait for deployment
-#        run: sleep 45
-#
-#        # 🔟 Get currently deployed digest (IMPORTANT)
-#      - name: Get deployed digest
-#        run: |
-#          DEPLOYED_IMAGE=$(gcloud run services describe ${{ env.SERVICE_NAME }} \
-#          --region=${{ env.REGION }} \
-#          --format='value(status.latestReadyRevisionName)')
-#
-#          DEPLOYED_DIGEST=$(gcloud run revisions describe $DEPLOYED_IMAGE \
-#          --region=${{ env.REGION }} \
-#          --format='value(status.imageDigest)')
-#
-#          echo "DEPLOYED_DIGEST=$DEPLOYED_DIGEST" >> $GITHUB_ENV
-#          echo "Deployed digest protected: $DEPLOYED_DIGEST"
+      - name: Deploy to Cloud Run
+        run: |
+          gcloud run deploy ${{ env.SERVICE_NAME }} \
+            --image=${{ env.REGION }}-docker.pkg.dev/${{ secrets.GCP_PROJECT_ID }}/${{ env.REPOSITORY }}/${{ env.IMAGE_NAME }}:latest \
+            --region=${{ env.REGION }} \
+            --allow-unauthenticated \
+            --port=8080 \
+            --set-env-vars=FLASK_ENV=production,JWT_SECRET=${{ secrets.JWT_SECRET }} \
+            --update-secrets=FIREBASE_CREDENTIALS_JSON=FIREBASE_CREDENTIALS_JSON:latest,SENDINBLUE_API_KEY=SENDINBLUE_API_KEY:latest,FROM_EMAIL=FROM_EMAIL:latest
+
+      # 9️⃣ Wait for Cloud Run to stabilize
+      - name: Wait for deployment
+        run: sleep 45
+
+        # 🔟 Get currently deployed digest (IMPORTANT)
+      - name: Get deployed digest
+        run: |
+          DEPLOYED_IMAGE=$(gcloud run services describe ${{ env.SERVICE_NAME }} \
+          --region=${{ env.REGION }} \
+          --format='value(status.latestReadyRevisionName)')
+
+          DEPLOYED_DIGEST=$(gcloud run revisions describe $DEPLOYED_IMAGE \
+          --region=${{ env.REGION }} \
+          --format='value(status.imageDigest)')
+
+          echo "DEPLOYED_DIGEST=$DEPLOYED_DIGEST" >> $GITHUB_ENV
+          echo "Deployed digest protected: $DEPLOYED_DIGEST"
 
 #      - name: Cleanup docker images (tags + branch builds)
 #        run: |
