@@ -574,7 +574,8 @@ def create_booking(payload: Dict[str, Any]) -> Dict[str, Any]:
     user = user_doc.to_dict() if user_doc.exists else {}
 
     duration = int(payload.get("duration", 60))
-
+    logger.info(f"payload data : {payload}")
+    
     available = check_slot_available(
         payload["provider_id"],
         payload["slot_date"],
