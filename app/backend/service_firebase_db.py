@@ -650,6 +650,45 @@ def create_booking(payload: Dict[str, Any]) -> Dict[str, Any]:
 
 
 
+# def booking_detail(booking_id: str) -> Dict[str, Any]:
+#     snap = db.collection(COLL_BOOKINGS).document(booking_id).get()
+#     if not snap.exists:
+#         raise ValueError("Booking not found")
+#
+#     b = snap.to_dict()
+#     b["id"] = booking_id
+#
+#     # ───────── SERVICE INFO ─────────
+#     svc_doc = db.collection("provider_services").document(b["service_id"]).get()
+#     if svc_doc.exists:
+#         svc = svc_doc.to_dict()
+#         b["service_title"] = svc.get("title", "Service")
+#
+#     # ───────── CUSTOMER INFO ─────────
+#     user_doc = db.collection("service_providers").document(b["requester_id"]).get()
+#     if user_doc.exists:
+#         user = user_doc.to_dict()
+#         b["customer_name"] = user.get("name", "Customer")
+#         b["customer_phone"] = user.get("mobile", "")
+#
+#     # ───────── PROVIDER PRICE LOGIC (IMPORTANT FIX) ─────────
+#
+#     provider_amount = (
+#             b.get("provider_earning")
+#             or b.get("service_price")
+#             or b.get("total_cost")
+#             or b.get("amount")
+#             or 0
+#     )
+#
+#     # provider should NOT see platform fee or tax
+#     b["total_cost"] = provider_amount
+#     b["discount"] = 0
+#     b["commission"] = 0
+#     b["payment_status"] = b.get("payment_status") or "unpaid"
+#
+#     return b
+
 def booking_detail(booking_id: str) -> Dict[str, Any]:
     snap = db.collection(COLL_BOOKINGS).document(booking_id).get()
     if not snap.exists:
@@ -657,8 +696,14 @@ def booking_detail(booking_id: str) -> Dict[str, Any]:
 
     b = snap.to_dict()
     logger.info(f"booking data : {b}")
-    provider_name = get_provider_name(b("provider_id"))
+
+
+    provider_name = get_provider_name(b["provider_id"])
     logger.info(f"provider name : {provider_name}")
+
+    #  attach to response
+    b["provider_name"] = provider_name
+
     b["id"] = booking_id
 
     # ───────── SERVICE INFO ─────────
@@ -674,7 +719,7 @@ def booking_detail(booking_id: str) -> Dict[str, Any]:
         b["customer_name"] = user.get("name", "Customer")
         b["customer_phone"] = user.get("mobile", "")
 
-    # ───────── PROVIDER PRICE LOGIC (IMPORTANT FIX) ─────────
+    # ───────── PROVIDER PRICE LOGIC ─────────
 
     provider_amount = (
             b.get("provider_earning")
@@ -684,14 +729,12 @@ def booking_detail(booking_id: str) -> Dict[str, Any]:
             or 0
     )
 
-    # provider should NOT see platform fee or tax
     b["total_cost"] = provider_amount
     b["discount"] = 0
     b["commission"] = 0
     b["payment_status"] = b.get("payment_status") or "unpaid"
 
     return b
-
 
 def debit_provider_wallet(provider_id, amount, booking_id=None):
     ref = db.collection(COLL_SERVICE_WALLETS).document(provider_id)
