@@ -656,6 +656,7 @@ def booking_detail(booking_id: str) -> Dict[str, Any]:
         raise ValueError("Booking not found")
 
     b = snap.to_dict()
+    logger.info(f"booking data : {b}")
     b["id"] = booking_id
 
     # ───────── SERVICE INFO ─────────
