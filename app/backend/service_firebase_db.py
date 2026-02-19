@@ -657,6 +657,8 @@ def booking_detail(booking_id: str) -> Dict[str, Any]:
 
     b = snap.to_dict()
     logger.info(f"booking data : {b}")
+    provider_name = get_provider_name(b("provider_id"))
+    logger.info(f"provider name : {provider_name}")
     b["id"] = booking_id
 
     # ───────── SERVICE INFO ─────────
