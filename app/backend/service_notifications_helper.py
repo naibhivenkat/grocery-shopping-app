@@ -83,3 +83,16 @@ def mark_all_service_notifications_read(provider_id: str):
 
     for doc in docs:
         doc.reference.update({"is_read": True})
+
+
+def get_unread_service_notification_count(provider_id: str):
+    docs = db.collection("service_notifications") \
+        .where("provider_id", "==", provider_id) \
+        .where("is_read", "==", False) \
+        .stream()
+
+    count = 0
+    for _ in docs:
+        count += 1
+
+    return count

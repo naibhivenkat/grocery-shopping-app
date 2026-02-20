@@ -3,7 +3,8 @@ from flask import Blueprint, request, jsonify
 from service_notifications_helper import (
     get_service_notifications,
     mark_service_notification_read,
-    mark_all_service_notifications_read
+    mark_all_service_notifications_read,
+    get_unread_service_notification_count
 )
 
 service_notifications_bp = Blueprint("service_notifications", __name__)
@@ -43,3 +44,15 @@ def mark_all():
     provider_id = request.json.get("provider_id")
     mark_all_service_notifications_read(provider_id)
     return jsonify({"message": "all marked"})
+
+
+@service_notifications_bp.route("/service/notifications/unread-count", methods=["GET"])
+def unread_count():
+    provider_id = request.args.get("provider_id")
+
+    if not provider_id:
+        return jsonify({"error": "provider_id required"}), 400
+
+    count = get_unread_service_notification_count(provider_id)
+
+    return jsonify({"unread": count})
