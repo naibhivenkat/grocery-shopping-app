@@ -6,9 +6,9 @@ from datetime import datetime
 from datetime import datetime, timedelta, timezone
 from typing import Any, Dict, List
 from werkzeug.security import generate_password_hash, check_password_hash
-
+from firebase_db import send_fcm_notification_to_tokens
 import firebase_db
-
+from service_notifications_helper import create_service_notification
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger("service")
 
@@ -645,7 +645,24 @@ def create_booking(payload: Dict[str, Any]) -> Dict[str, Any]:
         payload["requester_id"]
     )
 
-    # 🚫 NO WALLET CREDIT HERE (credit only after completion)
+    notify_provider(
+        payload["provider_id"],
+        "New Booking Assigned",
+        f"Booking #{booking_id} received",
+        "booking",
+        {"booking_id": booking_id, "type": "booking"}
+    )
+
+    notify_customer(
+        payload["requester_id"],
+        "Booking Confirmed",
+        f"Your booking #{booking_id} is confirmed",
+        "booking",
+        {"booking_id": booking_id, "type": "booking"}
+    )
+
+
+# 🚫 NO WALLET CREDIT HERE (credit only after completion)
 
     return {"id": booking_id, **doc}
 
@@ -946,6 +963,14 @@ def accept_booking(booking_id, provider_id):
     ).update({
         "status": "locked"
     })
+    notify_customer(
+        booking["requester_id"],
+        "Booking Accepted",
+        "Provider accepted your booking",
+        "booking",
+        {"booking_id": booking_id, "type": "booking"}
+    )
+
 
 
 def calculate_daily_earnings():
@@ -1170,4 +1195,46 @@ def customer_bookings(requester_id):
         result.append(b)
 
     return result
+
+
+
+def notify_provider(provider_id, title, body, notif_type, payload):
+    create_service_notification(
+        provider_id,
+        title,
+        body,
+        notif_type,
+        payload
+    )
+
+    tokens = firebase_db.get_fcm_tokens_for_user(provider_id)
+
+    send_fcm_notification_to_tokens(
+        tokens=tokens,
+        title=title,
+        body=body,
+        user_id=provider_id,
+        data_payload=payload
+    )
+
+
+def notify_customer(customer_id, title, body, notif_type, payload):
+    create_service_notification(
+        customer_id,
+        title,
+        body,
+        notif_type,
+        payload
+    )
+
+    tokens = firebase_db.get_fcm_tokens_for_user(customer_id)
+
+    send_fcm_notification_to_tokens(
+        tokens=tokens,
+        title=title,
+        body=body,
+        user_id=customer_id,
+        data_payload=payload
+    )
+
 

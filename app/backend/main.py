@@ -35,6 +35,8 @@ from ratings import ratings_bp
 from service_routes import service_bp
 from shop_wallet_routes import shop_wallet_bp
 from wallet_routes import wallet_bp
+from service_notifications_routes import service_notifications_bp
+
 
 app = Flask(__name__)
 app.register_blueprint(wallet_bp)
@@ -46,6 +48,8 @@ app.register_blueprint(service_bp, url_prefix="/service")
 
 
 app.register_blueprint(ratings_bp)
+
+app.register_blueprint(service_notifications_bp)
 
 # Initialize limiter
 limiter = Limiter(key_func=get_remote_address)
