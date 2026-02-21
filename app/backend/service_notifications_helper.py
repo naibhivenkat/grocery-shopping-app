@@ -1,7 +1,9 @@
+import logging
 from datetime import datetime
 from firebase_admin import firestore
-import logging
 from firebase_admin import messaging
+from typing import List
+
 logger = logging.getLogger(__name__)
 db = firestore.client()
 
