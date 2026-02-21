@@ -6,7 +6,13 @@ from datetime import datetime
 from datetime import datetime, timedelta, timezone
 from typing import Any, Dict, List
 from werkzeug.security import generate_password_hash, check_password_hash
-from firebase_db import send_fcm_notification_to_tokens
+
+from service_notifications_helper import (
+    get_fcm_tokens_for_user,
+    send_fcm_notification_to_tokens
+)
+
+
 import firebase_db
 from service_notifications_helper import create_service_notification
 logging.basicConfig(level=logging.INFO)
@@ -1207,13 +1213,14 @@ def notify_provider(provider_id, title, body, notif_type, payload):
         payload
     )
 
-    tokens = firebase_db.get_fcm_tokens_for_user(provider_id)
+    tokens = get_fcm_tokens_for_user(provider_id)
+
 
     send_fcm_notification_to_tokens(
         tokens=tokens,
         title=title,
         body=body,
-        user_id=provider_id,
+        #user_id=provider_id,
         data_payload=payload
     )
 
@@ -1227,13 +1234,14 @@ def notify_customer(customer_id, title, body, notif_type, payload):
         payload
     )
 
-    tokens = firebase_db.get_fcm_tokens_for_user(customer_id)
+    tokens = get_fcm_tokens_for_user(customer_id)
+
 
     send_fcm_notification_to_tokens(
         tokens=tokens,
         title=title,
         body=body,
-        user_id=customer_id,
+        #user_id=customer_id,
         data_payload=payload
     )
 
