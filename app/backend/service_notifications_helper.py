@@ -1,42 +1,46 @@
 from datetime import datetime
 from firebase_admin import firestore
 import logging
-
+from firebase_admin import messaging
 logger = logging.getLogger(__name__)
 db = firestore.client()
+
+COLL_SERVICE_NOTIFICATIONS = "service_notifications"
+
+COLL_FCM_TOKENS = "fcm_tokens"
+############################################################
+# CREATE SERVICE NOTIFICATION
+############################################################
 
 ############################################################
 # CREATE SERVICE NOTIFICATION
 ############################################################
 
-def create_service_notification(
-        provider_id: str,
-        title: str,
-        body: str,
-        notif_type: str,
-        data_payload=None
-):
-    """
-    Save notification in Firestore (service-only collection)
-    """
+def create_service_notification(user_id, title, body, notif_type, data=None):
 
-    try:
-        doc_ref = db.collection("service_notifications").document()
+    doc = {
+        "provider_id": user_id,
+        "title": title,
+        "body": body,
+        "type": notif_type,
+        "is_read": False,
+        "created_at": datetime.utcnow().isoformat(),
+        "data": data or {}
+    }
 
-        doc_ref.set({
-            "provider_id": provider_id,
-            "title": title,
-            "body": body,
-            "type": notif_type,
-            "is_read": False,
-            "created_at": datetime.utcnow().isoformat(),
-            "data": data_payload or {}
-        })
+    db.collection(COLL_SERVICE_NOTIFICATIONS).add(doc)
 
-        logger.info(f"📥 Service notification stored for {provider_id}")
+    logger.info(f"📥 Service notification stored for {user_id}")
 
-    except Exception as e:
-        logger.error(f"❌ Failed storing service notification: {e}")
+    # PUSH
+    tokens = get_fcm_tokens_for_user(user_id)
+
+    send_fcm_notification_to_tokens(
+        tokens,
+        title,
+        body,
+        data_payload=data
+    )
 
 
 ############################################################
@@ -96,3 +100,90 @@ def get_unread_service_notification_count(provider_id: str):
         count += 1
 
     return count
+
+
+############################################################
+# REGISTER TOKEN
+############################################################
+
+def register_fcm_token(user_id: str, role: str, token: str):
+    """
+    Stores FCM token for any user role.
+    """
+
+    if not user_id or not token:
+        return
+
+    # Prevent duplicate token
+    docs = db.collection(COLL_FCM_TOKENS) \
+        .where("token", "==", token) \
+        .stream()
+
+    for d in docs:
+        d.reference.delete()
+
+    db.collection(COLL_FCM_TOKENS).add({
+        "user_id": user_id,
+        "role": role,
+        "token": token,
+        "created_at": datetime.utcnow().isoformat()
+    })
+
+    logger.info(f"✅ FCM token saved for {user_id}")
+
+
+############################################################
+# FETCH TOKENS
+############################################################
+
+def get_fcm_tokens_for_user(user_id: str) -> List[str]:
+    """
+    Returns all FCM tokens for a user.
+    """
+
+    docs = db.collection(COLL_FCM_TOKENS) \
+        .where("user_id", "==", user_id) \
+        .stream()
+
+    tokens = [d.to_dict().get("token") for d in docs]
+
+    logger.info(f"🔵 FCM tokens fetched for {user_id}: {len(tokens)}")
+
+    return tokens
+
+
+############################################################
+# SEND PUSH
+############################################################
+
+def send_fcm_notification_to_tokens(tokens, title, body, data_payload=None):
+    """
+    Sends push to tokens.
+    """
+
+    if not tokens:
+        logger.info("⚠️ No tokens to send notification")
+        return {"success": 0, "failure": 0}
+
+    success = 0
+    failure = 0
+
+    for token in tokens:
+        try:
+            message = messaging.Message(
+                notification=messaging.Notification(
+                    title=title,
+                    body=body
+                ),
+                token=token,
+                data=data_payload or {}
+            )
+
+            messaging.send(message)
+            success += 1
+
+        except Exception as e:
+            logger.info(f"❌ Push failed: {e}")
+            failure += 1
+
+    return {"success": success, "failure": failure}

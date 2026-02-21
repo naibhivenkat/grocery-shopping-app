@@ -56,3 +56,5 @@ def unread_count():
     count = get_unread_service_notification_count(provider_id)
 
     return jsonify({"unread": count})
+
+

@@ -4,7 +4,7 @@ import razorpay
 from datetime import datetime, timedelta, timezone
 from flask import Blueprint, request, jsonify
 from google.cloud import firestore
-
+from service_notifications_helper import  register_fcm_token
 from service_firebase_db import (
     # AUTH
     create_service_provider,
@@ -971,5 +971,21 @@ def cancel_booking(booking_id):
 
     # refund trigger
     initiate_refund({**booking, "id": booking_id})
+
+    return jsonify({"success": True})
+
+
+@service_bp.route("service/api/register_fcm_token", methods=["POST"])
+def register_token():
+    body = request.json
+
+    user_id = body.get("user_id")
+    role = body.get("role")
+    token = body.get("token")
+
+    if not user_id or not token:
+        return jsonify({"error": "user_id and token required"}), 400
+
+    register_fcm_token(user_id, role, token)
 
     return jsonify({"success": True})
