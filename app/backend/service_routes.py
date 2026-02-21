@@ -975,7 +975,7 @@ def cancel_booking(booking_id):
     return jsonify({"success": True})
 
 
-@service_bp.route("service/api/register_fcm_token", methods=["POST"])
+@service_bp.route("/service/api/register_fcm_token", methods=["POST"])
 def register_token():
     body = request.json
 
