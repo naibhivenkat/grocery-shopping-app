@@ -725,12 +725,23 @@ def reject_booking(booking_id):
         except Exception as e:
             logger.error(f"Refund failed: {e}")
 
+    # notify_customer(
+    #     booking["requester_id"],
+    #     "Booking Rejected",
+    #     "Provider rejected your booking. Refund initiated.",
+    #     "booking",
+    #     {"booking_id": booking_id, "type": "booking"}
+    # )
+
+
+    # 🔔 Notify Customer (sender = provider)
     notify_customer(
         booking["requester_id"],
         "Booking Rejected",
         "Provider rejected your booking. Refund initiated.",
         "booking",
-        {"booking_id": booking_id, "type": "booking"}
+        {"booking_id": booking_id, "type": "booking"},
+        sender_id=booking["provider_id"]
     )
 
 
@@ -782,12 +793,21 @@ def start_service(booking_id):
         "provider_id": provider_id
     })
 
+    # notify_customer(
+    #     booking["requester_id"],
+    #     "Service Started",
+    #     "Provider has started the service",
+    #     "booking",
+    #     {"booking_id": booking_id, "type": "booking"}
+    # )
+
     notify_customer(
         booking["requester_id"],
         "Service Started",
         "Provider has started the service",
         "booking",
-        {"booking_id": booking_id, "type": "booking"}
+        {"booking_id": booking_id, "type": "booking"},
+        sender_id=booking["provider_id"]
     )
 
 
@@ -848,16 +868,18 @@ def complete_service(booking_id):
         "Service Completed",
         "Service completed successfully",
         "booking",
-        {"booking_id": booking_id, "type": "booking"}
-        )
+        {"booking_id": booking_id, "type": "booking"},
+        sender_id=provider_id
+    )
 
     notify_provider(
-            provider_id,
-            "Wallet Credited",
-            f"₹{provider_earning} added to wallet",
-            "payment",
-            {"booking_id": booking_id, "type": "payment"}
-        )
+        provider_id,
+        "Wallet Credited",
+        f"₹{provider_earning} added to wallet",
+        "payment",
+        {"booking_id": booking_id, "type": "payment"},
+        sender_id=None
+    )
 
 
     return jsonify({"message": "Service completed & wallet credited"})

@@ -651,67 +651,44 @@ def create_booking(payload: Dict[str, Any]) -> Dict[str, Any]:
         payload["requester_id"]
     )
 
+    # notify_provider(
+    #     payload["provider_id"],
+    #     "New Booking Assigned",
+    #     f"Booking #{booking_id} received",
+    #     "booking",
+    #     {"booking_id": booking_id, "type": "booking"}
+    # )
+    #
+    #
+    # notify_customer(
+    #     payload["requester_id"],
+    #     "Booking Confirmed",
+    #     f"Your booking #{booking_id} is confirmed",
+    #     "booking",
+    #     {"booking_id": booking_id, "type": "booking"}
+    # )
+    # 🔔 Notify Provider (sender = customer)
     notify_provider(
         payload["provider_id"],
         "New Booking Assigned",
         f"Booking #{booking_id} received",
         "booking",
-        {"booking_id": booking_id, "type": "booking"}
+        {"booking_id": booking_id, "type": "booking"},
+        sender_id=payload["requester_id"]
     )
 
+    # 🔔 Notify Customer (sender = provider)
     notify_customer(
         payload["requester_id"],
         "Booking Confirmed",
         f"Your booking #{booking_id} is confirmed",
         "booking",
-        {"booking_id": booking_id, "type": "booking"}
+        {"booking_id": booking_id, "type": "booking"},
+        sender_id=payload["provider_id"]
     )
-
-
-# 🚫 NO WALLET CREDIT HERE (credit only after completion)
 
     return {"id": booking_id, **doc}
 
-
-
-# def booking_detail(booking_id: str) -> Dict[str, Any]:
-#     snap = db.collection(COLL_BOOKINGS).document(booking_id).get()
-#     if not snap.exists:
-#         raise ValueError("Booking not found")
-#
-#     b = snap.to_dict()
-#     b["id"] = booking_id
-#
-#     # ───────── SERVICE INFO ─────────
-#     svc_doc = db.collection("provider_services").document(b["service_id"]).get()
-#     if svc_doc.exists:
-#         svc = svc_doc.to_dict()
-#         b["service_title"] = svc.get("title", "Service")
-#
-#     # ───────── CUSTOMER INFO ─────────
-#     user_doc = db.collection("service_providers").document(b["requester_id"]).get()
-#     if user_doc.exists:
-#         user = user_doc.to_dict()
-#         b["customer_name"] = user.get("name", "Customer")
-#         b["customer_phone"] = user.get("mobile", "")
-#
-#     # ───────── PROVIDER PRICE LOGIC (IMPORTANT FIX) ─────────
-#
-#     provider_amount = (
-#             b.get("provider_earning")
-#             or b.get("service_price")
-#             or b.get("total_cost")
-#             or b.get("amount")
-#             or 0
-#     )
-#
-#     # provider should NOT see platform fee or tax
-#     b["total_cost"] = provider_amount
-#     b["discount"] = 0
-#     b["commission"] = 0
-#     b["payment_status"] = b.get("payment_status") or "unpaid"
-#
-#     return b
 
 def booking_detail(booking_id: str) -> Dict[str, Any]:
     snap = db.collection(COLL_BOOKINGS).document(booking_id).get()
@@ -969,13 +946,23 @@ def accept_booking(booking_id, provider_id):
     ).update({
         "status": "locked"
     })
+    # notify_customer(
+    #     booking["requester_id"],
+    #     "Booking Accepted",
+    #     "Provider accepted your booking",
+    #     "booking",
+    #     {"booking_id": booking_id, "type": "booking"}
+    # )
     notify_customer(
         booking["requester_id"],
         "Booking Accepted",
         "Provider accepted your booking",
         "booking",
-        {"booking_id": booking_id, "type": "booking"}
+        {"booking_id": booking_id, "type": "booking"},
+        sender_id=provider_id
     )
+
+
 
 
 
@@ -1204,45 +1191,41 @@ def customer_bookings(requester_id):
 
 
 
-def notify_provider(provider_id, title, body, notif_type, payload):
+def notify_provider(provider_id, title, body, notif_type, payload, sender_id=None):
     create_service_notification(
-        provider_id,
-        title,
-        body,
-        notif_type,
-        payload
+        receiver_id=provider_id,
+        title=title,
+        body=body,
+        notif_type=notif_type,
+        data=payload,
+        sender_id=sender_id
     )
 
     tokens = get_fcm_tokens_for_user(provider_id)
 
-
     send_fcm_notification_to_tokens(
         tokens=tokens,
         title=title,
         body=body,
-        #user_id=provider_id,
         data_payload=payload
     )
 
-
-def notify_customer(customer_id, title, body, notif_type, payload):
+def notify_customer(customer_id, title, body, notif_type, payload, sender_id=None):
     create_service_notification(
-        customer_id,
-        title,
-        body,
-        notif_type,
-        payload
+        receiver_id=customer_id,
+        title=title,
+        body=body,
+        notif_type=notif_type,
+        data=payload,
+        sender_id=sender_id
     )
 
     tokens = get_fcm_tokens_for_user(customer_id)
 
-
     send_fcm_notification_to_tokens(
         tokens=tokens,
         title=title,
         body=body,
-        #user_id=customer_id,
         data_payload=payload
     )
-
 

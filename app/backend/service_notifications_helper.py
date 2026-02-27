@@ -18,24 +18,84 @@ COLL_FCM_TOKENS = "fcm_tokens"
 # CREATE SERVICE NOTIFICATION
 ############################################################
 
-def create_service_notification(user_id, title, body, notif_type, data=None):
+# def create_service_notification(user_id, title, body, notif_type, data=None):
+#
+#     doc = {
+#         "provider_id": user_id,
+#         "title": title,
+#         "body": body,
+#         "type": notif_type,
+#         "is_read": False,
+#         "created_at": datetime.utcnow().isoformat(),
+#         "data": data or {}
+#     }
+#
+#     db.collection(COLL_SERVICE_NOTIFICATIONS).add(doc)
+#
+#     logger.info(f"📥 Service notification stored for {user_id}")
+#
+#     # PUSH
+#     tokens = get_fcm_tokens_for_user(user_id)
+#
+#     send_fcm_notification_to_tokens(
+#         tokens,
+#         title,
+#         body,
+#         data_payload=data
+#     )
+
+
+############################################################
+# FETCH NOTIFICATIONS
+############################################################
+
+
+def create_service_notification(
+        receiver_id,
+        title,
+        body,
+        notif_type,
+        sender_id=None,
+        sender_type=None,
+        data=None
+):
+
+    sender_name = None
+    sender_photo = None
+
+    # 🔹 FETCH SENDER SNAPSHOT
+    if sender_id and sender_type:
+        if sender_type == "service_provider":
+            snap = db.collection("service_providers").document(sender_id).get()
+        else:
+            snap = db.collection("service_providers").document(sender_id).get()
+
+        if snap.exists:
+            s = snap.to_dict()
+            sender_name = s.get("name")
+            sender_photo = s.get("photo_base64")
 
     doc = {
-        "provider_id": user_id,
+        "provider_id": receiver_id,
         "title": title,
         "body": body,
         "type": notif_type,
         "is_read": False,
         "created_at": datetime.utcnow().isoformat(),
-        "data": data or {}
+        "data": data or {},
+
+        # ✅ NEW SNAPSHOT FIELDS
+        "sender_id": sender_id,
+        "sender_type": sender_type,
+        "sender_name": sender_name,
+        "sender_photo": sender_photo,
     }
 
     db.collection(COLL_SERVICE_NOTIFICATIONS).add(doc)
 
-    logger.info(f"📥 Service notification stored for {user_id}")
+    logger.info(f"📥 Service notification stored for {receiver_id}")
 
-    # PUSH
-    tokens = get_fcm_tokens_for_user(user_id)
+    tokens = get_fcm_tokens_for_user(receiver_id)
 
     send_fcm_notification_to_tokens(
         tokens,
@@ -43,12 +103,6 @@ def create_service_notification(user_id, title, body, notif_type, data=None):
         body,
         data_payload=data
     )
-
-
-############################################################
-# FETCH NOTIFICATIONS
-############################################################
-
 def get_service_notifications(provider_id: str):
 
     docs = db.collection("service_notifications") \
