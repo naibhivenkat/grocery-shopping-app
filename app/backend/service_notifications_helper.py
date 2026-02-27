@@ -56,24 +56,33 @@ def create_service_notification(
         body,
         notif_type,
         sender_id=None,
-        sender_type=None,
         data=None
 ):
 
     sender_name = None
     sender_photo = None
+    sender_type = None
 
-    # 🔹 FETCH SENDER SNAPSHOT
-    if sender_id and sender_type:
-        if sender_type == "service_provider":
-            snap = db.collection("service_providers").document(sender_id).get()
-        else:
-            snap = db.collection("service_providers").document(sender_id).get()
+    # 🔹 FETCH SENDER SNAPSHOT (AUTO DETECT COLLECTION)
+    if sender_id:
+
+        # Try service_providers
+        snap = db.collection("service_providers").document(sender_id).get()
 
         if snap.exists:
             s = snap.to_dict()
             sender_name = s.get("name")
             sender_photo = s.get("photo_base64")
+            sender_type = "service_provider"
+
+        else:
+            # Try customers collection (if you have one)
+            snap = db.collection("customers").document(sender_id).get()
+            if snap.exists:
+                s = snap.to_dict()
+                sender_name = s.get("name")
+                sender_photo = s.get("photo_base64")
+                sender_type = "customer"
 
     doc = {
         "provider_id": receiver_id,
@@ -84,7 +93,6 @@ def create_service_notification(
         "created_at": datetime.utcnow().isoformat(),
         "data": data or {},
 
-        # ✅ NEW SNAPSHOT FIELDS
         "sender_id": sender_id,
         "sender_type": sender_type,
         "sender_name": sender_name,
