@@ -9,7 +9,6 @@ import uuid
 from datetime import datetime, timedelta, timezone
 from firebase_admin import credentials, firestore, storage as fb_storage, messaging
 
-
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
 logger = logging.getLogger("order_api")
 # ---------------------------------------------------------------------
@@ -106,6 +105,7 @@ def upload_base64_image(base64_str, folder="images"):
         method="GET"
     )
     return signed_url
+
 
 def get_all_shops():
     return [doc.to_dict() for doc in db.collection("shops").stream()]
@@ -271,7 +271,7 @@ def upload_invoice_to_storage(order_id, pdf_buffer, customer_id=None):
         # 🔥 Generate signed URL instead of blob.make_public()
         url = blob.generate_signed_url(
             version="v4",
-            expiration= timedelta(days=7),  # link valid for 7 days
+            expiration=timedelta(days=7),  # link valid for 7 days
             method="GET"
         )
 
@@ -448,7 +448,7 @@ def get_user_firestore_ref(customerId):
     return None, None
 
 
-#-----------------------------
+# -----------------------------
 # Helper: Get shop document
 # -----------------------------
 # -----------------------------
@@ -495,7 +495,7 @@ def get_or_create_khata_account(shop_id, customer_id, name=None, phone=None):
         "customer_name": name or "",
         "phone": phone or "",
         "balance": 0.0,
-        "shop_name": shop_name,      # ⭐ ALWAYS WRITE SHOP NAME
+        "shop_name": shop_name,  # ⭐ ALWAYS WRITE SHOP NAME
         "updated_at": time_data
     }
 
@@ -507,7 +507,6 @@ def get_or_create_khata_account(shop_id, customer_id, name=None, phone=None):
 # ADD TRANSACTION
 # -----------------------------
 def add_khata_transaction(shop_id, customer_id, amount, tx_type, note="", order_id=None):
-
     doc_id = f"{shop_id}_{customer_id}"
     ref = db.collection("khata_accounts").document(doc_id)
     acc = ref.get().to_dict()
@@ -550,15 +549,13 @@ def add_khata_transaction(shop_id, customer_id, amount, tx_type, note="", order_
     ref.update({
         "balance": float(new_balance),
         "updated_at": datetime.utcnow(),
-        "shop_name": shop_name   # ⭐ MANDATORY FIX
+        "shop_name": shop_name  # ⭐ MANDATORY FIX
     })
 
     return {
         "transaction": tx_data,
         "balance": new_balance
     }
-
-
 
 
 # -----------------------------
@@ -575,7 +572,6 @@ def get_khata_account(shop_id, customer_id):
 
 
 def list_khata_transactions(shop_id, customer_id, limit=200):
-
     snap = (
         db.collection("khata_transactions")
         .where("shop_id", "==", shop_id)
@@ -633,6 +629,7 @@ def list_khata_accounts_for_customer(customer_id):
     snap = db.collection("khata_accounts").where("customer_id", "==", customer_id).get()
     return [doc.to_dict() for doc in snap]
 
+
 def credit_customer_wallet_only(customer_id, amount, order_uuid):
     """
     Credit customer wallet WITHOUT debiting shop wallet.
@@ -647,7 +644,7 @@ def credit_customer_wallet_only(customer_id, amount, order_uuid):
             f"👛 Customer wallet credit (Razorpay) → customer={customer_id} | amount={amount}"
         )
 
-        customer_ref =db.collection("customers").document(customer_id)
+        customer_ref = db.collection("customers").document(customer_id)
 
         db.run_transaction(lambda tx: _credit_wallet_tx(
             tx, customer_ref, amount, order_uuid
@@ -725,7 +722,6 @@ def add_shop_rating(rating_data: dict):
         return False, str(e)
 
 
-
 def get_shop_rating_analytics(shop_id: str):
     """
     Returns emoji analytics + average rating for a shop.
@@ -777,7 +773,6 @@ def get_shop_rating_analytics(shop_id: str):
 
 
 def get_shop_reviews_by_emoji(shop_id, emoji, limit=20, last_created_at=None):
-
     query = (
         db.collection("ratings")
         .where("shop_id", "==", shop_id)
@@ -832,4 +827,3 @@ def credit_customer_wallet(customer_id, amount, reference=""):
     user_ref.update({"wallet_balance": bal + float(amount)})
 
     logger.info(f"Credited to Customer Wallet --> Rs. {amount}/-")
-

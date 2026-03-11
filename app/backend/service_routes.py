@@ -670,7 +670,6 @@ def accept_booking(booking_id):
         return jsonify({"error": str(e)}), 400
 
 
-
 @service_bp.route("/bookings/<booking_id>/reject", methods=["POST"])
 def reject_booking(booking_id):
     data = request.json
@@ -724,15 +723,6 @@ def reject_booking(booking_id):
             initiate_refund(booking)
         except Exception as e:
             logger.error(f"Refund failed: {e}")
-
-    # notify_customer(
-    #     booking["requester_id"],
-    #     "Booking Rejected",
-    #     "Provider rejected your booking. Refund initiated.",
-    #     "booking",
-    #     {"booking_id": booking_id, "type": "booking"}
-    # )
-
 
     # 🔔 Notify Customer (sender = provider)
     notify_customer(
@@ -793,14 +783,6 @@ def start_service(booking_id):
         "provider_id": provider_id
     })
 
-    # notify_customer(
-    #     booking["requester_id"],
-    #     "Service Started",
-    #     "Provider has started the service",
-    #     "booking",
-    #     {"booking_id": booking_id, "type": "booking"}
-    # )
-
     notify_customer(
         booking["requester_id"],
         "Service Started",
@@ -812,7 +794,6 @@ def start_service(booking_id):
 
 
     return jsonify({"message": "Service started"})
-
 
 
 @service_bp.route("/bookings/<booking_id>/complete", methods=["POST"])
@@ -901,7 +882,6 @@ def provider_earnings_dashboard_api():
         return jsonify({"error": str(e)}), 500
 
 
-
 @service_bp.route("/customer/bookings/<requester_id>", methods=["GET"])
 def customer_bookings(requester_id):
     docs = db.collection("service_bookings") \
@@ -960,7 +940,6 @@ def customer_bookings(requester_id):
     logger.info(f"Returning customer bookings -> {data}")
 
     return jsonify({"bookings": data})
-
 
 
 @service_bp.route("/booking/<booking_id>/cancel", methods=["POST"])

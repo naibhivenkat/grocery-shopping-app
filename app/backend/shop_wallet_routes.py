@@ -4,9 +4,11 @@ from flask import Blueprint, jsonify, request
 from google.cloud import firestore
 from firebase_db import db
 import logging
+
 shop_wallet_bp = Blueprint("shop_wallet", __name__)
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
 logger = logging.getLogger("order_api")
+
 
 # ============================================================
 # 🔹 Helpers
@@ -130,7 +132,6 @@ def add_income_to_shop(shop_id, amount, order_id):
     shop_ref.update({"wallet_balance": new_balance})
     legacy_ref.update({"wallet_balance": new_balance})
 
-
     # Write only ONE transaction
     tx_id = str(uuid.uuid4())
     tx = {
@@ -145,12 +146,9 @@ def add_income_to_shop(shop_id, amount, order_id):
     logger.info(f"✅✅ ***** Amount Added to Shop Wallet *****")
 
 
-
 # ============================================================
 # 🔹 REFUND / PARTIAL REFUND
 # ===========================================================
-
-
 
 
 def deduct_shop_refund(shop_id, amount, order_id, is_partial=False):
@@ -194,5 +192,3 @@ def deduct_shop_refund(shop_id, amount, order_id, is_partial=False):
 
     # ✅ THIS IS THE CORRECT WAY TO EXECUTE
     shop_wallet_txn(transaction)
-
-

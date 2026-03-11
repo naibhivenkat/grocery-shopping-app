@@ -9,6 +9,7 @@ from service_notifications_helper import (
 
 service_notifications_bp = Blueprint("service_notifications", __name__)
 
+
 ############################################################
 # FETCH
 ############################################################
@@ -56,5 +57,3 @@ def unread_count():
     count = get_unread_service_notification_count(provider_id)
 
     return jsonify({"unread": count})
-
-

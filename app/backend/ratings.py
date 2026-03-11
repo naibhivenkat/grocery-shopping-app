@@ -1,8 +1,10 @@
 from flask import Blueprint, request, jsonify
 from firebase_admin import firestore
 import firebase_db
+
 ratings_bp = Blueprint("ratings", __name__)
 db = firestore.client()
+
 
 @ratings_bp.route("/shop/reviews", methods=["GET"])
 def shop_reviews():
@@ -24,7 +26,7 @@ def shop_reviews():
     if not emoji:
         return jsonify({"reviews": []}), 200
 
-    reviews =  firebase_db.get_shop_reviews_by_emoji(shop_id, emoji)
+    reviews = firebase_db.get_shop_reviews_by_emoji(shop_id, emoji)
 
     return jsonify({
         "reviews": reviews

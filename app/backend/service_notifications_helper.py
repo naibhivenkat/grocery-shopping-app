@@ -13,43 +13,6 @@ COLL_FCM_TOKENS = "fcm_tokens"
 ############################################################
 # CREATE SERVICE NOTIFICATION
 ############################################################
-
-############################################################
-# CREATE SERVICE NOTIFICATION
-############################################################
-
-# def create_service_notification(user_id, title, body, notif_type, data=None):
-#
-#     doc = {
-#         "provider_id": user_id,
-#         "title": title,
-#         "body": body,
-#         "type": notif_type,
-#         "is_read": False,
-#         "created_at": datetime.utcnow().isoformat(),
-#         "data": data or {}
-#     }
-#
-#     db.collection(COLL_SERVICE_NOTIFICATIONS).add(doc)
-#
-#     logger.info(f"📥 Service notification stored for {user_id}")
-#
-#     # PUSH
-#     tokens = get_fcm_tokens_for_user(user_id)
-#
-#     send_fcm_notification_to_tokens(
-#         tokens,
-#         title,
-#         body,
-#         data_payload=data
-#     )
-
-
-############################################################
-# FETCH NOTIFICATIONS
-############################################################
-
-
 def create_service_notification(
         receiver_id,
         title,

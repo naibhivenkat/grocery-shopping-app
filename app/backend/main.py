@@ -37,15 +37,12 @@ from shop_wallet_routes import shop_wallet_bp
 from wallet_routes import wallet_bp
 from service_notifications_routes import service_notifications_bp
 
-
 app = Flask(__name__)
 app.register_blueprint(wallet_bp)
 app.register_blueprint(shop_wallet_bp)
 app.register_blueprint(khata_bp, url_prefix="/api/khata")
 
-
 app.register_blueprint(service_bp, url_prefix="/service")
-
 
 app.register_blueprint(ratings_bp)
 
@@ -56,7 +53,6 @@ limiter = Limiter(key_func=get_remote_address)
 limiter.init_app(app)
 
 CORS(app)
-
 
 # logging.basicConfig(level=logging.INFO)
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
@@ -71,11 +67,10 @@ logo_url = "https://cdn-icons-png.flaticon.com/512/263/263142.png"
 otp_store = {}
 forgot_password_otp_store = {}
 
-#GITHUB_REPO = "naibhivenkat/grocery-shopping-app"
+# GITHUB_REPO = "naibhivenkat/grocery-shopping-app"
 
 GITHUB_REPO = "naibhivenkat/grocery-shopping-app-flutter"
 GITHUB_API = "https://api.github.com/repos"
-
 
 # 🔹 Initialize Razorpay client
 RAZORPAY_KEY_ID = "rzp_test_RKK3DuGSaxK9fR"
@@ -96,11 +91,11 @@ REQUEST_LATENCY = Histogram(
     ["endpoint"]
 )
 
-
 SECRET_KEY = os.environ.get("JWT_SECRET")
 
 if not SECRET_KEY:
     raise RuntimeError("JWT_SECRET missing in environment")
+
 
 @app.route("/")
 def index():
@@ -146,8 +141,6 @@ def record_metrics(response):
     return response
 
 
-
-
 @app.before_request
 def load_current_user():
     auth_header = request.headers.get("Authorization", "")
@@ -174,7 +167,6 @@ def load_current_user():
             g.current_user = None
     else:
         g.current_user = None
-
 
 
 def generate_token(user):
@@ -489,8 +481,6 @@ def change_password():
         return jsonify({"success": False, "message": str(e)}), 500
 
 
-
-
 @app.route('/update_profile', methods=['POST'])
 def update_profile():
     data = request.get_json()
@@ -523,7 +513,7 @@ def update_profile():
                 data["photo_base64"],
                 folder="profile_photos"
             )
-            update_fields["photo_url"] = photo_url   # ✅ only URL stored
+            update_fields["photo_url"] = photo_url  # ✅ only URL stored
         except Exception as e:
             return jsonify({'success': False, 'message': f'Image upload failed: {str(e)}'}), 500
 
@@ -1216,6 +1206,8 @@ def check_update():
     except Exception as e:
         logging.exception("Update check failed")
         return jsonify({"error": str(e)}), 500
+
+
 def send_email_otp(email, otp):
     try:
         logger.info(f"SENDINBLUE_API_KEY {SENDINBLUE_API_KEY}")

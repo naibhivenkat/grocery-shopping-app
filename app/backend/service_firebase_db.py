@@ -651,22 +651,6 @@ def create_booking(payload: Dict[str, Any]) -> Dict[str, Any]:
         payload["requester_id"]
     )
 
-    # notify_provider(
-    #     payload["provider_id"],
-    #     "New Booking Assigned",
-    #     f"Booking #{booking_id} received",
-    #     "booking",
-    #     {"booking_id": booking_id, "type": "booking"}
-    # )
-    #
-    #
-    # notify_customer(
-    #     payload["requester_id"],
-    #     "Booking Confirmed",
-    #     f"Your booking #{booking_id} is confirmed",
-    #     "booking",
-    #     {"booking_id": booking_id, "type": "booking"}
-    # )
     # 🔔 Notify Provider (sender = customer)
     notify_provider(
         payload["provider_id"],
@@ -946,13 +930,7 @@ def accept_booking(booking_id, provider_id):
     ).update({
         "status": "locked"
     })
-    # notify_customer(
-    #     booking["requester_id"],
-    #     "Booking Accepted",
-    #     "Provider accepted your booking",
-    #     "booking",
-    #     {"booking_id": booking_id, "type": "booking"}
-    # )
+
     notify_customer(
         booking["requester_id"],
         "Booking Accepted",
