@@ -1,19 +1,17 @@
 import base64
 import datetime
-import io
-import jwt
 import logging
 import os
 import random
-import razorpay
-import requests
 import time
 import traceback
 import uuid
-from datetime import datetime
 from datetime import datetime, timedelta, timezone
-from firebase_admin import credentials, auth, db, firestore
-from firebase_admin import messaging
+
+import jwt
+import razorpay
+import requests
+from firebase_admin import db, firestore
 from flask import Flask, request, jsonify, g, Response
 from flask_cors import CORS
 from flask_limiter import Limiter
@@ -32,10 +30,10 @@ from weasyprint import HTML, CSS
 import firebase_db
 from khata import khata_bp
 from ratings import ratings_bp
+from service_notifications_routes import service_notifications_bp
 from service_routes import service_bp
 from shop_wallet_routes import shop_wallet_bp
 from wallet_routes import wallet_bp
-from service_notifications_routes import service_notifications_bp
 
 app = Flask(__name__)
 app.register_blueprint(wallet_bp)
@@ -73,8 +71,8 @@ GITHUB_REPO = "naibhivenkat/grocery-shopping-app-flutter"
 GITHUB_API = "https://api.github.com/repos"
 
 # 🔹 Initialize Razorpay client
-RAZORPAY_KEY_ID = "rzp_test_RKK3DuGSaxK9fR"
-RAZORPAY_KEY_SECRET = "VgVc96Pdn3t5T8ieX0nb2ajt"
+RAZORPAY_KEY_ID = "rzp_test_RKK3DuGSaxK9fR"  # todo: Need to Change with live api Id
+RAZORPAY_KEY_SECRET = "VgVc96Pdn3t5T8ieX0nb2ajt"  # todo: Need to Change with live api key
 razorpay_client = razorpay.Client(auth=(RAZORPAY_KEY_ID, RAZORPAY_KEY_SECRET))
 
 # Count of total HTTP requests
@@ -513,7 +511,7 @@ def update_profile():
                 data["photo_base64"],
                 folder="profile_photos"
             )
-            update_fields["photo_url"] = photo_url  # ✅ only URL stored
+            update_fields["photo_url"] = photo_url
         except Exception as e:
             return jsonify({'success': False, 'message': f'Image upload failed: {str(e)}'}), 500
 
@@ -856,7 +854,7 @@ def verify_payment():
     logger.info(f"🔎 VERIFY PAYMENT DATA: {data}")
 
     # ✅ Accept BOTH payload formats (old + new)
-    backend_order_uuid = data.get("backend_order_id")  # ✅ your app sends this (FireStore UUID)
+    backend_order_uuid = data.get("backend_order_id")
     razorpay_payment_id = data.get("payment_id") or data.get("razorpay_payment_id")
     razorpay_order_id = data.get("order_id") or data.get("razorpay_order_id")
     razorpay_signature = data.get("signature") or data.get("razorpay_signature")
@@ -918,7 +916,6 @@ def verify_payment():
         except Exception as e:
             logger.error(f"❌ Shop wallet credit error: {e}")
 
-        # ✅ Add Khata (only if due exists)
         try:
             due_amount = float(order_doc.get("due_amount", 0) or 0)
             if due_amount > 0:
@@ -1000,7 +997,7 @@ def process_wallet_refund(
         payload = {
             "user_id": firestore_user_id,
             "customerId": customerId,
-            "shopId": shop_id,  # ✅ REQUIRED
+            "shopId": shop_id,
             "amount": float(amount),
             "order_id": order_uuid,
             "is_partial": bool(is_partial)
@@ -1037,7 +1034,7 @@ def process_wallet_refund(
         })
 
         logger.info(
-            f"💰 {refund_type} SUCCESS → +₹{amount} customer={customerId} | shop={shop_id}"
+            f"💰 Refund SUCCESS →  To Customer"
         )
 
         return True
@@ -1423,14 +1420,14 @@ def get_shop_by_owner():
 def send_password_reset_otp():
     data = request.get_json()
     email = data.get("email")
-    logger.info(f"DEBUG: Looking for email: {email}")
+
     if not email:
         return jsonify({"success": False, "message": "Email required"}), 400
 
     # Check if user exists in Firestore
     users_ref = firebase_db.db.collection("users")
     query = users_ref.where("email", "==", email).limit(1).get()
-    logger.info(f"DEBUG: Query result : {query}")
+
     if not query:
         return jsonify({"success": False, "message": "Email not registered"}), 404
 
@@ -1559,7 +1556,7 @@ def require_authentication():
 
     for path in public_paths:
         if request.path.startswith(path):
-            return None  # ✅ allow access without token
+            return None
 
     auth_header = request.headers.get("Authorization")
 
@@ -1635,9 +1632,6 @@ def update_order_items(order_uuid):
         if difference > 0 and refund_mode:
             refund_amount = float(difference)
 
-            logger.info(f"💰 Refund Triggered: ₹{refund_amount}, Mode={refund_mode}")
-            logger.info(f"🧾 Refund Order={order_uuid} | customer={customer_id} | shop={shop_id}")
-
             refund_status = "initiated"
 
             if refund_mode == "SHOP_WALLET":
@@ -1711,7 +1705,7 @@ def update_order_items(order_uuid):
         # ===================================================
         elif difference < 0:
             extra_amount = abs(float(difference))
-            logger.info(f"📝 Raising Extra Payment Request: ₹{extra_amount}")
+            logger.info(f"📝 Raising Extra Payment Request")
 
             firebase_db.db.collection("orders").document(order_firestore_id).update({
                 "items": new_items,
@@ -2188,7 +2182,7 @@ def send_invoice_email(email, order_data, pdf_buffer, logo_url=None):
         headers = {"api-key": SENDINBLUE_API_KEY, "Content-Type": "application/json"}
         response = requests.post("https://api.sendinblue.com/v3/smtp/email", headers=headers,
                                  json=data)
-        logger.info(f"[DEBUG] Invoice email response: {response.status_code}, {response.text}")
+
         return response.status_code in (200, 201, 202)
 
     except Exception as e:
@@ -2461,11 +2455,8 @@ def process_and_send_invoice(order_doc, logo_url=None):
             "payment_method": order_doc.get("payment_method", "Razorpay"),
         }
 
-        logger.info(f"[DEBUG] 🧾 Order data for invoice: {order_data}")
-
         # --- Generate PDF ---
         pdf_buffer = generate_invoice_pdf(order_data, logo_url=logo_url)
-        logger.info(f"[DEBUG] ✅ PDF generated ({len(pdf_buffer.getvalue())} bytes)")
 
         # --- Send Email (as before) ---
         send_invoice_email(
@@ -2762,7 +2753,6 @@ def handle_invoice(order_doc, normalized_status: str):
     order_uuid = order_doc["order_uuid"]
 
     try:
-        logger.info(f"📦 Generating invoice for order {order_uuid}...")
         success = process_and_send_invoice(order_doc, logo_url=logo_url)
 
         if success:
@@ -2798,7 +2788,7 @@ def send_customer_notification(order_doc, new_status: str):
         }
 
         res = firebase_db.send_fcm_notification_to_tokens(tokens, title, body, data_payload)
-        logger.info(f"📲 Notification sent → {res}")
+        logger.info(f"📲 Notification sent")
 
     except Exception as e:
         logger.error(f"❌ Notification error: {e}")
@@ -2844,12 +2834,12 @@ def update_order_status():
 
     if normalized_status in CANCEL_STATUSES:
         logger.info(f"🔴 Cancel detected → refund flow → {order_uuid}")
-        handle_refund(order_doc, refund_mode)  # 🔴 CHANGED
+        handle_refund(order_doc, refund_mode)
 
     elif normalized_status == "delivered":
-        handle_partial_refund(order_doc, refund_mode)  # 🔴 CHANGED
+        handle_partial_refund(order_doc, refund_mode)
 
-    # -------------------------
+        # -------------------------
     # Invoice
     # -------------------------
     if normalized_status == "delivered":
@@ -2931,9 +2921,7 @@ def handle_partial_refund(order_doc, refund_mode: str):
     refund_total = ...
     partial_items = ...
 
-    logger.info(
-        f"💸 PARTIAL REFUND START → order={order_uuid} | amount={refund_total} | mode={refund_mode}"
-    )
+    logger.info(f"💸 PARTIAL REFUND START")
 
     if refund_mode == "RAZORPAY":
         if order_doc.get("payment_method", "").lower() != "razorpay":
@@ -3012,7 +3000,7 @@ def credit_customer_wallet_only(customer_id, amount, reference=""):
             "wallet_last_updated": firestore.SERVER_TIMESTAMP
         })
 
-        logger.info(f"✅ Wallet credited +₹{amount} to user_doc={user_ref.id} (ref={reference})")
+        logger.info(f"✅ Wallet credited")
         return True
 
     except Exception as e:
@@ -3034,10 +3022,6 @@ def razorpay_refund(order_doc, refund_amount):
         return False
 
     try:
-        logger.info(
-            f"💳 Razorpay refund → payment={payment_id} | amount={refund_amount}"
-        )
-
         razorpay_client.payment.refund(
             payment_id,
             {
@@ -3048,7 +3032,6 @@ def razorpay_refund(order_doc, refund_amount):
             }
         )
 
-        logger.info(f"✅ Razorpay refund success → {order_uuid}")
         return True
 
     except Exception as e:

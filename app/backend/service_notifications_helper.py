@@ -1,8 +1,9 @@
 import logging
 from datetime import datetime
+from typing import List
+
 from firebase_admin import firestore
 from firebase_admin import messaging
-from typing import List
 
 logger = logging.getLogger(__name__)
 db = firestore.client()
@@ -10,6 +11,8 @@ db = firestore.client()
 COLL_SERVICE_NOTIFICATIONS = "service_notifications"
 
 COLL_FCM_TOKENS = "fcm_tokens"
+
+
 ############################################################
 # CREATE SERVICE NOTIFICATION
 ############################################################
@@ -21,7 +24,6 @@ def create_service_notification(
         sender_id=None,
         data=None
 ):
-
     sender_name = None
     sender_photo = None
     sender_type = None
@@ -64,7 +66,7 @@ def create_service_notification(
 
     db.collection(COLL_SERVICE_NOTIFICATIONS).add(doc)
 
-    logger.info(f"📥 Service notification stored for {receiver_id}")
+    logger.info(f"📥 Service notification stored")
 
     tokens = get_fcm_tokens_for_user(receiver_id)
 
@@ -74,8 +76,9 @@ def create_service_notification(
         body,
         data_payload=data
     )
-def get_service_notifications(provider_id: str):
 
+
+def get_service_notifications(provider_id: str):
     docs = db.collection("service_notifications") \
         .where("provider_id", "==", provider_id) \
         .order_by("created_at", direction=firestore.Query.DESCENDING) \
@@ -106,7 +109,6 @@ def mark_service_notification_read(notification_id: str):
 ############################################################
 
 def mark_all_service_notifications_read(provider_id: str):
-
     docs = db.collection("service_notifications") \
         .where("provider_id", "==", provider_id) \
         .where("is_read", "==", False) \
@@ -156,7 +158,7 @@ def register_fcm_token(user_id: str, role: str, token: str):
         "created_at": datetime.utcnow().isoformat()
     })
 
-    logger.info(f"✅ FCM token saved for {user_id}")
+    logger.info(f"✅ FCM token saved...")
 
 
 ############################################################
@@ -174,7 +176,7 @@ def get_fcm_tokens_for_user(user_id: str) -> List[str]:
 
     tokens = [d.to_dict().get("token") for d in docs]
 
-    logger.info(f"🔵 FCM tokens fetched for {user_id}: {len(tokens)}")
+    logger.info(f"🔵 FCM tokens fetched...")
 
     return tokens
 

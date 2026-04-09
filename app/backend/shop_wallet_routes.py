@@ -152,8 +152,6 @@ def add_income_to_shop(shop_id, amount, order_id):
 
 
 def deduct_shop_refund(shop_id, amount, order_id, is_partial=False):
-    logger.info(f"✅ deduct_shop_refund activated → shop={shop_id}")
-
     shop_ref = get_shop_ref(shop_id)
     refund_type = "Partial Refund" if is_partial else "Refund"
 
@@ -186,9 +184,7 @@ def deduct_shop_refund(shop_id, amount, order_id, is_partial=False):
             "orderId": order_id
         })
 
-        logger.info(
-            f"💸 SHOP WALLET UPDATED → -₹{amount} | new_balance={new_balance}"
-        )
+        logger.info(f"💸 SHOP WALLET UPDATED →")
 
     # ✅ THIS IS THE CORRECT WAY TO EXECUTE
     shop_wallet_txn(transaction)

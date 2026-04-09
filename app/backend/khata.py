@@ -1,11 +1,12 @@
-from flask import Blueprint, request, jsonify
-import firebase_db
+import datetime
 import logging
 import uuid
-from firebase_admin import firestore
-import razorpay
-import datetime
 
+import razorpay
+from firebase_admin import firestore
+from flask import Blueprint, request, jsonify
+
+import firebase_db
 
 # logging.basicConfig(level=logging.INFO)
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
@@ -13,9 +14,11 @@ logger = logging.getLogger("order_api")
 
 khata_bp = Blueprint("khata_bp", __name__)
 
-RAZORPAY_KEY_ID = "rzp_test_RKK3DuGSaxK9fR"
-RAZORPAY_KEY_SECRET = "VgVc96Pdn3t5T8ieX0nb2ajt"
+RAZORPAY_KEY_ID = "rzp_test_RKK3DuGSaxK9fR"       # todo: Need to Change with live api Id
+RAZORPAY_KEY_SECRET = "VgVc96Pdn3t5T8ieX0nb2ajt"  # todo: Need to Change with live api Key
+
 razorpay_client = razorpay.Client(auth=(RAZORPAY_KEY_ID, RAZORPAY_KEY_SECRET))
+
 
 # --------------------------------------------------------
 # CREATE LEDGER
@@ -103,7 +106,6 @@ def pay_khata_from_wallet():
     data = request.json or {}
     logger.info(f"🔥 PAY_KHATA_FROM_WALLET RECEIVED → {data}")
 
-
     shop_id = data.get("shop_id")
     customer_id = data.get("customer_id")
     amount = float(data.get("amount", 0))
@@ -148,7 +150,7 @@ def pay_khata_from_wallet():
     new_balance = wallet_balance - amount
     try:
         user_ref.update({"wallet_balance": new_balance})
-        logger.info(f"Wallet deducted. Old: {wallet_balance}, New: {new_balance}")
+        logger.info(f"Wallet deducted.")
     except Exception as e:
         logger.error(f"🔥 WALLET UPDATE ERROR: {e}")
         return jsonify({"success": False, "message": "Wallet update failed"}), 500
@@ -177,7 +179,7 @@ def pay_khata_from_wallet():
 
         firebase_db.db.collection("transactions").document(tx_id).set({
             "txId": tx_id,
-            "userId": customer_id,                 # <-- FIXED HERE
+            "userId": customer_id,  # <-- FIXED HERE
             "shopId": shop_id,
             "type": "Payment",
             "amount": amount,
@@ -208,7 +210,8 @@ def pay_khata_from_wallet():
         "message": "Khata payment successful"
     }), 200
 
-#---------------------#-----------#------
+
+# ---------------------#-----------#------
 @khata_bp.route("/cash_payment_request", methods=["POST"])
 def cash_payment_request():
     data = request.json or {}
@@ -488,7 +491,6 @@ def create_khata_razorpay_order():
     except Exception as e:
         print("🔥 ERROR create_khata_razorpay_order:", e)
         return {"success": False, "message": "Failed to create Razorpay order"}, 500
-
 
 
 @khata_bp.route("/verify_razorpay_payment", methods=["POST"])

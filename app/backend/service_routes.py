@@ -1,10 +1,10 @@
-import calendar
 import logging
-import razorpay
 from datetime import datetime, timedelta, timezone
+
+import razorpay
 from flask import Blueprint, request, jsonify
 from google.cloud import firestore
-from service_notifications_helper import  register_fcm_token
+
 from service_firebase_db import (
     # AUTH
     create_service_provider,
@@ -39,6 +39,7 @@ from service_firebase_db import (
     notify_customer,
     notify_provider
 )
+from service_notifications_helper import register_fcm_token
 
 service_bp = Blueprint("service_bp", __name__)
 
@@ -460,7 +461,6 @@ def wallet_balance(user_id):
 @service_bp.route("/wallet/verify", methods=["POST"])
 def wallet_verify():
     body = request.json
-    logger.info(f"VERIFY BODY: {body}")
 
     try:
         razorpay_client.utility.verify_payment_signature({
@@ -480,7 +480,6 @@ def wallet_verify():
             return err("Backend order not found", 400)
 
         order = order_doc.to_dict()
-        logger.info(f"ORDER DATA:{order}")
 
         user_id = order["user_id"]
         amount = order["amount"]
@@ -550,8 +549,6 @@ def wallet_deduct():
 
 @service_bp.route("/provider/<provider_id>/availability", methods=["GET"])
 def get_availability(provider_id):
-    logger.info("availability ---> hit")
-
     date = request.args.get("date")
 
     if not date:
@@ -734,7 +731,6 @@ def reject_booking(booking_id):
         sender_id=booking["provider_id"]
     )
 
-
     return jsonify({"message": "Booking rejected, slot released, refund started"})
 
 
@@ -792,7 +788,6 @@ def start_service(booking_id):
         sender_id=booking["provider_id"]
     )
 
-
     return jsonify({"message": "Service started"})
 
 
@@ -839,7 +834,7 @@ def complete_service(booking_id):
             provider_earning,
             booking_id
         )
-        logger.info(f"WALLET CREDITED: ₹{provider_earning}")
+        logger.info(f"WALLET CREDITED")
 
     else:
         logger.error("Provider earning missing — wallet credit skipped")
@@ -861,7 +856,6 @@ def complete_service(booking_id):
         {"booking_id": booking_id, "type": "payment"},
         sender_id=None
     )
-
 
     return jsonify({"message": "Service completed & wallet credited"})
 
@@ -894,8 +888,6 @@ def customer_bookings(requester_id):
     for d in docs:
         b = d.to_dict()
 
-        logger.info(f"Raw Firestore doc ID={d.id} -> {b}")
-
         amount = b.get("final_total") or 0
         service = b.get("service_title")
 
@@ -923,7 +915,7 @@ def customer_bookings(requester_id):
         data.append({
             "id": d.id,
             "service_title": service,
-            "provider_name": provider_name,   # now real provider name
+            "provider_name": provider_name,  # now real provider name
             "slot_date": b.get("slot_date"),
             "slot_time": b.get("slot_time"),
             "status": b.get("status"),
@@ -933,7 +925,7 @@ def customer_bookings(requester_id):
 
     # 🧠 SORT by slot date + time (latest first)
     data.sort(
-        key=lambda x: f"{x.get('slot_date','')} {x.get('slot_time','')}",
+        key=lambda x: f"{x.get('slot_date', '')} {x.get('slot_time', '')}",
         reverse=True
     )
 

@@ -38,7 +38,7 @@ def get_wallet_balance(user_id):
 
         snap = fallback[0]
         user_ref = snap.reference
-        logger.info(f"⚠️ Using fallback customerId for balance: {user_ref.id}")
+
 
     data = snap.to_dict()
     balance = float(data.get("wallet_balance", 0.0))
@@ -71,7 +71,7 @@ def add_money():
         # take the first match
         user = fallback_users[0]
         user_ref = user.reference
-        logger.info(f"⚠️ Using fallback customerId user: {user_ref.id}")
+
 
     # --- STEP 3: Now safe to update wallet ---
     user_data = user.to_dict()
@@ -131,7 +131,7 @@ def get_transactions_ref():
 def refund():
     try:
         data = request.json or {}
-        logger.info(f"🧪 refund payload → {data}")
+
 
         firestore_id = data.get("user_id")  # could be doc id OR customerId OR id
         customer_id = data.get("customerId")  # your app UUID
@@ -182,11 +182,11 @@ def refund():
             transaction.update(user_ref, {"wallet_balance": new_balance})
 
             firebase_db.db.collection("transactions").add({
-                "userId": customer_id,  # ✅ keep your UUID for app side
-                "type": refund_type,  # ✅ Refund / Partial Refund
+                "userId": customer_id,
+                "type": refund_type,
                 "amount": amount,
                 "orderId": order_id,
-                "dateTime": datetime.utcnow(),  # ✅ wallet screen expects dateTime
+                "dateTime": datetime.utcnow(),
                 "payment_type": "Wallet"
             })
 
@@ -200,10 +200,10 @@ def refund():
             shop_id=shop_id,
             amount=amount,
             order_id=order_id,
-            is_partial=is_partial  # ✅ FIXED (no hardcoded True)
+            is_partial=is_partial
         )
 
-        logger.info(f"💰 REFUND OK → +₹{amount} user={customer_id} | -₹{amount} shop={shop_id}")
+        logger.info(f"💰 REFUND OK →")
         return jsonify({"success": True, "balance": new_balance}), 200
 
     except Exception as e:

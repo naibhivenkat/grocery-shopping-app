@@ -1,12 +1,13 @@
 import base64
 import datetime
-import firebase_admin
 import json
 import logging
 import os
 import time
 import uuid
 from datetime import datetime, timedelta, timezone
+
+import firebase_admin
 from firebase_admin import credentials, firestore, storage as fb_storage, messaging
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
@@ -20,19 +21,15 @@ if not firebase_admin._apps:
 
     try:
         if cred_env and cred_env.strip().startswith("{"):
-            logger.info("🔹 Using FIREBASE_CREDENTIALS_JSON from environment variable (JSON string)")
             cred_dict = json.loads(cred_env)
             cred = credentials.Certificate(cred_dict)
         elif os.path.exists(cred_path):
-            logger.info(f"🔹 Using FIREBASE_CREDENTIALS_JSON secret file at {cred_path}")
             cred = credentials.Certificate(cred_path)
         elif os.path.exists("app/backend/firebase.json"):
-            logger.info("🔹 Using local firebase.json file for development")
             cred = credentials.Certificate("app/backend/firebase.json")
         else:
             raise FileNotFoundError("❌ No valid Firebase credentials found")
 
-        # ✅ Must include .appspot.com suffix
         firebase_admin.initialize_app(cred, {
             "storageBucket": "grocery-app-invoices"
         })
@@ -40,7 +37,6 @@ if not firebase_admin._apps:
         logger.info("✅ Firebase initialized successfully")
 
     except Exception as e:
-        logger.info(f"🔥 Firebase init failed: {e}")
         raise
 
 db = firestore.client()
@@ -322,19 +318,8 @@ def save_fcm_token_for_user(user_id: str, token: str, role: str) -> bool:
         user_ref = users_ref.document(user_doc_id)
         data = user_ref.get().to_dict() or {}
 
-        # tokens = set(data.get("fcm_tokens", []))
-        # tokens.add(token)
-
-        # user_ref.update({"fcm_tokens": list(tokens)})
         user_ref.update({"fcm_tokens": [token]})
-        # logger.info(
-        #     f"✅ FCM token saved for user_id={user_id}, doc={user_doc_id}, "
-        #     f"total_tokens={len(tokens)}"
-        # )
 
-        logger.info(
-            f"✅ FCM token replaced for user_id={user_id}, doc={user_doc_id}, token={token[:15]}..."
-        )
         return True
 
     except Exception as e:
@@ -351,7 +336,6 @@ def get_fcm_tokens_for_user(user_id: str):
         search_fields = ["customerId", "shopkeeperId", "id"]
 
         for field in search_fields:
-            logger.info(f"🔵 FCM: Searching user tokens where {field} == {user_id}")
 
             query = users_ref.where(field, "==", user_id).limit(1).stream()
 
@@ -359,7 +343,6 @@ def get_fcm_tokens_for_user(user_id: str):
                 user_data = doc.to_dict()
                 tokens = user_data.get("fcm_tokens", [])
                 if tokens:
-                    logger.info(f"🟢 FCM: Found {len(tokens)} tokens via {field}={user_id}")
                     return tokens
 
         logger.warning(f"⚠️ FCM: No tokens found for user {user_id}")
@@ -410,19 +393,18 @@ def send_fcm_notification_to_tokens(tokens, title, body, user_id=None, data_payl
             )
 
             response = messaging.send(message)
-            logger.info(f"📩 FCM sent → token={token[:15]}... response={response}")
+            logger.info(f"📩 FCM sent")
             results["success"] += 1
 
         except Exception as e:
             # ✅ Everything related to 'e' must be inside this block
-            logger.error(f"[ERROR] FCM send failed → token={token[:15]}... error={e}")
+            logger.error(f"[ERROR] FCM send failed → error={e}")
             results["failure"] += 1
 
             if user_id and "Requested entity was not found" in str(e):
                 remove_fcm_token_for_user(user_id, token)
                 logger.info(f"🗑️ Removed invalid FCM token for user_id={user_id}")
 
-    logger.info(f"📲 FCM Summary: {results['success']} success | {results['failure']} failed")
     return results
 
 
@@ -495,7 +477,7 @@ def get_or_create_khata_account(shop_id, customer_id, name=None, phone=None):
         "customer_name": name or "",
         "phone": phone or "",
         "balance": 0.0,
-        "shop_name": shop_name,  # ⭐ ALWAYS WRITE SHOP NAME
+        "shop_name": shop_name,
         "updated_at": time_data
     }
 
@@ -549,7 +531,7 @@ def add_khata_transaction(shop_id, customer_id, amount, tx_type, note="", order_
     ref.update({
         "balance": float(new_balance),
         "updated_at": datetime.utcnow(),
-        "shop_name": shop_name  # ⭐ MANDATORY FIX
+        "shop_name": shop_name
     })
 
     return {
@@ -576,7 +558,7 @@ def list_khata_transactions(shop_id, customer_id, limit=200):
         db.collection("khata_transactions")
         .where("shop_id", "==", shop_id)
         .where("customer_id", "==", customer_id)
-        .order_by("created_at", direction=firestore.Query.DESCENDING)  # ⬅️ FIX: latest first
+        .order_by("created_at", direction=firestore.Query.DESCENDING)
         .limit(limit)
         .get()
     )
@@ -640,10 +622,6 @@ def credit_customer_wallet_only(customer_id, amount, order_uuid):
         return False
 
     try:
-        logger.info(
-            f"👛 Customer wallet credit (Razorpay) → customer={customer_id} | amount={amount}"
-        )
-
         customer_ref = db.collection("customers").document(customer_id)
 
         db.run_transaction(lambda tx: _credit_wallet_tx(
@@ -710,10 +688,7 @@ def add_shop_rating(rating_data: dict):
 
         db.collection("ratings").add(rating_data)
 
-        logger.info(
-            f"⭐ Rating saved → shop={rating_data.get('shop_id')} "
-            f"order={order_id} rating={rating_data.get('rating')}"
-        )
+        logger.info(f"⭐ Rating saved")
 
         return True, "Rating saved"
 
@@ -802,7 +777,7 @@ def log_transaction(user_id, shop_id, amount, tx_type, description, source="wall
 
         transaction_data = {
             "userId": user_id,
-            "type": txn_type,  # ✅ must be Refund/Payment/Deposit
+            "type": txn_type,
             "amount": float(amount),
             "orderId": order_id,
             "dateTime": created_at,
@@ -812,7 +787,6 @@ def log_transaction(user_id, shop_id, amount, tx_type, description, source="wall
 
         db.collection("transactions").document(tx_id).set(transaction_data)
 
-        logger.info(f"✅ Transaction Logged: {txn_type} ₹{amount} for {user_id}")
         return True
 
     except Exception as e:
@@ -826,4 +800,4 @@ def credit_customer_wallet(customer_id, amount, reference=""):
     bal = float(user_data.get("wallet_balance", 0))
     user_ref.update({"wallet_balance": bal + float(amount)})
 
-    logger.info(f"Credited to Customer Wallet --> Rs. {amount}/-")
+    logger.info(f"Credited to Customer Wallet")

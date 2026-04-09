@@ -12,9 +12,9 @@ from service_notifications_helper import (
     send_fcm_notification_to_tokens
 )
 
-
 import firebase_db
 from service_notifications_helper import create_service_notification
+
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger("service")
 
@@ -566,7 +566,6 @@ def get_user(user_id: str):
         return {}
 
 
-
 def create_booking(payload: Dict[str, Any]) -> Dict[str, Any]:
     if payload["provider_id"] == payload["requester_id"]:
         raise ValueError("You cannot book your own service")
@@ -581,7 +580,7 @@ def create_booking(payload: Dict[str, Any]) -> Dict[str, Any]:
 
     duration = int(payload.get("duration", 60))
     logger.info(f"payload data : {payload}")
-    
+
     available = check_slot_available(
         payload["provider_id"],
         payload["slot_date"],
@@ -682,7 +681,6 @@ def booking_detail(booking_id: str) -> Dict[str, Any]:
     b = snap.to_dict()
     logger.info(f"booking data : {b}")
 
-
     provider_name = get_provider_name(b["provider_id"])
     logger.info(f"provider name : {provider_name}")
 
@@ -720,6 +718,7 @@ def booking_detail(booking_id: str) -> Dict[str, Any]:
     b["payment_status"] = b.get("payment_status") or "unpaid"
 
     return b
+
 
 def debit_provider_wallet(provider_id, amount, booking_id=None):
     ref = db.collection(COLL_SERVICE_WALLETS).document(provider_id)
@@ -941,9 +940,6 @@ def accept_booking(booking_id, provider_id):
     )
 
 
-
-
-
 def calculate_daily_earnings():
     today = datetime.utcnow().date()
 
@@ -966,7 +962,6 @@ def calculate_daily_earnings():
             "daily_total": total,
             "updated_at": datetime.now(IST).replace(microsecond=0).isoformat()
         }, merge=True)
-
 
 
 def release_locked_slots(provider_id: str, date: str, start_time: str, duration: int):
@@ -1017,9 +1012,6 @@ def credit_provider_wallet(provider_id, amount, booking_id=None):
 
 
 def provider_earnings_dashboard(provider_id: str):
-
-
-
     docs = db.collection("service_bookings") \
         .where("provider_id", "==", provider_id) \
         .stream()
@@ -1155,6 +1147,7 @@ def create_chat_for_booking(booking_id, provider_id, requester_id):
         "created_at": datetime.now(IST).isoformat()
     })
 
+
 def customer_bookings(requester_id):
     docs = db.collection("service_bookings") \
         .where("requester_id", "==", requester_id).stream()
@@ -1166,7 +1159,6 @@ def customer_bookings(requester_id):
         result.append(b)
 
     return result
-
 
 
 def notify_provider(provider_id, title, body, notif_type, payload, sender_id=None):
@@ -1188,6 +1180,7 @@ def notify_provider(provider_id, title, body, notif_type, payload, sender_id=Non
         data_payload=payload
     )
 
+
 def notify_customer(customer_id, title, body, notif_type, payload, sender_id=None):
     create_service_notification(
         receiver_id=customer_id,
@@ -1206,4 +1199,3 @@ def notify_customer(customer_id, title, body, notif_type, payload, sender_id=Non
         body=body,
         data_payload=payload
     )
-
