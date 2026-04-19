@@ -8,6 +8,7 @@ blueprints in the `routes/` package and persist data in Firestore under
 
 import logging
 import os
+import traceback
 
 import firebase_admin
 from firebase_admin import credentials
@@ -134,6 +135,19 @@ def create_app() -> Flask:
     @app.errorhandler(405)
     def method_not_allowed(_err):
         return jsonify({"detail": "Method not allowed"}), 405
+
+    @app.errorhandler(Exception)
+    def on_unhandled(err):
+        # Log full traceback to Cloud Logging and surface the exception in
+        # the JSON response. Safe for this dev instance — no secrets are
+        # stored on the request path. Remove `error`/`trace` fields before
+        # production if desired.
+        log.exception("Unhandled exception on %s", os.getenv("K_SERVICE", "local"))
+        return jsonify({
+            "detail": "Internal server error",
+            "error": f"{type(err).__name__}: {err}",
+            "trace": traceback.format_exc().splitlines()[-6:],
+        }), 500
 
     return app
 
