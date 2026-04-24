@@ -6,6 +6,7 @@ blueprints in the `routes/` package and persist data in Firestore under
 `localshop/v1/<collection>`.
 """
 
+import json
 import logging
 import os
 import traceback
@@ -28,6 +29,7 @@ from routes.profile import profile_bp
 from routes.referrals import referrals_bp
 from routes.reviews import reviews_bp
 from routes.shops import shops_bp
+from routes.smoke import smoke_bp
 from routes.subscriptions import subscriptions_bp
 from routes.vendors import vendors_bp
 from routes.wallet import wallet_bp
@@ -43,12 +45,43 @@ log = logging.getLogger("localshop.backend")
 def _init_firebase() -> None:
     if firebase_admin._apps:  # idempotent
         return
+
+    options = {}
+    storage_bucket = os.getenv("FIREBASE_STORAGE_BUCKET")
+    if storage_bucket:
+        options["storageBucket"] = storage_bucket
+
+    cred_json = os.getenv("FIREBASE_CREDENTIALS_JSON")
+    if cred_json:
+        try:
+            service_account = json.loads(cred_json)
+        except json.JSONDecodeError as exc:
+            raise RuntimeError(
+                "FIREBASE_CREDENTIALS_JSON is not valid JSON"
+            ) from exc
+
+        project_id = service_account.get("project_id")
+        if project_id:
+            options["projectId"] = project_id
+        firebase_admin.initialize_app(
+            credentials.Certificate(service_account),
+            options,
+        )
+        log.info(
+            "Initialized Firebase with service account JSON for project %s",
+            project_id,
+        )
+        return
+
     cred_path = os.getenv("GOOGLE_APPLICATION_CREDENTIALS")
     if cred_path and os.path.exists(cred_path):
-        firebase_admin.initialize_app(credentials.Certificate(cred_path))
+        firebase_admin.initialize_app(credentials.Certificate(cred_path), options)
         log.info("Initialized Firebase with service account at %s", cred_path)
     else:
-        firebase_admin.initialize_app()
+        project_id = os.getenv("FIREBASE_PROJECT_ID")
+        if project_id:
+            options["projectId"] = project_id
+        firebase_admin.initialize_app(options=options or None)
         log.info("Initialized Firebase with application default credentials")
 
 
@@ -115,6 +148,7 @@ def create_app() -> Flask:
         wallet_bp,
         khata_bp,
         profile_bp,
+        smoke_bp,
     ):
         app.register_blueprint(bp)
 

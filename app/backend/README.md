@@ -35,15 +35,23 @@ returned by `/auth/login` or `/auth/register`.
 ## Environment
 
 Required:
+- `FIREBASE_CREDENTIALS_JSON` — full Firebase service-account JSON for Cloud
+  Run/Secret Manager deployments. This must be from the Firebase project used
+  by the Flutter app (`groceryapp-fe2ec`), otherwise Firestore calls will use
+  the Cloud Run project instead.
 - `GOOGLE_APPLICATION_CREDENTIALS` — path to a Firebase service-account JSON
-  file (omit to use gcloud application-default credentials, e.g. on Cloud
-  Run).
+  file for local/dev environments. Omit only when intentionally using
+  application-default credentials.
 - `JWT_SECRET` — secret for signing session tokens. Must be set in
   production.
 
 Optional:
 - `PORT` (default `8000`).
 - `JWT_EXPIRE_DAYS` (default `30`).
+- `FIREBASE_PROJECT_ID` — explicit project ID when using application-default
+  credentials.
+- `FIREBASE_STORAGE_BUCKET` — optional default bucket for legacy storage
+  helpers.
 - `FLASK_DEBUG=1` to enable Flask's debug reloader.
 
 ## Local development

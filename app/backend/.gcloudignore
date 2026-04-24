@@ -1,5 +1,6 @@
 # Exclude Python virtual environment and other local artifacts
 venv/
+**/.venv/
 **/venv/
 .env
 __pycache__/

@@ -12,6 +12,7 @@ app/backend/grocery-credentials.json
 app/backend/serviceAccountKey.json
 app/google-services.json
 app/backend/firebase.json
+app/backend/secrets.txt
 app/src/main/java/com/example/groceryshoppingapp/ShopLedgerActivity.kt
 app/src/main/java/com/example/groceryshoppingapp/AddPaymentActivity.kt
 app/src/main/java/com/example/groceryshoppingapp/models/Ledger.kt

@@ -1,0 +1,19 @@
+# Ignore local environments and Python cache.
+.venv/
+venv/
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+
+# Credentials and local secrets are injected by Cloud Run / Secret Manager.
+*.json
+*.txt
+.env
+
+# Local tooling and VCS metadata.
+*.log
+.git/
+.gitignore
+.vscode/
+.idea/
