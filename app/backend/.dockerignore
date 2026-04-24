@@ -8,7 +8,7 @@ __pycache__/
 
 # Credentials and local secrets are injected by Cloud Run / Secret Manager.
 *.json
-*.txt
+secrets.txt
 .env
 
 # Local tooling and VCS metadata.
