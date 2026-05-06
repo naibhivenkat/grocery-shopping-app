@@ -12,6 +12,7 @@ from datetime import datetime, timedelta, timezone
 from email.message import EmailMessage
 
 from flask import Blueprint, g, jsonify, request
+from firebase_admin import auth as firebase_auth
 from google.cloud.firestore_v1.base_query import FieldFilter
 
 from auth_utils import create_token, hash_password, require_auth, verify_password
@@ -227,6 +228,53 @@ def login():
     if not verify_password(password, data.get("password_hash") or ""):
         return jsonify({"detail": "Invalid credentials"}), 401
 
+    return _login_response(snapshot)
+
+
+@auth_bp.post("/auth/google")
+def google_login():
+    payload = request.get_json(silent=True) or {}
+    id_token = payload.get("id_token") or ""
+    requested_role = _normalize_role(payload.get("role") or "customer")
+    if not id_token:
+        return jsonify({"detail": "Google id_token is required"}), 422
+
+    try:
+        decoded = firebase_auth.verify_id_token(id_token)
+    except Exception:
+        return jsonify({"detail": "Invalid Google token"}), 401
+
+    email = (decoded.get("email") or "").strip().lower()
+    if not email:
+        return jsonify({"detail": "Google account email is required"}), 422
+
+    snapshot = _find_user_by_email(email)
+    if snapshot is None:
+        full_name = decoded.get("name") or email.split("@")[0]
+        username = email.split("@")[0].strip().lower()
+        base_username = username
+        suffix = 1
+        while _find_user_by_username(username) is not None:
+            suffix += 1
+            username = f"{base_username}{suffix}"
+
+        ref = col(USERS).document()
+        ref.set({
+            "email": email,
+            "username": username,
+            "full_name": full_name,
+            "role": requested_role,
+            "phone": "",
+            "avatar_url": decoded.get("picture"),
+            "firebase_id": decoded.get("uid"),
+            "is_suspended": False,
+            "created_at": now_iso(),
+        })
+        snapshot = ref.get()
+
+    data = snapshot.to_dict() or {}
+    if data.get("is_suspended"):
+        return jsonify({"detail": "Account is suspended"}), 403
     return _login_response(snapshot)
 
 

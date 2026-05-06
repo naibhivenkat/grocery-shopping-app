@@ -12,6 +12,7 @@ from auth_utils import require_auth, require_role
 from db import (
     KHATA_LEDGERS,
     KHATA_TRANSACTIONS,
+    USERS,
     col,
     doc,
     now_iso,
@@ -44,12 +45,13 @@ def _recompute_balance(ledger_id: str, ledger_ref) -> float:
 
 
 @khata_bp.get("/khata/ledgers")
-@require_role("vendor")
+@require_auth
 def list_ledgers():
-    query = col(KHATA_LEDGERS).where(
-        filter=FieldFilter("vendor_id", "==", g.user_id)
-    )
-    return jsonify([to_dict(d) for d in query.stream()])
+    field = "vendor_id" if g.user_role == "vendor" else "customer_id"
+    query = col(KHATA_LEDGERS).where(filter=FieldFilter(field, "==", g.user_id))
+    items = [_with_party_names(to_dict(d)) for d in query.stream()]
+    items.sort(key=lambda item: item.get("updated_at") or "", reverse=True)
+    return jsonify(items)
 
 
 @khata_bp.post("/khata/ledgers")
@@ -62,8 +64,14 @@ def create_ledger():
         return jsonify({"detail": "customer_id is required"}), 422
 
     ref = col(KHATA_LEDGERS).document()
+    vendor = doc(USERS, g.user_id).get()
+    vendor_data = vendor.to_dict() or {}
     ref.set({
         "vendor_id": g.user_id,
+        "vendor_name": vendor_data.get("shop_name")
+            or vendor_data.get("full_name")
+            or vendor_data.get("username")
+            or "Shop",
         "customer_id": customer_id,
         "customer_name": customer_name,
         "balance": 0.0,
@@ -72,6 +80,21 @@ def create_ledger():
         "updated_at": now_iso(),
     })
     return jsonify(to_dict(ref.get())), 201
+
+
+def _with_party_names(ledger: dict) -> dict:
+    vendor_id = ledger.get("vendor_id")
+    if vendor_id and not ledger.get("vendor_name"):
+        vendor = doc(USERS, vendor_id).get()
+        if vendor.exists:
+            data = vendor.to_dict() or {}
+            ledger["vendor_name"] = (
+                data.get("shop_name")
+                or data.get("full_name")
+                or data.get("username")
+                or "Shop"
+            )
+    return ledger
 
 
 @khata_bp.get("/khata/ledgers/<ledger_id>/transactions")
