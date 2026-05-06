@@ -18,9 +18,20 @@ from db import (
 admin_bp = Blueprint("admin", __name__)
 
 
-def _users_by_role(role: str):
+def _users_by_role(role: str, include_suspended: bool = False):
     query = col(USERS).where(filter=FieldFilter("role", "==", role))
-    return [to_dict(d) for d in query.stream()]
+    users = [to_dict(d) for d in query.stream()]
+    if include_suspended and role == "vendor":
+        suspended_query = col(USERS).where(
+            filter=FieldFilter("suspended_role", "==", "vendor")
+        )
+        existing = {u.get("uid") for u in users}
+        users.extend(
+            to_dict(d)
+            for d in suspended_query.stream()
+            if d.id not in existing
+        )
+    return users
 
 
 @admin_bp.get("/admin/stats")
@@ -50,10 +61,12 @@ def get_stats():
 @admin_bp.get("/admin/vendors")
 @require_role("admin", "super_admin")
 def list_vendors():
-    vendors = _users_by_role("vendor")
+    vendors = _users_by_role("vendor", include_suspended=True)
     for v in vendors:
         v.pop("password_hash", None)
         v["id"] = v.get("uid")
+        v["role"] = v.get("role") or "vendor"
+        v["is_suspended"] = bool(v.get("is_suspended"))
     return jsonify(vendors)
 
 
@@ -75,9 +88,13 @@ def list_customers():
 @admin_bp.post("/admin/users/<user_id>/suspend")
 @require_role("admin", "super_admin")
 def suspend_user(user_id):
-    doc(USERS, user_id).set(
-        {"is_suspended": True, "suspended_at": now_iso()}, merge=True
-    )
+    snap = doc(USERS, user_id).get()
+    current_role = (snap.to_dict() or {}).get("role") if snap.exists else None
+    doc(USERS, user_id).set({
+        "is_suspended": True,
+        "suspended_role": current_role,
+        "suspended_at": now_iso(),
+    }, merge=True)
     return jsonify({"ok": True})
 
 
@@ -85,6 +102,7 @@ def suspend_user(user_id):
 @require_role("admin", "super_admin")
 def unsuspend_user(user_id):
     doc(USERS, user_id).set(
-        {"is_suspended": False, "suspended_at": None}, merge=True
+        {"is_suspended": False, "suspended_at": None, "suspended_role": None},
+        merge=True,
     )
     return jsonify({"ok": True})

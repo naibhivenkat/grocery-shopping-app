@@ -27,7 +27,20 @@ def list_shops():
     query = col(SHOP_ITEMS)
     if city_id:
         query = query.where(filter=FieldFilter("city_id", "==", city_id))
-    return jsonify([to_dict(d) for d in query.stream()])
+    items = []
+    for d in query.stream():
+        item = to_dict(d)
+        if item.get("is_available") is False:
+            continue
+        stock = item.get("stock_quantity")
+        if stock is not None:
+            try:
+                if int(stock) <= 0:
+                    continue
+            except (TypeError, ValueError):
+                pass
+        items.append(item)
+    return jsonify(items)
 
 
 # ── Categories (declared before `/shops/<id>` to win static match) ─────────
@@ -146,6 +159,17 @@ def create_order():
     if not item_snap.exists:
         return jsonify({"detail": "Item not found"}), 404
     item = item_snap.to_dict() or {}
+    if item.get("is_available") is False:
+        return jsonify({"detail": "Item is not available"}), 409
+    stock = item.get("stock_quantity")
+    stock_i = None
+    if stock is not None:
+        try:
+            stock_i = int(stock)
+        except (TypeError, ValueError):
+            stock_i = None
+        if stock_i is not None and stock_i < quantity:
+            return jsonify({"detail": "Insufficient stock"}), 409
 
     partial = payload.get("partial_amount_paid")
     partial_f = float(partial) if partial is not None else None
@@ -173,6 +197,13 @@ def create_order():
         "created_at": now_iso(),
         "updated_at": now_iso(),
     })
+    if stock_i is not None:
+        new_stock = max(0, stock_i - quantity)
+        doc(SHOP_ITEMS, item_id).set({
+            "stock_quantity": new_stock,
+            "is_available": new_stock > 0,
+            "updated_at": now_iso(),
+        }, merge=True)
     return jsonify({"order_id": order_ref.id, "uid": order_ref.id}), 201
 
 

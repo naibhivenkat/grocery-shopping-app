@@ -68,7 +68,19 @@ def require_auth(fn):
         except jwt.InvalidTokenError:
             return jsonify({"detail": "Invalid token"}), 401
         g.user_id = payload["sub"]
-        g.user_role = payload.get("role", "customer")
+        try:
+            from db import USERS, doc
+
+            user_snapshot = doc(USERS, g.user_id).get()
+        except Exception:
+            user_snapshot = None
+        if user_snapshot is not None and user_snapshot.exists:
+            user_data = user_snapshot.to_dict() or {}
+            if user_data.get("is_suspended"):
+                return jsonify({"detail": "Account is suspended"}), 403
+            g.user_role = user_data.get("role") or payload.get("role", "customer")
+        else:
+            g.user_role = payload.get("role", "customer")
         return fn(*args, **kwargs)
 
     return wrapper

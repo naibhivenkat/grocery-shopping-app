@@ -16,7 +16,13 @@ def _city_payload_sans_immutable(payload: dict) -> dict:
 
 @cities_bp.get("/cities")
 def list_cities():
-    cities = [to_dict(d) for d in col(CITIES).stream()]
+    include_inactive = request.args.get("include_inactive") == "true"
+    cities = []
+    for d in col(CITIES).stream():
+        city = to_dict(d)
+        if not include_inactive and city.get("is_active") is False:
+            continue
+        cities.append(city)
     cities.sort(key=lambda c: (c.get("name") or "").lower())
     return jsonify(cities)
 
