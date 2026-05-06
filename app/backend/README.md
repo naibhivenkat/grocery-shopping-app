@@ -12,7 +12,7 @@ the source of each blueprint:
 
 | Area        | Blueprint                | Paths                                                                  |
 |-------------|--------------------------|------------------------------------------------------------------------|
-| Auth        | `routes/auth.py`         | `POST /auth/login` `POST /auth/register` `POST /auth/logout` `GET /auth/me` `GET /auth/role` |
+| Auth        | `routes/auth.py`         | `POST /auth/send_otp` `POST /auth/verify_otp` `POST /auth/register_after_otp` `POST /auth/login` `POST /auth/register` `POST /auth/logout` `GET /auth/me` `GET /auth/role` |
 | Shops       | `routes/shops.py`        | `GET /shops` `GET /shops/<id>` `GET/POST /shops/categories` `DELETE /shops/categories/<id>` `POST/GET /shops/favorites` `DELETE /shops/favorites/<id>` `GET /shops/favorites/<id>/check` `POST/GET /orders` `POST /orders/<id>/cancel` |
 | Vendors     | `routes/vendors.py`      | `GET/POST /vendors/items` `PUT/DELETE /vendors/items/<id>` `GET /vendors/orders` `PUT /vendors/orders/<id>/status` |
 | Cities      | `routes/cities.py`       | `GET /cities` `GET /cities/<id>` `GET /cities/current/<user_id>` `PUT /cities/current` `POST /cities` `PUT /cities/<id>` |
@@ -52,6 +52,13 @@ Optional:
   credentials.
 - `FIREBASE_STORAGE_BUCKET` — optional default bucket for legacy storage
   helpers.
+- `SENDINBLUE_API_KEY` and `FROM_EMAIL` — enables registration OTP emails via
+  Brevo/Sendinblue. If omitted, OTP codes are logged only.
+- `SMTP_HOST`, `SMTP_USERNAME`, `SMTP_PASSWORD`, `SMTP_SENDER`, `SMTP_PORT` —
+  SMTP fallback for registration OTP emails.
+- `AUTH_OTP_TTL_MINUTES` (default `10`).
+- `AUTH_OTP_DEBUG_RESPONSE=1` — includes OTP in the JSON response for local
+  debugging only. Do not enable in production.
 - `FLASK_DEBUG=1` to enable Flask's debug reloader.
 
 ## Local development

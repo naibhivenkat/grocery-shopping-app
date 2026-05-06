@@ -1,5 +1,16 @@
 """`/auth/*` endpoints consumed by `AuthRemoteDataSource` (Flutter)."""
 
+import hashlib
+import json
+import logging
+import os
+import random
+import smtplib
+import urllib.error
+import urllib.request
+from datetime import datetime, timedelta, timezone
+from email.message import EmailMessage
+
 from flask import Blueprint, g, jsonify, request
 from google.cloud.firestore_v1.base_query import FieldFilter
 
@@ -8,8 +19,10 @@ from db import USERS, col, doc, now_iso, safe_delete_fields, to_dict
 
 
 auth_bp = Blueprint("auth", __name__)
+log = logging.getLogger(__name__)
 
 _ALLOWED_ROLES = {"customer", "vendor", "admin", "super_admin"}
+_OTP_TTL_MINUTES = int(os.getenv("AUTH_OTP_TTL_MINUTES", "10"))
 
 
 def _find_user_by_email(email: str):
@@ -25,15 +38,186 @@ def _find_user_by_email(email: str):
     return next(iter(query), None)
 
 
+def _find_user_by_username(username: str):
+    username = (username or "").strip().lower()
+    if not username:
+        return None
+    query = (
+        col(USERS)
+        .where(filter=FieldFilter("username", "==", username))
+        .limit(1)
+        .stream()
+    )
+    return next(iter(query), None)
+
+
+def _normalize_role(role: str) -> str:
+    role = (role or "customer").strip().lower()
+    if role in {"shopowner", "shopkeeper"}:
+        return "vendor"
+    return role if role in _ALLOWED_ROLES else "customer"
+
+
+def _otp_ref(email: str):
+    key = hashlib.sha256(email.strip().lower().encode()).hexdigest()
+    return col("auth_otps").document(key)
+
+
+def _utcnow() -> datetime:
+    return datetime.now(timezone.utc)
+
+
+def _parse_iso(value: str | None) -> datetime | None:
+    if not value:
+        return None
+    try:
+        return datetime.fromisoformat(value)
+    except ValueError:
+        return None
+
+
+def _send_otp_email(email: str, otp: str) -> None:
+    """Send OTP email when Brevo/Sendinblue or SMTP env vars are configured."""
+    sendinblue_key = os.getenv("SENDINBLUE_API_KEY")
+    from_email = os.getenv("FROM_EMAIL")
+    if sendinblue_key and from_email:
+        payload = json.dumps({
+            "sender": {
+                "email": from_email,
+                "name": "LocalShop Finder",
+            },
+            "to": [{"email": email}],
+            "subject": "Your LocalShop Finder verification code",
+            "textContent": (
+                f"Your LocalShop Finder verification code is {otp}. "
+                f"It expires in {_OTP_TTL_MINUTES} minutes."
+            ),
+        }).encode("utf-8")
+        req = urllib.request.Request(
+            "https://api.sendinblue.com/v3/smtp/email",
+            data=payload,
+            headers={
+                "api-key": sendinblue_key,
+                "Content-Type": "application/json",
+                "Accept": "application/json",
+            },
+            method="POST",
+        )
+        try:
+            with urllib.request.urlopen(req, timeout=10) as response:
+                response.read()
+        except urllib.error.HTTPError as exc:
+            body = exc.read().decode("utf-8", "replace")
+            raise RuntimeError(
+                f"Brevo email API failed with {exc.code}: {body}"
+            ) from exc
+        return
+
+    host = os.getenv("SMTP_HOST")
+    username = os.getenv("SMTP_USERNAME")
+    password = os.getenv("SMTP_PASSWORD")
+    sender = os.getenv("SMTP_SENDER") or username
+    if not host or not username or not password or not sender:
+        log.info("Registration OTP for %s is %s", email, otp)
+        return
+
+    port = int(os.getenv("SMTP_PORT", "587"))
+    message = EmailMessage()
+    message["From"] = sender
+    message["To"] = email
+    message["Subject"] = "Your LocalShop Finder verification code"
+    message.set_content(
+        f"Your LocalShop Finder verification code is {otp}. "
+        f"It expires in {_OTP_TTL_MINUTES} minutes."
+    )
+    with smtplib.SMTP(host, port, timeout=10) as smtp:
+        smtp.starttls()
+        smtp.login(username, password)
+        smtp.send_message(message)
+
+
+def _login_response(snapshot):
+    data = snapshot.to_dict() or {}
+    user = safe_delete_fields(to_dict(snapshot), "password_hash")
+    token = create_token(snapshot.id, data.get("role") or "customer")
+    return jsonify({
+        "success": True,
+        "access_token": token,
+        "token": token,
+        "user": user,
+    })
+
+
+@auth_bp.post("/auth/send_otp")
+@auth_bp.post("/send_otp")
+def send_otp():
+    payload = request.get_json(silent=True) or {}
+    email = (payload.get("email") or "").strip().lower()
+    if not email:
+        return jsonify({"detail": "Email is required"}), 422
+    if _find_user_by_email(email) is not None:
+        return jsonify({"detail": "Email already registered"}), 422
+
+    otp = f"{random.SystemRandom().randint(0, 999999):06d}"
+    expires_at = _utcnow() + timedelta(minutes=_OTP_TTL_MINUTES)
+    _otp_ref(email).set({
+        "email": email,
+        "otp_hash": hash_password(otp),
+        "verified": False,
+        "created_at": now_iso(),
+        "expires_at": expires_at.isoformat(),
+    })
+
+    try:
+        _send_otp_email(email, otp)
+    except Exception as exc:
+        log.warning("Failed to send OTP email to %s: %s", email, exc)
+        return jsonify({"detail": "Failed to send OTP"}), 500
+
+    response = {"success": True, "message": "OTP sent to email"}
+    if os.getenv("AUTH_OTP_DEBUG_RESPONSE") == "1":
+        response["otp"] = otp
+    return jsonify(response)
+
+
+@auth_bp.post("/auth/verify_otp")
+@auth_bp.post("/verify_otp")
+def verify_otp():
+    payload = request.get_json(silent=True) or {}
+    email = (payload.get("email") or "").strip().lower()
+    otp = (payload.get("otp") or "").strip()
+    if not email or not otp:
+        return jsonify({"detail": "Email and OTP are required"}), 422
+
+    ref = _otp_ref(email)
+    snapshot = ref.get()
+    if not snapshot.exists:
+        return jsonify({"detail": "OTP not found or expired"}), 400
+
+    data = snapshot.to_dict() or {}
+    expires_at = _parse_iso(data.get("expires_at"))
+    if expires_at is None or expires_at < _utcnow():
+        ref.delete()
+        return jsonify({"detail": "OTP expired"}), 400
+    if not verify_password(otp, data.get("otp_hash") or ""):
+        return jsonify({"detail": "Invalid OTP"}), 400
+
+    ref.update({"verified": True, "verified_at": now_iso()})
+    return jsonify({"success": True, "status": "success", "message": "OTP verified"})
+
+
 @auth_bp.post("/auth/login")
+@auth_bp.post("/login")
 def login():
     payload = request.get_json(silent=True) or {}
-    email = payload.get("email") or ""
+    email = payload.get("email") or payload.get("username") or ""
     password = payload.get("password") or ""
     if not email or not password:
-        return jsonify({"detail": "Email and password are required"}), 422
+        return jsonify({"detail": "Email/username and password are required"}), 422
 
     snapshot = _find_user_by_email(email)
+    if snapshot is None:
+        snapshot = _find_user_by_username(email)
     if snapshot is None:
         return jsonify({"detail": "Invalid credentials"}), 401
 
@@ -43,31 +227,43 @@ def login():
     if not verify_password(password, data.get("password_hash") or ""):
         return jsonify({"detail": "Invalid credentials"}), 401
 
-    user = safe_delete_fields(to_dict(snapshot), "password_hash")
-    token = create_token(snapshot.id, data.get("role") or "customer")
-    return jsonify({"access_token": token, "user": user})
+    return _login_response(snapshot)
 
 
 @auth_bp.post("/auth/register")
+@auth_bp.post("/auth/register_after_otp")
+@auth_bp.post("/register_after_otp")
 def register():
     payload = request.get_json(silent=True) or {}
     email = (payload.get("email") or "").strip().lower()
     password = payload.get("password") or ""
     full_name = payload.get("full_name") or ""
-    role = payload.get("role") or "customer"
+    role = _normalize_role(payload.get("role") or "customer")
     phone = payload.get("phone") or ""
+    username = (payload.get("username") or email.split("@")[0]).strip().lower()
+    requires_otp = request.path.endswith("register_after_otp")
 
     if not email or not password:
         return jsonify({"detail": "Email and password are required"}), 422
-    if role not in _ALLOWED_ROLES:
-        role = "customer"
 
     if _find_user_by_email(email) is not None:
         return jsonify({"detail": "Email already registered"}), 422
+    if username and _find_user_by_username(username) is not None:
+        return jsonify({"detail": "Username already registered"}), 422
+
+    if requires_otp:
+        otp_snapshot = _otp_ref(email).get()
+        if not otp_snapshot.exists:
+            return jsonify({"detail": "Please verify OTP before registering"}), 400
+        otp_data = otp_snapshot.to_dict() or {}
+        expires_at = _parse_iso(otp_data.get("expires_at"))
+        if not otp_data.get("verified") or expires_at is None or expires_at < _utcnow():
+            return jsonify({"detail": "Please verify OTP before registering"}), 400
 
     ref = col(USERS).document()
     ref.set({
         "email": email,
+        "username": username,
         "password_hash": hash_password(password),
         "full_name": full_name,
         "role": role,
@@ -77,9 +273,17 @@ def register():
         "created_at": now_iso(),
     })
 
+    if requires_otp:
+        _otp_ref(email).delete()
+
     user = safe_delete_fields(to_dict(ref.get()), "password_hash")
     token = create_token(ref.id, role)
-    return jsonify({"access_token": token, "user": user}), 201
+    return jsonify({
+        "success": True,
+        "access_token": token,
+        "token": token,
+        "user": user,
+    }), 201
 
 
 @auth_bp.post("/auth/logout")
