@@ -54,6 +54,18 @@ def list_ledgers():
     return jsonify(items)
 
 
+@khata_bp.get("/khata/ledgers/<ledger_id>")
+@require_auth
+def get_ledger(ledger_id):
+    snap = doc(KHATA_LEDGERS, ledger_id).get()
+    if not snap.exists:
+        return jsonify({"detail": "Ledger not found"}), 404
+    ledger = to_dict(snap)
+    if g.user_id not in {ledger.get("vendor_id"), ledger.get("customer_id")}:
+        return jsonify({"detail": "Not your ledger"}), 403
+    return jsonify(_with_party_names(ledger))
+
+
 @khata_bp.post("/khata/ledgers")
 @require_role("vendor")
 def create_ledger():
@@ -62,6 +74,22 @@ def create_ledger():
     customer_name = payload.get("customer_name") or ""
     if not customer_id:
         return jsonify({"detail": "customer_id is required"}), 422
+
+    existing = (
+        col(KHATA_LEDGERS)
+        .where(filter=FieldFilter("vendor_id", "==", g.user_id))
+        .stream()
+    )
+    for ledger in existing:
+        data = to_dict(ledger)
+        if data.get("customer_id") == customer_id:
+            if data.get("status") == "settled":
+                ledger.reference.set({
+                    "status": "active",
+                    "updated_at": now_iso(),
+                }, merge=True)
+                data = to_dict(ledger.reference.get())
+            return jsonify(_with_party_names(data)), 200
 
     ref = col(KHATA_LEDGERS).document()
     vendor = doc(USERS, g.user_id).get()
@@ -97,6 +125,36 @@ def _with_party_names(ledger: dict) -> dict:
     return ledger
 
 
+@khata_bp.get("/khata/customers/search")
+@require_role("vendor")
+def search_customers():
+    query = (request.args.get("q") or "").strip().lower()
+    if len(query) < 2:
+        return jsonify([])
+
+    matches = []
+    for snap in col(USERS).where(filter=FieldFilter("role", "==", "customer")).stream():
+        customer = to_dict(snap)
+        haystack = " ".join(
+            str(customer.get(field) or "").lower()
+            for field in ("full_name", "username", "email", "phone")
+        )
+        if query not in haystack:
+            continue
+        customer.pop("password_hash", None)
+        matches.append({
+            "uid": customer.get("uid"),
+            "id": customer.get("uid"),
+            "full_name": customer.get("full_name") or customer.get("username") or "",
+            "email": customer.get("email") or "",
+            "phone": customer.get("phone") or "",
+        })
+        if len(matches) >= 20:
+            break
+
+    return jsonify(matches)
+
+
 @khata_bp.get("/khata/ledgers/<ledger_id>/transactions")
 @require_auth
 def list_ledger_transactions(ledger_id):
@@ -129,6 +187,8 @@ def record_transaction():
 
     if not ledger_id or txn_type not in {"credit", "debit", "settlement"}:
         return jsonify({"detail": "ledger_id and valid type required"}), 422
+    if amount <= 0:
+        return jsonify({"detail": "amount must be positive"}), 422
 
     ledger_ref = doc(KHATA_LEDGERS, ledger_id)
     ledger_snap = ledger_ref.get()
@@ -137,6 +197,13 @@ def record_transaction():
     ledger = ledger_snap.to_dict() or {}
     if g.user_id not in {ledger.get("vendor_id"), ledger.get("customer_id")}:
         return jsonify({"detail": "Not your ledger"}), 403
+    is_vendor = g.user_id == ledger.get("vendor_id")
+    if not is_vendor and txn_type != "debit":
+        return jsonify({"detail": "Customers can only record payments"}), 403
+    if not is_vendor:
+        balance = float(ledger.get("balance") or 0)
+        if amount > balance:
+            return jsonify({"detail": "Payment exceeds outstanding balance"}), 422
 
     txn_ref = col(KHATA_TRANSACTIONS).document()
     txn_ref.set({
@@ -150,6 +217,7 @@ def record_transaction():
         "created_at": now_iso(),
     })
     _recompute_balance(ledger_id, ledger_ref)
+    ledger_ref.set({"status": "active"}, merge=True)
     return jsonify(to_dict(txn_ref.get())), 201
 
 

@@ -8,6 +8,7 @@ from db import (
     CATEGORIES,
     CUSTOMER_ORDERS,
     SHOP_ITEMS,
+    USERS,
     USER_FAVORITES,
     col,
     doc,
@@ -20,6 +21,48 @@ shops_bp = Blueprint("shops", __name__)
 
 
 # ── Shop item browsing ─────────────────────────────────────────────────────
+
+def _fill_missing(item: dict, field: str, value):
+    if item.get(field) in (None, "") and value not in (None, ""):
+        item[field] = value
+
+
+def _with_vendor_profile(item: dict) -> dict:
+    vendor_id = item.get("vendor_id")
+    if not vendor_id:
+        return item
+
+    needs_profile = any(
+        item.get(field) in (None, "")
+        for field in (
+            "vendor_name",
+            "vendor_phone",
+            "vendor_email",
+            "vendor_latitude",
+            "vendor_longitude",
+            "vendor_shop_description",
+        )
+    )
+    if not needs_profile:
+        return item
+
+    vendor = doc(USERS, vendor_id).get()
+    if not vendor.exists:
+        return item
+
+    data = vendor.to_dict() or {}
+    enriched = dict(item)
+    _fill_missing(
+        enriched,
+        "vendor_name",
+        data.get("full_name") or data.get("shop_name"),
+    )
+    _fill_missing(enriched, "vendor_phone", data.get("phone"))
+    _fill_missing(enriched, "vendor_email", data.get("email"))
+    _fill_missing(enriched, "vendor_latitude", data.get("latitude"))
+    _fill_missing(enriched, "vendor_longitude", data.get("longitude"))
+    _fill_missing(enriched, "vendor_shop_description", data.get("shop_address"))
+    return enriched
 
 @shops_bp.get("/shops")
 def list_shops():
@@ -39,7 +82,7 @@ def list_shops():
                     continue
             except (TypeError, ValueError):
                 pass
-        items.append(item)
+        items.append(_with_vendor_profile(item))
     return jsonify(items)
 
 
@@ -134,7 +177,7 @@ def get_shop(shop_id):
     snapshot = doc(SHOP_ITEMS, shop_id).get()
     if not snapshot.exists:
         return jsonify({"detail": "Shop item not found"}), 404
-    return jsonify(to_dict(snapshot))
+    return jsonify(_with_vendor_profile(to_dict(snapshot)))
 
 
 # ── Customer orders ────────────────────────────────────────────────────────

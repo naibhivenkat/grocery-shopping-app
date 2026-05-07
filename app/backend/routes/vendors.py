@@ -20,6 +20,9 @@ def _vendor_profile_fields():
         "vendor_name": data.get("full_name") or data.get("shop_name"),
         "vendor_phone": data.get("phone"),
         "vendor_email": data.get("email"),
+        "vendor_latitude": data.get("latitude"),
+        "vendor_longitude": data.get("longitude"),
+        "vendor_shop_description": data.get("shop_address"),
         "city_id": data.get("city_id"),
     }
 
