@@ -12,7 +12,7 @@ the source of each blueprint:
 
 | Area        | Blueprint                | Paths                                                                  |
 |-------------|--------------------------|------------------------------------------------------------------------|
-| Auth        | `routes/auth.py`         | `POST /auth/send_otp` `POST /auth/verify_otp` `POST /auth/register_after_otp` `POST /auth/login` `POST /auth/register` `POST /auth/logout` `GET /auth/me` `GET /auth/role` |
+| Auth        | `routes/auth.py`         | `POST /auth/send_otp` `POST /auth/verify_otp` `POST /auth/register_after_otp` `POST /auth/login` `POST /auth/forgot_password` `POST /auth/reset_password` `POST /auth/register` `POST /auth/logout` `GET /auth/me` `GET /auth/role` |
 | Shops       | `routes/shops.py`        | `GET /shops` `GET /shops/<id>` `GET/POST /shops/categories` `DELETE /shops/categories/<id>` `POST/GET /shops/favorites` `DELETE /shops/favorites/<id>` `GET /shops/favorites/<id>/check` `POST/GET /orders` `POST /orders/<id>/cancel` |
 | Vendors     | `routes/vendors.py`      | `GET/POST /vendors/items` `PUT/DELETE /vendors/items/<id>` `GET /vendors/orders` `PUT /vendors/orders/<id>/status` |
 | Cities      | `routes/cities.py`       | `GET /cities` `GET /cities/<id>` `GET /cities/current/<user_id>` `PUT /cities/current` `POST /cities` `PUT /cities/<id>` |

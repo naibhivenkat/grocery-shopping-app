@@ -64,6 +64,13 @@ def _otp_ref(email: str):
     return col("auth_otps").document(key)
 
 
+def _password_reset_otp_ref(email: str):
+    key = hashlib.sha256(
+        f"password-reset:{email.strip().lower()}".encode()
+    ).hexdigest()
+    return col("auth_otps").document(key)
+
+
 def _utcnow() -> datetime:
     return datetime.now(timezone.utc)
 
@@ -77,10 +84,20 @@ def _parse_iso(value: str | None) -> datetime | None:
         return None
 
 
-def _send_otp_email(email: str, otp: str) -> None:
+def _send_otp_email(
+    email: str,
+    otp: str,
+    *,
+    subject: str = "Your LocalShop Finder verification code",
+    message_prefix: str = "Your LocalShop Finder verification code",
+) -> None:
     """Send OTP email when Brevo/Sendinblue or SMTP env vars are configured."""
     sendinblue_key = os.getenv("SENDINBLUE_API_KEY")
     from_email = os.getenv("FROM_EMAIL")
+    message_text = (
+        f"{message_prefix} is {otp}. "
+        f"It expires in {_OTP_TTL_MINUTES} minutes."
+    )
     if sendinblue_key and from_email:
         payload = json.dumps({
             "sender": {
@@ -88,11 +105,8 @@ def _send_otp_email(email: str, otp: str) -> None:
                 "name": "LocalShop Finder",
             },
             "to": [{"email": email}],
-            "subject": "Your LocalShop Finder verification code",
-            "textContent": (
-                f"Your LocalShop Finder verification code is {otp}. "
-                f"It expires in {_OTP_TTL_MINUTES} minutes."
-            ),
+            "subject": subject,
+            "textContent": message_text,
         }).encode("utf-8")
         req = urllib.request.Request(
             "https://api.sendinblue.com/v3/smtp/email",
@@ -119,18 +133,15 @@ def _send_otp_email(email: str, otp: str) -> None:
     password = os.getenv("SMTP_PASSWORD")
     sender = os.getenv("SMTP_SENDER") or username
     if not host or not username or not password or not sender:
-        log.info("Registration OTP for %s is %s", email, otp)
+        log.info("%s for %s is %s", subject, email, otp)
         return
 
     port = int(os.getenv("SMTP_PORT", "587"))
     message = EmailMessage()
     message["From"] = sender
     message["To"] = email
-    message["Subject"] = "Your LocalShop Finder verification code"
-    message.set_content(
-        f"Your LocalShop Finder verification code is {otp}. "
-        f"It expires in {_OTP_TTL_MINUTES} minutes."
-    )
+    message["Subject"] = subject
+    message.set_content(message_text)
     with smtplib.SMTP(host, port, timeout=10) as smtp:
         smtp.starttls()
         smtp.login(username, password)
@@ -229,6 +240,100 @@ def login():
         return jsonify({"detail": "Invalid credentials"}), 401
 
     return _login_response(snapshot)
+
+
+@auth_bp.post("/auth/forgot_password")
+@auth_bp.post("/forgot_password")
+def forgot_password():
+    payload = request.get_json(silent=True) or {}
+    email = (payload.get("email") or "").strip().lower()
+    if not email:
+        return jsonify({"detail": "Email is required"}), 422
+
+    snapshot = _find_user_by_email(email)
+    response = {
+        "success": True,
+        "message": "If an account exists, a reset OTP has been sent",
+    }
+    if snapshot is None:
+        return jsonify(response)
+
+    data = snapshot.to_dict() or {}
+    if data.get("is_suspended"):
+        return jsonify(response)
+
+    otp = f"{random.SystemRandom().randint(0, 999999):06d}"
+    expires_at = _utcnow() + timedelta(minutes=_OTP_TTL_MINUTES)
+    _password_reset_otp_ref(email).set({
+        "email": email,
+        "otp_hash": hash_password(otp),
+        "purpose": "password_reset",
+        "created_at": now_iso(),
+        "expires_at": expires_at.isoformat(),
+    })
+
+    try:
+        _send_otp_email(
+            email,
+            otp,
+            subject="Reset your LocalShop Finder password",
+            message_prefix="Your LocalShop Finder password reset code",
+        )
+    except Exception as exc:
+        log.warning(
+            "Failed to send password reset OTP email to %s: %s",
+            email,
+            exc,
+        )
+        return jsonify({"detail": "Failed to send password reset OTP"}), 500
+
+    if os.getenv("AUTH_OTP_DEBUG_RESPONSE") == "1":
+        response["otp"] = otp
+    return jsonify(response)
+
+
+@auth_bp.post("/auth/reset_password")
+@auth_bp.post("/reset_password")
+def reset_password():
+    payload = request.get_json(silent=True) or {}
+    email = (payload.get("email") or "").strip().lower()
+    otp = (payload.get("otp") or "").strip()
+    new_password = payload.get("new_password") or payload.get("password") or ""
+    if not email or not otp or not new_password:
+        return jsonify({"detail": "Email, OTP, and new password are required"}), 422
+    if len(new_password) < 6:
+        return jsonify({"detail": "Password must be at least 6 characters"}), 422
+
+    ref = _password_reset_otp_ref(email)
+    otp_snapshot = ref.get()
+    if not otp_snapshot.exists:
+        return jsonify({"detail": "Invalid or expired OTP"}), 400
+
+    otp_data = otp_snapshot.to_dict() or {}
+    expires_at = _parse_iso(otp_data.get("expires_at"))
+    if expires_at is None or expires_at < _utcnow():
+        ref.delete()
+        return jsonify({"detail": "OTP expired"}), 400
+    if not verify_password(otp, otp_data.get("otp_hash") or ""):
+        return jsonify({"detail": "Invalid OTP"}), 400
+
+    user_snapshot = _find_user_by_email(email)
+    if user_snapshot is None:
+        ref.delete()
+        return jsonify({"detail": "Invalid or expired OTP"}), 400
+
+    user_data = user_snapshot.to_dict() or {}
+    if user_data.get("is_suspended"):
+        return jsonify({"detail": "Account is suspended"}), 403
+
+    reset_at = now_iso()
+    doc(USERS, user_snapshot.id).update({
+        "password_hash": hash_password(new_password),
+        "updated_at": reset_at,
+        "password_reset_at": reset_at,
+    })
+    ref.delete()
+    return jsonify({"success": True, "message": "Password reset successfully"})
 
 
 @auth_bp.post("/auth/google")
