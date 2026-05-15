@@ -1,9 +1,11 @@
+import logging
 import uuid
 from datetime import datetime
-from flask import Blueprint, jsonify, request
+
+from flask import Blueprint, jsonify
 from google.cloud import firestore
+
 from firebase_db import db
-import logging
 
 shop_wallet_bp = Blueprint("shop_wallet", __name__)
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
