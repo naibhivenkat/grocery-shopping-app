@@ -14,6 +14,7 @@ from db import (
     to_dict,
 )
 
+from app.backend.db import SHOP_ITEMS
 
 admin_bp = Blueprint("admin", __name__)
 
@@ -121,3 +122,18 @@ def admin_orders():
         orders.append(data)
 
     return jsonify(orders)
+
+
+@admin_bp.get("/admin/products")
+@require_role("admin", "super_admin")
+def admin_products():
+    docs = col(SHOP_ITEMS).stream()
+
+    products = []
+
+    for doc_snap in docs:
+        data = to_dict(doc_snap)
+
+        products.append(data)
+
+    return jsonify(products)
