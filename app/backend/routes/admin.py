@@ -1,21 +1,3 @@
-
-
-# from flask import Blueprint, jsonify
-# from google.cloud.firestore_v1.base_query import FieldFilter
-#
-# from auth_utils import require_role
-# from db import (
-#     CUSTOMER_ORDERS,
-#     USERS,
-#     VENDOR_SUBSCRIPTIONS,
-#     col,
-#     doc,
-#     now_iso,
-#     to_dict,
-# )
-
-# from app.backend.db import SHOP_ITEMS
-
 from flask import Blueprint, jsonify
 from google.cloud.firestore_v1.base_query import FieldFilter
 
@@ -154,3 +136,39 @@ def admin_products():
         products.append(data)
 
     return jsonify(products)
+
+@admin_bp.get("/admin/analytics")
+@require_role("admin", "super_admin")
+def analytics():
+    vendors = list(
+        col(USERS).where(
+            filter=FieldFilter("role", "==", "vendor")
+        ).stream()
+    )
+
+    customers = list(
+        col(USERS).where(
+            filter=FieldFilter("role", "==", "customer")
+        ).stream()
+    )
+
+    orders = list(col(CUSTOMER_ORDERS).stream())
+
+    revenue = 0.0
+
+    for d in orders:
+        data = d.to_dict() or {}
+
+        try:
+            revenue += float(
+                data.get("total_price") or 0
+            )
+        except Exception:
+            pass
+
+    return jsonify({
+        "vendors": len(vendors),
+        "customers": len(customers),
+        "orders": len(orders),
+        "revenue": revenue,
+    })
