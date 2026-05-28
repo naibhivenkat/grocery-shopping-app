@@ -252,3 +252,23 @@ def reply_support_ticket():
     return jsonify({
         "success": True,
     })
+
+
+@admin_bp.post("/admin/support/create")
+@require_role("admin", "super_admin")
+def create_support_ticket():
+    data = request.get_json(force=True)
+
+    ref = col(SUPPORT_TICKETS).document()
+
+    ticket = {
+        "uid": ref.id,
+        "user_name": data.get("user_name"),
+        "message": data.get("message"),
+        "status": "open",
+        "created_at": now_iso(),
+    }
+
+    ref.set(ticket)
+
+    return jsonify(ticket)
