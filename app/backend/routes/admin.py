@@ -1,4 +1,4 @@
-from flask import Blueprint, jsonify
+from flask import Blueprint, jsonify, request
 from google.cloud.firestore_v1.base_query import FieldFilter
 
 from auth_utils import require_role
@@ -11,6 +11,7 @@ from db import (
     doc,
     now_iso,
     to_dict,
+NOTIFICATIONS
 )
 
 
@@ -172,3 +173,40 @@ def analytics():
         "orders": len(orders),
         "revenue": revenue,
     })
+
+
+@admin_bp.post("/admin/notifications/send")
+@require_role("admin", "super_admin")
+def send_notification():
+    data = request.get_json(force=True)
+
+    notification = {
+        "title": data.get("title", ""),
+        "message": data.get("message", ""),
+        "target": data.get("target", "all"),
+        "created_at": now_iso(),
+    }
+
+    ref = col(NOTIFICATIONS).document()
+
+    notification["uid"] = ref.id
+
+    ref.set(notification)
+
+    return jsonify({
+        "success": True,
+        "notification": notification,
+    })
+
+
+@admin_bp.get("/admin/notifications")
+@require_role("admin", "super_admin")
+def list_notifications():
+    docs = col(NOTIFICATIONS).stream()
+
+    notifications = []
+
+    for d in docs:
+        notifications.append(to_dict(d))
+
+    return jsonify(notifications)
