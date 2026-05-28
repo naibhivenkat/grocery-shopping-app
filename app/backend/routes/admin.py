@@ -11,7 +11,8 @@ from db import (
     doc,
     now_iso,
     to_dict,
-NOTIFICATIONS
+NOTIFICATIONS,
+SUPPORT_TICKETS
 )
 
 
@@ -210,3 +211,44 @@ def list_notifications():
         notifications.append(to_dict(d))
 
     return jsonify(notifications)
+
+
+@admin_bp.get("/admin/support")
+@require_role("admin", "super_admin")
+def list_support_tickets():
+    docs = col(SUPPORT_TICKETS).stream()
+
+    tickets = []
+
+    for d in docs:
+        tickets.append(to_dict(d))
+
+    return jsonify(tickets)
+
+
+@admin_bp.post("/admin/support/reply")
+@require_role("admin", "super_admin")
+def reply_support_ticket():
+    data = request.get_json(force=True)
+
+    ticket_id = data.get("ticket_id")
+
+    if not ticket_id:
+        return jsonify({
+            "error": "ticket_id required"
+        }), 400
+
+    update_data = {
+        "admin_reply": data.get("reply", ""),
+        "status": "resolved",
+        "resolved_at": now_iso(),
+    }
+
+    doc(SUPPORT_TICKETS, ticket_id).set(
+        update_data,
+        merge=True,
+    )
+
+    return jsonify({
+        "success": True,
+    })

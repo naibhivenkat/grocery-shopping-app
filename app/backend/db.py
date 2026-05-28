@@ -30,7 +30,7 @@ WALLET_TRANSACTIONS = "wallet_transactions"
 NOTIFICATIONS = "notifications"
 KHATA_LEDGERS = "khata_ledgers"
 KHATA_TRANSACTIONS = "khata_transactions"
-
+SUPPORT_TICKETS = "support_tickets"
 
 def db():
     """Lazy Firestore client — avoids touching firebase_admin at import time."""
