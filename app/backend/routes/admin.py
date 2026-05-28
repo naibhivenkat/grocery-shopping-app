@@ -106,3 +106,18 @@ def unsuspend_user(user_id):
         merge=True,
     )
     return jsonify({"ok": True})
+
+
+@admin_bp.get("/admin/orders")
+@require_role("admin", "super_admin")
+def admin_orders():
+    docs = col(CUSTOMER_ORDERS).stream()
+
+    orders = []
+
+    for doc_snap in docs:
+        data = to_dict(doc_snap)
+
+        orders.append(data)
+
+    return jsonify(orders)
