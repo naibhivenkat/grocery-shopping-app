@@ -1,4 +1,20 @@
-"""`/admin/*` endpoints consumed by `AdminRemoteDataSource`."""
+
+
+# from flask import Blueprint, jsonify
+# from google.cloud.firestore_v1.base_query import FieldFilter
+#
+# from auth_utils import require_role
+# from db import (
+#     CUSTOMER_ORDERS,
+#     USERS,
+#     VENDOR_SUBSCRIPTIONS,
+#     col,
+#     doc,
+#     now_iso,
+#     to_dict,
+# )
+
+# from app.backend.db import SHOP_ITEMS
 
 from flask import Blueprint, jsonify
 from google.cloud.firestore_v1.base_query import FieldFilter
@@ -6,6 +22,7 @@ from google.cloud.firestore_v1.base_query import FieldFilter
 from auth_utils import require_role
 from db import (
     CUSTOMER_ORDERS,
+    SHOP_ITEMS,
     USERS,
     VENDOR_SUBSCRIPTIONS,
     col,
@@ -14,7 +31,7 @@ from db import (
     to_dict,
 )
 
-from app.backend.db import SHOP_ITEMS
+
 
 admin_bp = Blueprint("admin", __name__)
 
