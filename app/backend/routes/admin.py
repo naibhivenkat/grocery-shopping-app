@@ -19,6 +19,8 @@ SHOP_ITEMS
 from flask import Blueprint, jsonify, request, g
 from google.cloud.firestore_v1.base_query import FieldFilter
 
+from app.backend.auth_utils import log_admin_action, AUDIT_LOGS
+
 admin_bp = Blueprint("admin", __name__)
 
 
@@ -99,6 +101,14 @@ def suspend_user(user_id):
         "suspended_role": current_role,
         "suspended_at": now_iso(),
     }, merge=True)
+
+    log_admin_action(
+        g.user_id,
+        "admin@gmail.com",
+        "Suspend User",
+        user_id,
+        "user",
+    )
     return jsonify({"ok": True})
 
 
@@ -108,6 +118,13 @@ def unsuspend_user(user_id):
     doc(USERS, user_id).set(
         {"is_suspended": False, "suspended_at": None, "suspended_role": None},
         merge=True,
+    )
+    log_admin_action(
+        g.user_id,
+        "admin@gmail.com",
+        "Suspend User",
+        user_id,
+        "user",
     )
     return jsonify({"ok": True})
 
@@ -123,6 +140,8 @@ def admin_orders():
         data = to_dict(doc_snap)
 
         orders.append(data)
+
+
 
     return jsonify(orders)
 
@@ -455,5 +474,21 @@ def suspend_subscription(sub_id):
     )
 
     return jsonify({"success": True})
+
+
+@admin_bp.get("/admin/audit-logs")
+@require_role("admin", "super_admin")
+def audit_logs():
+    logs = [
+        to_dict(d)
+        for d in col(AUDIT_LOGS).stream()
+    ]
+
+    logs.sort(
+        key=lambda x: x.get("created_at", ""),
+        reverse=True,
+    )
+
+    return jsonify(logs)
 
 

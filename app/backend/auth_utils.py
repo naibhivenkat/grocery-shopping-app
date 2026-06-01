@@ -10,13 +10,30 @@ from functools import wraps
 import jwt
 from flask import g, jsonify, request
 
+from app.backend.db import col, now_iso
 
 JWT_SECRET = os.getenv("JWT_SECRET", "localshop-dev-secret-change-me")
 JWT_ALGORITHM = "HS256"
 JWT_EXPIRE_DAYS = int(os.getenv("JWT_EXPIRE_DAYS", "30"))
 _PBKDF2_ITER = 120_000
 
+AUDIT_LOGS = "audit_logs"
 
+def log_admin_action(
+    admin_id,
+    admin_email,
+    action,
+    target_id,
+    target_type,
+):
+    col(AUDIT_LOGS).document().set({
+        "admin_id": admin_id,
+        "admin_email": admin_email,
+        "action": action,
+        "target_id": target_id,
+        "target_type": target_type,
+        "created_at": now_iso(),
+    })
 def hash_password(password: str) -> str:
     salt = secrets.token_hex(16)
     digest = hashlib.pbkdf2_hmac("sha256", password.encode(), salt.encode(), _PBKDF2_ITER)
