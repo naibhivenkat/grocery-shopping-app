@@ -462,19 +462,6 @@ def suspend_subscription(sub_id):
 
     return jsonify({"success": True})
 
-@admin_bp.post("/admin/subscriptions/<sub_id>/suspend")
-@require_role("admin", "super_admin")
-def suspend_subscription(sub_id):
-    doc(VENDOR_SUBSCRIPTIONS, sub_id).set(
-        {
-            "status": "suspended",
-            "updated_at": now_iso(),
-        },
-        merge=True,
-    )
-
-    return jsonify({"success": True})
-
 
 @admin_bp.get("/admin/audit-logs")
 @require_role("admin", "super_admin")

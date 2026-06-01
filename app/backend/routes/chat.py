@@ -3,8 +3,8 @@
 from flask import Blueprint, g, jsonify, request
 from google.cloud.firestore_v1.base_query import FieldFilter
 
-from auth_utils import require_auth
-from db import (
+from app.backend.auth_utils import require_auth
+from app.backend.db import (
     CHAT_ROOMS,
     MESSAGES,
     NOTIFICATIONS,
