@@ -345,150 +345,150 @@ def change_password():
         "success": True
     })
 
-@admin_bp.post("/admin/products/<product_id>/disable")
-@require_role("admin", "super_admin")
-def disable_product(product_id):
-    doc(SHOP_ITEMS, product_id).set(
-        {
-            "is_available": False,
-            "disabled_by_admin": True,
-            "updated_at": now_iso(),
-        },
-        merge=True,
-    )
+# @admin_bp.post("/admin/products/<product_id>/disable")
+# @require_role("admin", "super_admin")
+# def disable_product(product_id):
+#     doc(SHOP_ITEMS, product_id).set(
+#         {
+#             "is_available": False,
+#             "disabled_by_admin": True,
+#             "updated_at": now_iso(),
+#         },
+#         merge=True,
+#     )
+#
+#     return jsonify({"success": True})
 
-    return jsonify({"success": True})
-
-
-@admin_bp.post("/admin/products/<product_id>/enable")
-@require_role("admin", "super_admin")
-def enable_product(product_id):
-    doc(SHOP_ITEMS, product_id).set(
-        {
-            "is_available": True,
-            "disabled_by_admin": False,
-            "updated_at": now_iso(),
-        },
-        merge=True,
-    )
-
-    return jsonify({"success": True})
-
-@admin_bp.delete("/admin/products/<product_id>")
-@require_role("admin", "super_admin")
-def delete_product(product_id):
-    doc(SHOP_ITEMS, product_id).delete()
-
-    return jsonify({"success": True})
-
-
-@admin_bp.get("/admin/orders/<order_id>")
-@require_role("admin", "super_admin")
-def get_order_detail(order_id):
-    snapshot = doc(CUSTOMER_ORDERS, order_id).get()
-
-    if not snapshot.exists:
-        return jsonify({
-            "detail": "Order not found"
-        }), 404
-
-    return jsonify(to_dict(snapshot))
-
-@admin_bp.post("/admin/orders/<order_id>/cancel")
-@require_role("admin", "super_admin")
-def admin_cancel_order(order_id):
-    doc(CUSTOMER_ORDERS, order_id).set(
-        {
-            "status": "cancelled",
-            "cancelled_by": "admin",
-            "updated_at": now_iso(),
-        },
-        merge=True,
-    )
-
-    return jsonify({
-        "success": True
-    })
-
-
-@admin_bp.post("/admin/orders/<order_id>/refund")
-@require_role("admin", "super_admin")
-def refund_order(order_id):
-    doc(CUSTOMER_ORDERS, order_id).set(
-        {
-            "refund_status": "refunded",
-            "refunded_at": now_iso(),
-        },
-        merge=True,
-    )
-
-    return jsonify({
-        "success": True
-    })
-
-
-@admin_bp.get("/admin/subscriptions")
-@require_role("admin", "super_admin")
-def list_subscriptions():
-    return jsonify([
-        to_dict(d)
-        for d in col(VENDOR_SUBSCRIPTIONS).stream()
-    ])
-
-
-@admin_bp.post("/admin/subscriptions/<sub_id>/activate")
-@require_role("admin", "super_admin")
-def activate_subscription(sub_id):
-    doc(VENDOR_SUBSCRIPTIONS, sub_id).set(
-        {
-            "status": "active",
-            "updated_at": now_iso(),
-        },
-        merge=True,
-    )
-
-    return jsonify({"success": True})
-
-@admin_bp.post("/admin/subscriptions/<sub_id>/suspend")
-@require_role("admin", "super_admin")
-def suspend_subscription(sub_id):
-    doc(VENDOR_SUBSCRIPTIONS, sub_id).set(
-        {
-            "status": "suspended",
-            "updated_at": now_iso(),
-        },
-        merge=True,
-    )
-
-    return jsonify({"success": True})
-
-@admin_bp.post("/admin/subscriptions/<sub_id>/suspend")
-@require_role("admin", "super_admin")
-def suspend_subscription(sub_id):
-    doc(VENDOR_SUBSCRIPTIONS, sub_id).set(
-        {
-            "status": "suspended",
-            "updated_at": now_iso(),
-        },
-        merge=True,
-    )
-
-    return jsonify({"success": True})
-
-
-@admin_bp.get("/admin/audit-logs")
-@require_role("admin", "super_admin")
-def audit_logs():
-    logs = [
-        to_dict(d)
-        for d in col(AUDIT_LOGS).stream()
-    ]
-
-    logs.sort(
-        key=lambda x: x.get("created_at", ""),
-        reverse=True,
-    )
-
-    return jsonify(logs)
-
-
+#
+# @admin_bp.post("/admin/products/<product_id>/enable")
+# @require_role("admin", "super_admin")
+# def enable_product(product_id):
+#     doc(SHOP_ITEMS, product_id).set(
+#         {
+#             "is_available": True,
+#             "disabled_by_admin": False,
+#             "updated_at": now_iso(),
+#         },
+#         merge=True,
+#     )
+#
+#     return jsonify({"success": True})
+#
+# @admin_bp.delete("/admin/products/<product_id>")
+# @require_role("admin", "super_admin")
+# def delete_product(product_id):
+#     doc(SHOP_ITEMS, product_id).delete()
+#
+#     return jsonify({"success": True})
+#
+#
+# @admin_bp.get("/admin/orders/<order_id>")
+# @require_role("admin", "super_admin")
+# def get_order_detail(order_id):
+#     snapshot = doc(CUSTOMER_ORDERS, order_id).get()
+#
+#     if not snapshot.exists:
+#         return jsonify({
+#             "detail": "Order not found"
+#         }), 404
+#
+#     return jsonify(to_dict(snapshot))
+#
+# @admin_bp.post("/admin/orders/<order_id>/cancel")
+# @require_role("admin", "super_admin")
+# def admin_cancel_order(order_id):
+#     doc(CUSTOMER_ORDERS, order_id).set(
+#         {
+#             "status": "cancelled",
+#             "cancelled_by": "admin",
+#             "updated_at": now_iso(),
+#         },
+#         merge=True,
+#     )
+#
+#     return jsonify({
+#         "success": True
+#     })
+#
+#
+# @admin_bp.post("/admin/orders/<order_id>/refund")
+# @require_role("admin", "super_admin")
+# def refund_order(order_id):
+#     doc(CUSTOMER_ORDERS, order_id).set(
+#         {
+#             "refund_status": "refunded",
+#             "refunded_at": now_iso(),
+#         },
+#         merge=True,
+#     )
+#
+#     return jsonify({
+#         "success": True
+#     })
+#
+#
+# @admin_bp.get("/admin/subscriptions")
+# @require_role("admin", "super_admin")
+# def list_subscriptions():
+#     return jsonify([
+#         to_dict(d)
+#         for d in col(VENDOR_SUBSCRIPTIONS).stream()
+#     ])
+#
+#
+# @admin_bp.post("/admin/subscriptions/<sub_id>/activate")
+# @require_role("admin", "super_admin")
+# def activate_subscription(sub_id):
+#     doc(VENDOR_SUBSCRIPTIONS, sub_id).set(
+#         {
+#             "status": "active",
+#             "updated_at": now_iso(),
+#         },
+#         merge=True,
+#     )
+#
+#     return jsonify({"success": True})
+#
+# @admin_bp.post("/admin/subscriptions/<sub_id>/suspend")
+# @require_role("admin", "super_admin")
+# def suspend_subscription(sub_id):
+#     doc(VENDOR_SUBSCRIPTIONS, sub_id).set(
+#         {
+#             "status": "suspended",
+#             "updated_at": now_iso(),
+#         },
+#         merge=True,
+#     )
+#
+#     return jsonify({"success": True})
+#
+# @admin_bp.post("/admin/subscriptions/<sub_id>/suspend")
+# @require_role("admin", "super_admin")
+# def suspend_subscription(sub_id):
+#     doc(VENDOR_SUBSCRIPTIONS, sub_id).set(
+#         {
+#             "status": "suspended",
+#             "updated_at": now_iso(),
+#         },
+#         merge=True,
+#     )
+#
+#     return jsonify({"success": True})
+#
+#
+# @admin_bp.get("/admin/audit-logs")
+# @require_role("admin", "super_admin")
+# def audit_logs():
+#     logs = [
+#         to_dict(d)
+#         for d in col(AUDIT_LOGS).stream()
+#     ]
+#
+#     logs.sort(
+#         key=lambda x: x.get("created_at", ""),
+#         reverse=True,
+#     )
+#
+#     return jsonify(logs)
+#
+#
