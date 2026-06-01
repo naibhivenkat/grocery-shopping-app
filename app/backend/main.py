@@ -154,6 +154,22 @@ def create_app() -> Flask:
 
     _register_legacy_blueprints(app)
 
+    import traceback
+    from flask import jsonify
+
+    @app.errorhandler(Exception)
+    def handle_exception(e):
+        print("\n" + "=" * 80)
+        print("UNHANDLED EXCEPTION")
+        print("=" * 80)
+        traceback.print_exc()
+        print("=" * 80 + "\n")
+
+        return jsonify({
+            "error": str(e),
+            "type": type(e).__name__,
+        }), 500
+
     @app.get("/")
     def index():
         return jsonify({"ok": True, "service": "localshop-finder-backend"})

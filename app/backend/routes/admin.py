@@ -466,16 +466,29 @@ def suspend_subscription(sub_id):
 @admin_bp.get("/admin/audit-logs")
 @require_role("admin", "super_admin")
 def audit_logs():
-    logs = [
-        to_dict(d)
-        for d in col(AUDIT_LOGS).stream()
-    ]
+    try:
+        print("AUDIT LOG ROUTE HIT")
 
-    logs.sort(
-        key=lambda x: x.get("created_at", ""),
-        reverse=True,
-    )
+        logs = [
+            to_dict(d)
+            for d in col(AUDIT_LOGS).stream()
+        ]
 
-    return jsonify(logs)
+        print(f"FOUND {len(logs)} LOGS")
 
+        logs.sort(
+            key=lambda x: x.get("created_at", ""),
+            reverse=True,
+        )
+
+        return jsonify(logs)
+
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+
+        return jsonify({
+            "error": str(e),
+            "type": type(e).__name__,
+        }), 500
 
