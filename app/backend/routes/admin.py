@@ -1,4 +1,4 @@
-from flask import Blueprint, jsonify, request
+from flask import Blueprint, jsonify, request, g
 from google.cloud.firestore_v1.base_query import FieldFilter
 
 from auth_utils import require_role
@@ -14,9 +14,9 @@ from db import (
 NOTIFICATIONS,
 SUPPORT_TICKETS
 )
-from werkzeug.security import check_password_hash, generate_password_hash
+#from werkzeug.security import check_password_hash, generate_password_hash
 
-from app.backend.auth_utils import hash_password, verify_password
+
 
 admin_bp = Blueprint("admin", __name__)
 
@@ -275,61 +275,60 @@ def create_support_ticket():
     return jsonify(ticket)
 
 
-from flask import g
-
-@admin_bp.post("/auth/change-password")
-@require_role("admin", "super_admin")
-def change_password():
-    data = request.get_json(force=True)
-
-    current_password = data.get("current_password")
-    new_password = data.get("new_password")
-
-    if not current_password:
-        return jsonify({
-            "detail": "Current password required"
-        }), 400
-
-    if not new_password:
-        return jsonify({
-            "detail": "New password required"
-        }), 400
-
-    user_id = g.user_id
-
-    user_snapshot = doc(USERS, user_id).get()
-
-    if not user_snapshot.exists:
-        return jsonify({
-            "detail": "User not found"
-        }), 404
-
-    user = user_snapshot.to_dict() or {}
-
-    stored_hash = user.get("password_hash")
-
-    if not stored_hash:
-        return jsonify({
-            "detail": "Password not configured"
-        }), 400
-
-    if not check_password_hash(
-        stored_hash,
-        current_password,
-    ):
-        return jsonify({
-            "detail": "Current password incorrect"
-        }), 400
-
-    doc(USERS, user_id).set(
-        {
-            "password_hash":
-                generate_password_hash(new_password)
-        },
-        merge=True,
-    )
-
-    return jsonify({
-        "success": True,
-        "message": "Password changed successfully"
-    })
+#
+# @admin_bp.post("/auth/change-password")
+# @require_role("admin", "super_admin")
+# def change_password():
+#     data = request.get_json(force=True)
+#
+#     current_password = data.get("current_password")
+#     new_password = data.get("new_password")
+#
+#     if not current_password:
+#         return jsonify({
+#             "detail": "Current password required"
+#         }), 400
+#
+#     if not new_password:
+#         return jsonify({
+#             "detail": "New password required"
+#         }), 400
+#
+#     user_id = g.user_id
+#
+#     user_snapshot = doc(USERS, user_id).get()
+#
+#     if not user_snapshot.exists:
+#         return jsonify({
+#             "detail": "User not found"
+#         }), 404
+#
+#     user = user_snapshot.to_dict() or {}
+#
+#     stored_hash = user.get("password_hash")
+#
+#     if not stored_hash:
+#         return jsonify({
+#             "detail": "Password not configured"
+#         }), 400
+#
+#     if not check_password_hash(
+#         stored_hash,
+#         current_password,
+#     ):
+#         return jsonify({
+#             "detail": "Current password incorrect"
+#         }), 400
+#
+#     doc(USERS, user_id).set(
+#         {
+#             "password_hash":
+#                 generate_password_hash(new_password)
+#         },
+#         merge=True,
+#     )
+#
+#     return jsonify({
+#         "success": True,
+#         "message": "Password changed successfully"
+#     })
