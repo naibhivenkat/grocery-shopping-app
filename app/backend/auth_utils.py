@@ -10,7 +10,7 @@ from functools import wraps
 import jwt
 from flask import g, jsonify, request
 
-from app.backend.db import col, now_iso
+from db import col, now_iso
 
 JWT_SECRET = os.getenv("JWT_SECRET", "localshop-dev-secret-change-me")
 JWT_ALGORITHM = "HS256"

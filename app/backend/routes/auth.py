@@ -15,8 +15,8 @@ from flask import Blueprint, g, jsonify, request
 from firebase_admin import auth as firebase_auth
 from google.cloud.firestore_v1.base_query import FieldFilter
 
-from app.backend.auth_utils import create_token, hash_password, require_auth, verify_password
-from app.backend.db import USERS, col, doc, now_iso, safe_delete_fields, to_dict
+from auth_utils import create_token, hash_password, require_auth, verify_password
+from db import USERS, col, doc, now_iso, safe_delete_fields, to_dict
 
 
 auth_bp = Blueprint("auth", __name__)

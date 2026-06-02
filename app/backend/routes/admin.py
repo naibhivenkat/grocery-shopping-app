@@ -1,9 +1,10 @@
-from app.backend.auth_utils  import (
+from auth_utils  import (
     require_role,
     verify_password,
     hash_password,
+    log_admin_action, AUDIT_LOGS
 )
-from app.backend.db import  (
+from db import  (
     CUSTOMER_ORDERS,
     SHOP_ITEMS,
     USERS,
@@ -19,7 +20,7 @@ SHOP_ITEMS
 from flask import Blueprint, jsonify, request, g
 from google.cloud.firestore_v1.base_query import FieldFilter
 
-from app.backend.auth_utils import log_admin_action, AUDIT_LOGS
+
 
 admin_bp = Blueprint("admin", __name__)
 
