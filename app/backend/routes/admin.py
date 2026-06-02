@@ -1,10 +1,10 @@
-from auth_utils  import (
+from auth_utils import (
     require_role,
     verify_password,
     hash_password,
     log_admin_action, AUDIT_LOGS
 )
-from db import  (
+from db import (
     CUSTOMER_ORDERS,
     SHOP_ITEMS,
     USERS,
@@ -15,12 +15,11 @@ from db import  (
     to_dict,
     NOTIFICATIONS,
     SUPPORT_TICKETS,
-SHOP_ITEMS
+    SHOP_ITEMS,
+    APP_SETTINGS
 )
 from flask import Blueprint, jsonify, request, g
 from google.cloud.firestore_v1.base_query import FieldFilter
-
-
 
 admin_bp = Blueprint("admin", __name__)
 
@@ -142,8 +141,6 @@ def admin_orders():
 
         orders.append(data)
 
-
-
     return jsonify(orders)
 
 
@@ -160,6 +157,7 @@ def admin_products():
         products.append(data)
 
     return jsonify(products)
+
 
 @admin_bp.get("/admin/analytics")
 @require_role("admin", "super_admin")
@@ -296,7 +294,6 @@ def create_support_ticket():
     return jsonify(ticket)
 
 
-
 @admin_bp.post("/admin/change-password")
 @require_role("admin", "super_admin")
 def change_password():
@@ -327,8 +324,8 @@ def change_password():
     stored_hash = user.get("password_hash", "")
 
     if not verify_password(
-        current_password,
-        stored_hash,
+            current_password,
+            stored_hash,
     ):
         return jsonify({
             "detail": "Current password incorrect"
@@ -345,6 +342,7 @@ def change_password():
     return jsonify({
         "success": True
     })
+
 
 @admin_bp.post("/admin/products/<product_id>/disable")
 @require_role("admin", "super_admin")
@@ -375,6 +373,7 @@ def enable_product(product_id):
 
     return jsonify({"success": True})
 
+
 @admin_bp.delete("/admin/products/<product_id>")
 @require_role("admin", "super_admin")
 def delete_product(product_id):
@@ -394,6 +393,7 @@ def get_order_detail(order_id):
         }), 404
 
     return jsonify(to_dict(snapshot))
+
 
 @admin_bp.post("/admin/orders/<order_id>/cancel")
 @require_role("admin", "super_admin")
@@ -450,6 +450,7 @@ def activate_subscription(sub_id):
 
     return jsonify({"success": True})
 
+
 @admin_bp.post("/admin/subscriptions/<sub_id>/suspend")
 @require_role("admin", "super_admin")
 def suspend_subscription(sub_id):
@@ -493,3 +494,47 @@ def audit_logs():
             "type": type(e).__name__,
         }), 500
 
+
+@admin_bp.get("/admin/maintenance")
+@require_role("admin", "super_admin")
+def get_maintenance_status():
+    settings_doc = doc(
+        APP_SETTINGS,
+        "config",
+    ).get()
+
+    if not settings_doc.exists:
+        return jsonify({
+            "maintenance_mode": False,
+        })
+
+    return jsonify(
+        settings_doc.to_dict()
+    )
+
+@admin_bp.post("/admin/maintenance")
+@require_role("admin", "super_admin")
+def update_maintenance_status():
+    data = request.get_json(force=True)
+
+    maintenance_mode = bool(
+        data.get("maintenance_mode", False)
+    )
+
+    doc(
+        APP_SETTINGS,
+        "config",
+    ).set(
+        {
+            "maintenance_mode":
+                maintenance_mode,
+            "updated_at": now_iso(),
+        },
+        merge=True,
+    )
+
+    return jsonify({
+        "success": True,
+        "maintenance_mode":
+            maintenance_mode,
+    })
