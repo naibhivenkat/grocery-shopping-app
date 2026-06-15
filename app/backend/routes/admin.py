@@ -495,9 +495,26 @@ def audit_logs():
         }), 500
 
 
-@admin_bp.get("/admin/maintenance")
-@require_role("admin", "super_admin")
-def get_maintenance_status():
+# @admin_bp.get("/admin/maintenance")
+# @require_role("admin", "super_admin")
+# def get_maintenance_status():
+#     settings_doc = doc(
+#         APP_SETTINGS,
+#         "config",
+#     ).get()
+#
+#     if not settings_doc.exists:
+#         return jsonify({
+#             "maintenance_mode": False,
+#         })
+#
+#     return jsonify(
+#         settings_doc.to_dict()
+#     )
+
+
+@admin_bp.get("/maintenance-status")
+def maintenance_status():
     settings_doc = doc(
         APP_SETTINGS,
         "config",
@@ -508,9 +525,16 @@ def get_maintenance_status():
             "maintenance_mode": False,
         })
 
-    return jsonify(
-        settings_doc.to_dict()
-    )
+    data = settings_doc.to_dict() or {}
+
+    return jsonify({
+        "maintenance_mode":
+            data.get(
+                "maintenance_mode",
+                False,
+            ),
+    })
+
 
 @admin_bp.post("/admin/maintenance")
 @require_role("admin", "super_admin")
