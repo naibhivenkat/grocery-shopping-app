@@ -40,26 +40,105 @@ def _users_by_role(role: str, include_suspended: bool = False):
     return users
 
 
+# @admin_bp.get("/admin/stats")
+# @require_role("admin", "super_admin")
+# def get_stats():
+#     vendors = list(col(USERS).where(filter=FieldFilter("role", "==", "vendor")).stream())
+#     customers = list(col(USERS).where(filter=FieldFilter("role", "==", "customer")).stream())
+#     active_subs = list(
+#         col(VENDOR_SUBSCRIPTIONS).where(filter=FieldFilter("status", "==", "active")).stream()
+#     )
+#     total_revenue = 0.0
+#     for d in col(CUSTOMER_ORDERS).stream():
+#         data = d.to_dict() or {}
+#         if data.get("status") in {"completed", "delivered", "paid"}:
+#             try:
+#                 total_revenue += float(data.get("total_price") or 0)
+#             except (TypeError, ValueError):
+#                 pass
+#     return jsonify({
+#         "vendor_count": len(vendors),
+#         "customer_count": len(customers),
+#         "active_subscriptions": len(active_subs),
+#         "total_revenue": total_revenue,
+#     })
+#
+
+
 @admin_bp.get("/admin/stats")
 @require_role("admin", "super_admin")
 def get_stats():
-    vendors = list(col(USERS).where(filter=FieldFilter("role", "==", "vendor")).stream())
-    customers = list(col(USERS).where(filter=FieldFilter("role", "==", "customer")).stream())
-    active_subs = list(
-        col(VENDOR_SUBSCRIPTIONS).where(filter=FieldFilter("status", "==", "active")).stream()
+
+    vendors = list(
+        col(USERS)
+        .where(filter=FieldFilter("role", "==", "vendor"))
+        .stream()
     )
-    total_revenue = 0.0
+
+    customers = list(
+        col(USERS)
+        .where(filter=FieldFilter("role", "==", "customer"))
+        .stream()
+    )
+
+    active_subs = list(
+        col(VENDOR_SUBSCRIPTIONS)
+        .where(filter=FieldFilter("status", "==", "active"))
+        .stream()
+    )
+
+    total_revenue = 0
+    total_orders = 0
+
+    pending_orders = 0
+    confirmed_orders = 0
+    delivered_orders = 0
+    cancelled_orders = 0
+
     for d in col(CUSTOMER_ORDERS).stream():
+
+        total_orders += 1
+
         data = d.to_dict() or {}
-        if data.get("status") in {"completed", "delivered", "paid"}:
+
+        status = str(
+            data.get("status", "")
+        ).lower()
+
+        if status == "pending":
+            pending_orders += 1
+
+        elif status == "confirmed":
+            confirmed_orders += 1
+
+        elif status == "delivered":
+            delivered_orders += 1
+
+        elif status == "cancelled":
+            cancelled_orders += 1
+
+        if status in [
+            "confirmed",
+            "delivered",
+            "completed",
+            "paid",
+        ]:
             try:
-                total_revenue += float(data.get("total_price") or 0)
-            except (TypeError, ValueError):
+                total_revenue += float(
+                    data.get("total_price") or 0
+                )
+            except:
                 pass
+
     return jsonify({
         "vendor_count": len(vendors),
         "customer_count": len(customers),
+        "total_orders": total_orders,
         "active_subscriptions": len(active_subs),
+        "pending_orders": pending_orders,
+        "confirmed_orders": confirmed_orders,
+        "delivered_orders": delivered_orders,
+        "cancelled_orders": cancelled_orders,
         "total_revenue": total_revenue,
     })
 
@@ -571,3 +650,43 @@ def get_maintenance_status():
         "updated_at":
             data.get("updated_at"),
     })
+
+
+@admin_bp.get("/admin/recent-orders")
+@require_role("admin", "super_admin")
+def get_recent_orders():
+
+    try:
+
+        docs = (
+            col(CUSTOMER_ORDERS)
+            .order_by("created_at", direction="DESCENDING")
+            .limit(20)
+            .stream()
+        )
+
+        orders = []
+
+        for d in docs:
+
+            data = d.to_dict() or {}
+
+            orders.append({
+                "id": d.id,
+                "customer_id": data.get("customer_id"),
+                "vendor_id": data.get("vendor_id"),
+                "vendor_name": data.get("vendor_name", ""),
+                "item_name": data.get("item_name", ""),
+                "quantity": data.get("quantity", 0),
+                "total_price": data.get("total_price", 0),
+                "payment_method": data.get("payment_method", ""),
+                "status": data.get("status", ""),
+                "created_at": data.get("created_at", ""),
+            })
+
+        return jsonify(orders)
+
+    except Exception as e:
+        return jsonify({
+            "error": str(e)
+        }), 500
