@@ -40,29 +40,6 @@ def _users_by_role(role: str, include_suspended: bool = False):
     return users
 
 
-# @admin_bp.get("/admin/stats")
-# @require_role("admin", "super_admin")
-# def get_stats():
-#     vendors = list(col(USERS).where(filter=FieldFilter("role", "==", "vendor")).stream())
-#     customers = list(col(USERS).where(filter=FieldFilter("role", "==", "customer")).stream())
-#     active_subs = list(
-#         col(VENDOR_SUBSCRIPTIONS).where(filter=FieldFilter("status", "==", "active")).stream()
-#     )
-#     total_revenue = 0.0
-#     for d in col(CUSTOMER_ORDERS).stream():
-#         data = d.to_dict() or {}
-#         if data.get("status") in {"completed", "delivered", "paid"}:
-#             try:
-#                 total_revenue += float(data.get("total_price") or 0)
-#             except (TypeError, ValueError):
-#                 pass
-#     return jsonify({
-#         "vendor_count": len(vendors),
-#         "customer_count": len(customers),
-#         "active_subscriptions": len(active_subs),
-#         "total_revenue": total_revenue,
-#     })
-#
 
 
 @admin_bp.get("/admin/stats")

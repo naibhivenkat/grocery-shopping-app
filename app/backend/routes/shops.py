@@ -15,6 +15,7 @@ from db import (
     now_iso,
     to_dict,
 )
+from firebase__db import get_user_firestore_ref
 
 
 shops_bp = Blueprint("shops", __name__)
@@ -219,7 +220,7 @@ def create_order():
     due_amount = None
     if partial_f is not None:
         due_amount = max(0.0, total_price - partial_f)
-
+    customer_name = get_user_firestore_ref(g.user_id)
     order_ref = col(CUSTOMER_ORDERS).document()
     order_ref.set({
         "customer_id": g.user_id,
@@ -239,6 +240,7 @@ def create_order():
         "vendor_name": item.get("vendor_name"),
         "created_at": now_iso(),
         "updated_at": now_iso(),
+        "customer_name" : customer_name
     })
     if stock_i is not None:
         new_stock = max(0, stock_i - quantity)
