@@ -15,7 +15,7 @@ from db import (
     now_iso,
     to_dict,
 )
-from firebase__db import get_user_firestore_ref
+from firebase_db import get_user_firestore_ref
 
 
 shops_bp = Blueprint("shops", __name__)
