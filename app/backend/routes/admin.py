@@ -39,13 +39,128 @@ def _users_by_role(role: str, include_suspended: bool = False):
         )
     return users
 
+@admin_bp.get("/admin/users")
+@require_role("admin", "super_admin")
+def list_users():
+    docs = col(USERS).stream()
+
+    users = []
+
+    for d in docs:
+        user = to_dict(d)
+
+        user.pop("password_hash", None)
+
+        users.append({
+            "uid": user.get("uid", d.id),
+            "full_name": user.get("full_name", ""),
+            "email": user.get("email", ""),
+            "phone": user.get("phone", ""),
+            "role": user.get("role", ""),
+            "is_suspended": bool(user.get("is_suspended", False)),
+        })
+
+    users.sort(
+        key=lambda x: x["full_name"].lower()
+    )
+
+    return jsonify(users)
 
 
+@admin_bp.get("/admin/users/<user_id>")
+@require_role("admin", "super_admin")
+def get_user(user_id):
+    snapshot = doc(USERS, user_id).get()
+
+    if not snapshot.exists:
+        return jsonify({
+            "detail": "User not found",
+        }), 404
+
+    user = to_dict(snapshot)
+
+    user.pop("password_hash", None)
+
+    return jsonify({
+        "uid": user.get("uid", snapshot.id),
+        "full_name": user.get("full_name", ""),
+        "email": user.get("email", ""),
+        "phone": user.get("phone", ""),
+        "role": user.get("role", ""),
+        "is_suspended": bool(user.get("is_suspended", False)),
+    })
+
+
+
+@admin_bp.put("/admin/users/<user_id>")
+@require_role("admin", "super_admin")
+def update_user(user_id):
+    snapshot = doc(USERS, user_id).get()
+
+    if not snapshot.exists:
+        return jsonify({
+            "detail": "User not found",
+        }), 404
+
+    body = request.get_json(force=True)
+
+    updates = {
+        "full_name": body.get("full_name"),
+        "email": body.get("email"),
+        "phone": body.get("phone"),
+        "role": body.get("role"),
+        "is_suspended": body.get("is_suspended"),
+        "updated_at": now_iso(),
+    }
+
+    updates = {
+        k: v
+        for k, v in updates.items()
+        if v is not None
+    }
+
+    doc(USERS, user_id).update(updates)
+
+    log_admin_action(
+        admin_id=g.user_id,
+        admin_email=getattr(g, "user_email", ""),
+        action="Update User",
+        target_id=user_id,
+        target_type="user",
+    )
+
+    return jsonify({
+        "success": True,
+    })
+
+
+@admin_bp.delete("/admin/users/<user_id>")
+@require_role("admin", "super_admin")
+def delete_user(user_id):
+    snapshot = doc(USERS, user_id).get()
+
+    if not snapshot.exists:
+        return jsonify({
+            "detail": "User not found",
+        }), 404
+
+    doc(USERS, user_id).delete()
+
+    log_admin_action(
+        admin_id=g.user_id,
+        admin_email=getattr(g, "user_email", ""),
+        action="Delete User",
+        target_id=user_id,
+        target_type="user",
+    )
+
+    return jsonify({
+        "success": True,
+    })
 
 @admin_bp.get("/admin/stats")
 @require_role("admin", "super_admin")
 def get_stats():
-
     vendors = list(
         col(USERS)
         .where(filter=FieldFilter("role", "==", "vendor"))
@@ -200,31 +315,14 @@ def admin_orders():
     return jsonify(orders)
 
 
-# @admin_bp.get("/admin/products")
-# @require_role("admin", "super_admin")
-# def admin_products():
-#     docs = col(SHOP_ITEMS).stream()
-#
-#     products = []
-#
-#     for doc_snap in docs:
-#         data = to_dict(doc_snap)
-#
-#         products.append(data)
-#
-#     return jsonify(products)
-
-
 @admin_bp.get("/admin/products")
 @require_role("admin", "super_admin")
 def admin_products():
-
     docs = col(SHOP_ITEMS).stream()
 
     products = []
 
     for doc_snap in docs:
-
         product = to_dict(doc_snap)
 
         image_urls = product.get("image_urls") or []
@@ -265,11 +363,9 @@ def admin_products():
     return jsonify(products)
 
 
-
 @admin_bp.get("/admin/products/<product_id>")
 @require_role("admin", "super_admin")
 def get_product(product_id):
-
     snapshot = doc(SHOP_ITEMS, product_id).get()
 
     if not snapshot.exists:
@@ -304,10 +400,10 @@ def get_product(product_id):
 
 import uuid
 
+
 @admin_bp.post("/admin/products")
 @require_role("admin", "super_admin")
 def create_product():
-
     body = request.json or {}
 
     product_id = uuid.uuid4().hex
@@ -365,7 +461,6 @@ def create_product():
 @admin_bp.put("/admin/products/<product_id>")
 @require_role("admin", "super_admin")
 def update_product(product_id):
-
     snapshot = doc(SHOP_ITEMS, product_id).get()
 
     if not snapshot.exists:
@@ -417,6 +512,7 @@ def update_product(product_id):
             "success": True
         }
     )
+
 
 @admin_bp.get("/admin/analytics")
 @require_role("admin", "super_admin")
@@ -603,21 +699,6 @@ def change_password():
     })
 
 
-# @admin_bp.post("/admin/products/<product_id>/disable")
-# @require_role("admin", "super_admin")
-# def disable_product(product_id):
-#     doc(SHOP_ITEMS, product_id).set(
-#         {
-#             "is_available": False,
-#             "disabled_by_admin": True,
-#             "updated_at": now_iso(),
-#         },
-#         merge=True,
-#     )
-#
-#     return jsonify({"success": True})
-
-
 @admin_bp.post("/admin/products/<product_id>/disable")
 @require_role("admin", "super_admin")
 def disable_product(product_id):
@@ -647,22 +728,6 @@ def disable_product(product_id):
         "success": True,
         "message": "Product disabled successfully",
     }), 200
-
-
-
-# @admin_bp.post("/admin/products/<product_id>/enable")
-# @require_role("admin", "super_admin")
-# def enable_product(product_id):
-#     doc(SHOP_ITEMS, product_id).set(
-#         {
-#             "is_available": True,
-#             "disabled_by_admin": False,
-#             "updated_at": now_iso(),
-#         },
-#         merge=True,
-#     )
-#
-#     return jsonify({"success": True})
 
 
 @admin_bp.post("/admin/products/<product_id>/enable")
@@ -695,17 +760,10 @@ def enable_product(product_id):
         "message": "Product enabled successfully",
     }), 200
 
-# @admin_bp.delete("/admin/products/<product_id>")
-# @require_role("admin", "super_admin")
-# def delete_product(product_id):
-#     doc(SHOP_ITEMS, product_id).delete()
-#
-#     return jsonify({"success": True})
 
 @admin_bp.delete("/admin/products/<product_id>")
 @require_role("admin", "super_admin")
 def delete_product(product_id):
-
     snapshot = doc(SHOP_ITEMS, product_id).get()
 
     if not snapshot.exists:
@@ -716,14 +774,6 @@ def delete_product(product_id):
         ), 404
 
     doc(SHOP_ITEMS, product_id).delete()
-
-    # log_admin_action(
-    #     g.user_id,
-    #     getattr(g, "user_email", ""),
-    #     "Delete Product",
-    #     product_id,
-    #     "product",
-    # )
 
     log_admin_action(
         admin_id=g.user_id,
@@ -738,6 +788,7 @@ def delete_product(product_id):
             "success": True
         }
     )
+
 
 @admin_bp.get("/admin/orders/<order_id>")
 @require_role("admin", "super_admin")
@@ -852,7 +903,6 @@ def audit_logs():
         }), 500
 
 
-
 @admin_bp.get("/maintenance-status")
 def maintenance_status():
     settings_doc = doc(
@@ -933,7 +983,6 @@ def get_maintenance_status():
 @admin_bp.get("/admin/recent-orders")
 @require_role("admin", "super_admin")
 def get_recent_orders():
-
     try:
 
         docs = (
@@ -946,7 +995,6 @@ def get_recent_orders():
         orders = []
 
         for d in docs:
-
             data = d.to_dict() or {}
 
             orders.append({
