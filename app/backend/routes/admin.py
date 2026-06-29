@@ -39,9 +39,9 @@ def _users_by_role(role: str, include_suspended: bool = False):
         )
     return users
 
-@admin_bp.get("/admin/users")
+@admin_bp.get("/admin/customers")
 @require_role("admin", "super_admin")
-def list_users():
+def list_customers():
     docs = col(USERS).stream()
 
     users = []
@@ -67,9 +67,9 @@ def list_users():
     return jsonify(users)
 
 
-@admin_bp.get("/admin/users/<user_id>")
+@admin_bp.get("/admin/customers/<user_id>")
 @require_role("admin", "super_admin")
-def get_user(user_id):
+def get_customers(user_id):
     snapshot = doc(USERS, user_id).get()
 
     if not snapshot.exists:
@@ -92,9 +92,9 @@ def get_user(user_id):
 
 
 
-@admin_bp.put("/admin/users/<user_id>")
+@admin_bp.put("/admin/customers/<user_id>")
 @require_role("admin", "super_admin")
-def update_user(user_id):
+def update_customer(user_id):
     snapshot = doc(USERS, user_id).get()
 
     if not snapshot.exists:
@@ -134,9 +134,9 @@ def update_user(user_id):
     })
 
 
-@admin_bp.delete("/admin/users/<user_id>")
+@admin_bp.delete("/admin/customers/<user_id>")
 @require_role("admin", "super_admin")
-def delete_user(user_id):
+def delete_customer(user_id):
     snapshot = doc(USERS, user_id).get()
 
     if not snapshot.exists:
@@ -262,9 +262,9 @@ def list_customers():
     return jsonify(customers)
 
 
-@admin_bp.post("/admin/users/<user_id>/suspend")
+@admin_bp.post("/admin/customers/<user_id>/suspend")
 @require_role("admin", "super_admin")
-def suspend_user(user_id):
+def suspend_customers(user_id):
     snap = doc(USERS, user_id).get()
     current_role = (snap.to_dict() or {}).get("role") if snap.exists else None
     doc(USERS, user_id).set({
@@ -283,9 +283,9 @@ def suspend_user(user_id):
     return jsonify({"ok": True})
 
 
-@admin_bp.post("/admin/users/<user_id>/unsuspend")
+@admin_bp.post("/admin/customers/<user_id>/unsuspend")
 @require_role("admin", "super_admin")
-def unsuspend_user(user_id):
+def unsuspend_customers(user_id):
     doc(USERS, user_id).set(
         {"is_suspended": False, "suspended_at": None, "suspended_role": None},
         merge=True,
