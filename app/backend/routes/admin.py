@@ -200,20 +200,223 @@ def admin_orders():
     return jsonify(orders)
 
 
+# @admin_bp.get("/admin/products")
+# @require_role("admin", "super_admin")
+# def admin_products():
+#     docs = col(SHOP_ITEMS).stream()
+#
+#     products = []
+#
+#     for doc_snap in docs:
+#         data = to_dict(doc_snap)
+#
+#         products.append(data)
+#
+#     return jsonify(products)
+
+
 @admin_bp.get("/admin/products")
 @require_role("admin", "super_admin")
 def admin_products():
+
     docs = col(SHOP_ITEMS).stream()
 
     products = []
 
     for doc_snap in docs:
-        data = to_dict(doc_snap)
 
-        products.append(data)
+        product = to_dict(doc_snap)
+
+        image_urls = product.get("image_urls") or []
+
+        stock = product.get("stock_quantity", 0)
+
+        product["total_images"] = len(image_urls)
+
+        product["primary_image"] = (
+            image_urls[0] if image_urls else ""
+        )
+
+        product["has_stock"] = stock > 0
+
+        product["status"] = (
+            "Available"
+            if product.get("is_available", True)
+            else "Disabled"
+        )
+
+        product["stock_status"] = (
+            "Out of Stock"
+            if stock <= 0
+            else (
+                "Low Stock"
+                if stock < 10
+                else "In Stock"
+            )
+        )
+
+        products.append(product)
+
+    products.sort(
+        key=lambda x: x.get("updated_at", ""),
+        reverse=True,
+    )
 
     return jsonify(products)
 
+
+
+@admin_bp.get("/admin/products/<product_id>")
+@require_role("admin", "super_admin")
+def get_product(product_id):
+
+    snapshot = doc(SHOP_ITEMS, product_id).get()
+
+    if not snapshot.exists:
+        return jsonify(
+            {
+                "detail": "Product not found"
+            }
+        ), 404
+
+    product = to_dict(snapshot)
+
+    images = product.get("image_urls") or []
+
+    stock = product.get("stock_quantity", 0)
+
+    product["total_images"] = len(images)
+
+    product["primary_image"] = (
+        images[0] if images else ""
+    )
+
+    product["status"] = (
+        "Available"
+        if product.get("is_available", True)
+        else "Disabled"
+    )
+
+    product["has_stock"] = stock > 0
+
+    return jsonify(product)
+
+
+import uuid
+
+@admin_bp.post("/admin/products")
+@require_role("admin", "super_admin")
+def create_product():
+
+    body = request.json or {}
+
+    product_id = uuid.uuid4().hex
+
+    product = {
+
+        "name": body.get("name", "").strip(),
+
+        "description": body.get("description", ""),
+
+        "price": float(body.get("price", 0)),
+
+        "stock_quantity": int(body.get("stock_quantity", 0)),
+
+        "category": body.get("category", ""),
+
+        "image_urls": body.get("image_urls", []),
+
+        "vendor_id": body.get("vendor_id"),
+
+        "vendor_name": body.get("vendor_name"),
+
+        "vendor_email": body.get("vendor_email"),
+
+        "vendor_phone": body.get("vendor_phone"),
+
+        "vendor_shop_description":
+            body.get("vendor_shop_description"),
+
+        "is_available": True,
+
+        "created_at": now_iso(),
+
+        "updated_at": now_iso(),
+    }
+
+    doc(SHOP_ITEMS, product_id).set(product)
+
+    log_admin_action(
+        g.user_id,
+        getattr(g, "user_email", ""),
+        "Create Product",
+        product_id,
+        "product",
+    )
+
+    return jsonify(
+        {
+            "success": True,
+            "uid": product_id,
+        }
+    )
+
+
+@admin_bp.put("/admin/products/<product_id>")
+@require_role("admin", "super_admin")
+def update_product(product_id):
+
+    snapshot = doc(SHOP_ITEMS, product_id).get()
+
+    if not snapshot.exists:
+        return jsonify(
+            {
+                "detail": "Product not found"
+            }
+        ), 404
+
+    body = request.json or {}
+
+    updates = {
+
+        "name": body.get("name"),
+
+        "description": body.get("description"),
+
+        "price": body.get("price"),
+
+        "stock_quantity": body.get("stock_quantity"),
+
+        "category": body.get("category"),
+
+        "image_urls": body.get("image_urls"),
+
+        "is_available": body.get("is_available"),
+
+        "updated_at": now_iso(),
+    }
+
+    updates = {
+        k: v
+        for k, v in updates.items()
+        if v is not None
+    }
+
+    doc(SHOP_ITEMS, product_id).update(updates)
+
+    log_admin_action(
+        g.user_id,
+        getattr(g, "user_email", ""),
+        "Update Product",
+        product_id,
+        "product",
+    )
+
+    return jsonify(
+        {
+            "success": True
+        }
+    )
 
 @admin_bp.get("/admin/analytics")
 @require_role("admin", "super_admin")
@@ -400,43 +603,141 @@ def change_password():
     })
 
 
+# @admin_bp.post("/admin/products/<product_id>/disable")
+# @require_role("admin", "super_admin")
+# def disable_product(product_id):
+#     doc(SHOP_ITEMS, product_id).set(
+#         {
+#             "is_available": False,
+#             "disabled_by_admin": True,
+#             "updated_at": now_iso(),
+#         },
+#         merge=True,
+#     )
+#
+#     return jsonify({"success": True})
+
+
 @admin_bp.post("/admin/products/<product_id>/disable")
 @require_role("admin", "super_admin")
 def disable_product(product_id):
-    doc(SHOP_ITEMS, product_id).set(
-        {
-            "is_available": False,
-            "disabled_by_admin": True,
-            "updated_at": now_iso(),
-        },
-        merge=True,
+    product_ref = doc(SHOP_ITEMS, product_id)
+    snapshot = product_ref.get()
+
+    if not snapshot.exists:
+        return jsonify({
+            "detail": "Product not found"
+        }), 404
+
+    product_ref.update({
+        "is_available": False,
+        "disabled_by_admin": True,
+        "updated_at": now_iso(),
+    })
+
+    log_admin_action(
+        admin_id=g.user_id,
+        admin_email=getattr(g, "user_email", ""),
+        action="Disable Product",
+        target_id=product_id,
+        target_type="product",
     )
 
-    return jsonify({"success": True})
+    return jsonify({
+        "success": True,
+        "message": "Product disabled successfully",
+    }), 200
+
+
+
+# @admin_bp.post("/admin/products/<product_id>/enable")
+# @require_role("admin", "super_admin")
+# def enable_product(product_id):
+#     doc(SHOP_ITEMS, product_id).set(
+#         {
+#             "is_available": True,
+#             "disabled_by_admin": False,
+#             "updated_at": now_iso(),
+#         },
+#         merge=True,
+#     )
+#
+#     return jsonify({"success": True})
 
 
 @admin_bp.post("/admin/products/<product_id>/enable")
 @require_role("admin", "super_admin")
 def enable_product(product_id):
-    doc(SHOP_ITEMS, product_id).set(
-        {
-            "is_available": True,
-            "disabled_by_admin": False,
-            "updated_at": now_iso(),
-        },
-        merge=True,
+    product_ref = doc(SHOP_ITEMS, product_id)
+    snapshot = product_ref.get()
+
+    if not snapshot.exists:
+        return jsonify({
+            "detail": "Product not found"
+        }), 404
+
+    product_ref.update({
+        "is_available": True,
+        "disabled_by_admin": False,
+        "updated_at": now_iso(),
+    })
+
+    log_admin_action(
+        admin_id=g.user_id,
+        admin_email=getattr(g, "user_email", ""),
+        action="Enable Product",
+        target_id=product_id,
+        target_type="product",
     )
 
-    return jsonify({"success": True})
+    return jsonify({
+        "success": True,
+        "message": "Product enabled successfully",
+    }), 200
 
+# @admin_bp.delete("/admin/products/<product_id>")
+# @require_role("admin", "super_admin")
+# def delete_product(product_id):
+#     doc(SHOP_ITEMS, product_id).delete()
+#
+#     return jsonify({"success": True})
 
 @admin_bp.delete("/admin/products/<product_id>")
 @require_role("admin", "super_admin")
 def delete_product(product_id):
+
+    snapshot = doc(SHOP_ITEMS, product_id).get()
+
+    if not snapshot.exists:
+        return jsonify(
+            {
+                "detail": "Product not found"
+            }
+        ), 404
+
     doc(SHOP_ITEMS, product_id).delete()
 
-    return jsonify({"success": True})
+    # log_admin_action(
+    #     g.user_id,
+    #     getattr(g, "user_email", ""),
+    #     "Delete Product",
+    #     product_id,
+    #     "product",
+    # )
 
+    log_admin_action(
+        admin_id=g.user_id,
+        admin_email=g.user_email,
+        action="Delete Product",
+        target_id=product_id,
+        target_type="product",
+    )
+
+    return jsonify(
+        {
+            "success": True
+        }
+    )
 
 @admin_bp.get("/admin/orders/<order_id>")
 @require_role("admin", "super_admin")

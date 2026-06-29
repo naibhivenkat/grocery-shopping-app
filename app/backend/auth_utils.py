@@ -70,37 +70,106 @@ def _extract_token() -> str | None:
     return None
 
 
+
 def require_auth(fn):
-    """Decorator that populates g.user_id and g.user_role, or returns 401."""
+    """Decorator that populates g.user_id, g.user_role and user metadata."""
 
     @wraps(fn)
     def wrapper(*args, **kwargs):
         token = _extract_token()
+
         if not token:
-            return jsonify({"detail": "Missing authentication token"}), 401
+            return jsonify({
+                "detail": "Missing authentication token"
+            }), 401
+
         try:
             payload = decode_token(token)
+
         except jwt.ExpiredSignatureError:
-            return jsonify({"detail": "Token expired"}), 401
+            return jsonify({
+                "detail": "Token expired"
+            }), 401
+
         except jwt.InvalidTokenError:
-            return jsonify({"detail": "Invalid token"}), 401
+            return jsonify({
+                "detail": "Invalid token"
+            }), 401
+
         g.user_id = payload["sub"]
+
         try:
             from db import USERS, doc
 
             user_snapshot = doc(USERS, g.user_id).get()
+
         except Exception:
             user_snapshot = None
+
         if user_snapshot is not None and user_snapshot.exists:
+
             user_data = user_snapshot.to_dict() or {}
+
             if user_data.get("is_suspended"):
-                return jsonify({"detail": "Account is suspended"}), 403
-            g.user_role = user_data.get("role") or payload.get("role", "customer")
+                return jsonify({
+                    "detail": "Account is suspended"
+                }), 403
+
+            g.user_role = (
+                user_data.get("role")
+                or payload.get("role", "customer")
+            )
+
+            g.user_email = user_data.get("email", "")
+
+            g.user_name = (
+                user_data.get("full_name")
+                or user_data.get("username", "")
+            )
+
         else:
+
             g.user_role = payload.get("role", "customer")
+
+            g.user_email = ""
+
+            g.user_name = ""
+
         return fn(*args, **kwargs)
 
     return wrapper
+
+# def require_auth(fn):
+#     """Decorator that populates g.user_id and g.user_role, or returns 401."""
+#
+#     @wraps(fn)
+#     def wrapper(*args, **kwargs):
+#         token = _extract_token()
+#         if not token:
+#             return jsonify({"detail": "Missing authentication token"}), 401
+#         try:
+#             payload = decode_token(token)
+#         except jwt.ExpiredSignatureError:
+#             return jsonify({"detail": "Token expired"}), 401
+#         except jwt.InvalidTokenError:
+#             return jsonify({"detail": "Invalid token"}), 401
+#         g.user_id = payload["sub"]
+#         try:
+#             from db import USERS, doc
+#
+#             user_snapshot = doc(USERS, g.user_id).get()
+#         except Exception:
+#             user_snapshot = None
+#         if user_snapshot is not None and user_snapshot.exists:
+#             user_data = user_snapshot.to_dict() or {}
+#             if user_data.get("is_suspended"):
+#                 return jsonify({"detail": "Account is suspended"}), 403
+#             g.user_role = user_data.get("role") or payload.get("role", "customer")
+#         else:
+#             g.user_role = payload.get("role", "customer")
+#         return fn(*args, **kwargs)
+#
+#     return wrapper
 
 
 def require_role(*roles: str):
