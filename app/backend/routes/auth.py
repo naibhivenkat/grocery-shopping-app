@@ -18,7 +18,6 @@ from google.cloud.firestore_v1.base_query import FieldFilter
 from auth_utils import create_token, hash_password, require_auth, verify_password
 from db import USERS, col, doc, now_iso, safe_delete_fields, to_dict
 
-
 auth_bp = Blueprint("auth", __name__)
 log = logging.getLogger(__name__)
 
@@ -85,11 +84,11 @@ def _parse_iso(value: str | None) -> datetime | None:
 
 
 def _send_otp_email(
-    email: str,
-    otp: str,
-    *,
-    subject: str = "Your LocalShop Finder verification code",
-    message_prefix: str = "Your LocalShop Finder verification code",
+        email: str,
+        otp: str,
+        *,
+        subject: str = "Your LocalShop Finder verification code",
+        message_prefix: str = "Your LocalShop Finder verification code",
 ) -> None:
     """Send OTP email when Brevo/Sendinblue or SMTP env vars are configured."""
     sendinblue_key = os.getenv("SENDINBLUE_API_KEY")
@@ -167,8 +166,10 @@ def send_otp():
     email = (payload.get("email") or "").strip().lower()
     if not email:
         return jsonify({"detail": "Email is required"}), 422
-    if _find_user_by_email(email) is not None:
-        return jsonify({"detail": "Email already registered"}), 422
+    if _find_user_by_email(email) is None:
+        return jsonify({
+            "detail": "Email not registered"
+        }), 404
 
     otp = f"{random.SystemRandom().randint(0, 999999):06d}"
     expires_at = _utcnow() + timedelta(minutes=_OTP_TTL_MINUTES)
@@ -299,21 +300,27 @@ def reset_password():
     email = (payload.get("email") or "").strip().lower()
     otp = (payload.get("otp") or "").strip()
     new_password = payload.get("new_password") or payload.get("password") or ""
+
     if not email or not otp or not new_password:
         return jsonify({"detail": "Email, OTP, and new password are required"}), 422
+
     if len(new_password) < 6:
         return jsonify({"detail": "Password must be at least 6 characters"}), 422
 
-    ref = _password_reset_otp_ref(email)
+    # FIX
+    ref = _otp_ref(email)
+
     otp_snapshot = ref.get()
     if not otp_snapshot.exists:
         return jsonify({"detail": "Invalid or expired OTP"}), 400
 
     otp_data = otp_snapshot.to_dict() or {}
+
     expires_at = _parse_iso(otp_data.get("expires_at"))
     if expires_at is None or expires_at < _utcnow():
         ref.delete()
         return jsonify({"detail": "OTP expired"}), 400
+
     if not verify_password(otp, otp_data.get("otp_hash") or ""):
         return jsonify({"detail": "Invalid OTP"}), 400
 
@@ -327,13 +334,19 @@ def reset_password():
         return jsonify({"detail": "Account is suspended"}), 403
 
     reset_at = now_iso()
+
     doc(USERS, user_snapshot.id).update({
         "password_hash": hash_password(new_password),
         "updated_at": reset_at,
         "password_reset_at": reset_at,
     })
+
     ref.delete()
-    return jsonify({"success": True, "message": "Password reset successfully"})
+
+    return jsonify({
+        "success": True,
+        "message": "Password reset successfully"
+    })
 
 
 @auth_bp.post("/auth/google")

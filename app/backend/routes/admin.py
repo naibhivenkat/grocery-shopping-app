@@ -39,33 +39,6 @@ def _users_by_role(role: str, include_suspended: bool = False):
         )
     return users
 
-# @admin_bp.get("/admin/customers")
-# @require_role("admin", "super_admin")
-# def list_customers():
-#     docs = col(USERS).stream()
-#
-#     users = []
-#
-#     for d in docs:
-#         user = to_dict(d)
-#
-#         user.pop("password_hash", None)
-#
-#         users.append({
-#             "uid": user.get("uid", d.id),
-#             "full_name": user.get("full_name", ""),
-#             "email": user.get("email", ""),
-#             "phone": user.get("phone", ""),
-#             "role": user.get("role", ""),
-#             "is_suspended": bool(user.get("is_suspended", False)),
-#         })
-#
-#     users.sort(
-#         key=lambda x: x["full_name"].lower()
-#     )
-#
-#     return jsonify(users)
-
 
 @admin_bp.get("/admin/customers/<user_id>")
 @require_role("admin", "super_admin")
@@ -89,7 +62,6 @@ def get_customers(user_id):
         "role": user.get("role", ""),
         "is_suspended": bool(user.get("is_suspended", False)),
     })
-
 
 
 @admin_bp.put("/admin/customers/<user_id>")
@@ -157,6 +129,7 @@ def delete_customer(user_id):
     return jsonify({
         "success": True,
     })
+
 
 @admin_bp.get("/admin/stats")
 @require_role("admin", "super_admin")
