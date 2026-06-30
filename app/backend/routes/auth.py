@@ -308,7 +308,7 @@ def reset_password():
         return jsonify({"detail": "Password must be at least 6 characters"}), 422
 
     # FIX
-    ref = _password_reset_otp_ref(email)
+    ref = _otp_ref(email)
 
     otp_snapshot = ref.get()
     if not otp_snapshot.exists:
