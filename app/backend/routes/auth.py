@@ -349,30 +349,89 @@ def reset_password():
     })
 
 
+#@auth_bp.post("/auth/verify_reset_otp")
+# @auth_bp.post("/verify_reset_otp")
+# def verify_reset_otp():
+#     payload = request.get_json(silent=True) or {}
+#     email = (payload.get("email") or "").strip().lower()
+#     otp = (payload.get("otp") or "").strip()
+#
+#     if not email or not otp:
+#         return jsonify({"detail": "Email and OTP are required"}), 422
+#
+#     ref = _password_reset_otp_ref(email)
+#     snapshot = ref.get()
+#
+#     if not snapshot.exists:
+#         return jsonify({"detail": "OTP not found or expired"}), 400
+#
+#     data = snapshot.to_dict() or {}
+#
+#     expires_at = _parse_iso(data.get("expires_at"))
+#     if expires_at is None or expires_at < _utcnow():
+#         ref.delete()
+#         return jsonify({"detail": "OTP expired"}), 400
+#
+#     if not verify_password(otp, data.get("otp_hash") or ""):
+#         return jsonify({"detail": "Invalid OTP"}), 400
+#
+#     ref.update({
+#         "verified": True,
+#         "verified_at": now_iso(),
+#     })
+#
+#     return jsonify({
+#         "success": True,
+#         "message": "OTP verified",
+#     })
+
+
 @auth_bp.post("/auth/verify_reset_otp")
 @auth_bp.post("/verify_reset_otp")
 def verify_reset_otp():
     payload = request.get_json(silent=True) or {}
+
     email = (payload.get("email") or "").strip().lower()
     otp = (payload.get("otp") or "").strip()
+
+    print("=" * 60)
+    print("VERIFY RESET OTP")
+    print("EMAIL:", email)
+    print("OTP:", otp)
 
     if not email or not otp:
         return jsonify({"detail": "Email and OTP are required"}), 422
 
     ref = _password_reset_otp_ref(email)
+    print("DOC PATH:", ref.path)
+
     snapshot = ref.get()
+    print("DOC EXISTS:", snapshot.exists)
 
     if not snapshot.exists:
+        print("OTP DOCUMENT NOT FOUND")
         return jsonify({"detail": "OTP not found or expired"}), 400
 
     data = snapshot.to_dict() or {}
+    print("OTP DATA:", data)
 
     expires_at = _parse_iso(data.get("expires_at"))
+    print("EXPIRES:", expires_at)
+    print("NOW:", _utcnow())
+
     if expires_at is None or expires_at < _utcnow():
+        print("OTP EXPIRED")
         ref.delete()
         return jsonify({"detail": "OTP expired"}), 400
 
-    if not verify_password(otp, data.get("otp_hash") or ""):
+    stored_hash = data.get("otp_hash") or ""
+
+    ok = verify_password(otp, stored_hash)
+
+    print("VERIFY RESULT:", ok)
+
+    if not ok:
+        print("OTP DOES NOT MATCH")
         return jsonify({"detail": "Invalid OTP"}), 400
 
     ref.update({
@@ -380,11 +439,12 @@ def verify_reset_otp():
         "verified_at": now_iso(),
     })
 
+    print("OTP VERIFIED SUCCESSFULLY")
+
     return jsonify({
         "success": True,
         "message": "OTP verified",
     })
-
 
 @auth_bp.post("/auth/google")
 def google_login():
