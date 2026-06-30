@@ -166,10 +166,10 @@ def send_otp():
     email = (payload.get("email") or "").strip().lower()
     if not email:
         return jsonify({"detail": "Email is required"}), 422
-    if _find_user_by_email(email) is None:
+    if _find_user_by_email(email) is not None:
         return jsonify({
-            "detail": "Email not registered"
-        }), 404
+            "detail": "Email already registered"
+        }), 422
 
     otp = f"{random.SystemRandom().randint(0, 999999):06d}"
     expires_at = _utcnow() + timedelta(minutes=_OTP_TTL_MINUTES)
@@ -308,7 +308,7 @@ def reset_password():
         return jsonify({"detail": "Password must be at least 6 characters"}), 422
 
     # FIX
-    ref = _otp_ref(email)
+    ref = _password_reset_otp_ref(email)
 
     otp_snapshot = ref.get()
     if not otp_snapshot.exists:
@@ -346,6 +346,43 @@ def reset_password():
     return jsonify({
         "success": True,
         "message": "Password reset successfully"
+    })
+
+
+@auth_bp.post("/auth/verify_reset_otp")
+@auth_bp.post("/verify_reset_otp")
+def verify_reset_otp():
+    payload = request.get_json(silent=True) or {}
+    email = (payload.get("email") or "").strip().lower()
+    otp = (payload.get("otp") or "").strip()
+
+    if not email or not otp:
+        return jsonify({"detail": "Email and OTP are required"}), 422
+
+    ref = _password_reset_otp_ref(email)
+    snapshot = ref.get()
+
+    if not snapshot.exists:
+        return jsonify({"detail": "OTP not found or expired"}), 400
+
+    data = snapshot.to_dict() or {}
+
+    expires_at = _parse_iso(data.get("expires_at"))
+    if expires_at is None or expires_at < _utcnow():
+        ref.delete()
+        return jsonify({"detail": "OTP expired"}), 400
+
+    if not verify_password(otp, data.get("otp_hash") or ""):
+        return jsonify({"detail": "Invalid OTP"}), 400
+
+    ref.update({
+        "verified": True,
+        "verified_at": now_iso(),
+    })
+
+    return jsonify({
+        "success": True,
+        "message": "OTP verified",
     })
 
 
