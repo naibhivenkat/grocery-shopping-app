@@ -182,28 +182,26 @@ def get_shop(shop_id):
 
 # ── Customer orders ────────────────────────────────────────────────────────
 
-@shops_bp.post("/orders")
-@require_auth
-def create_order():
-    payload = request.get_json(silent=True) or {}
+def _create_single_order(payload: dict):
+    """Create one customer order. Returns (response_dict, status) or (error_json, code)."""
     item_id = payload.get("item_id")
     try:
         quantity = int(payload.get("quantity") or 0)
         total_price = float(payload.get("total_price") or 0)
     except (TypeError, ValueError):
-        return jsonify({"detail": "quantity and total_price must be numeric"}), 422
+        return {"detail": "quantity and total_price must be numeric"}, 422
 
     if not item_id or quantity <= 0 or total_price <= 0:
-        return jsonify(
-            {"detail": "item_id, positive quantity, positive total_price required"}
-        ), 422
+        return {
+            "detail": "item_id, positive quantity, positive total_price required"
+        }, 422
 
     item_snap = doc(SHOP_ITEMS, item_id).get()
     if not item_snap.exists:
-        return jsonify({"detail": "Item not found"}), 404
+        return {"detail": "Item not found"}, 404
     item = item_snap.to_dict() or {}
     if item.get("is_available") is False:
-        return jsonify({"detail": "Item is not available"}), 409
+        return {"detail": "Item is not available"}, 409
     stock = item.get("stock_quantity")
     stock_i = None
     if stock is not None:
@@ -212,7 +210,7 @@ def create_order():
         except (TypeError, ValueError):
             stock_i = None
         if stock_i is not None and stock_i < quantity:
-            return jsonify({"detail": "Insufficient stock"}), 409
+            return {"detail": "Insufficient stock"}, 409
 
     partial = payload.get("partial_amount_paid")
     partial_f = float(partial) if partial is not None else None
@@ -220,6 +218,7 @@ def create_order():
     if partial_f is not None:
         due_amount = max(0.0, total_price - partial_f)
 
+    batch_id = payload.get("batch_id")
     order_ref = col(CUSTOMER_ORDERS).document()
     order_ref.set({
         "customer_id": g.user_id,
@@ -237,6 +236,7 @@ def create_order():
             or ([item["image_url"]] if item.get("image_url") else []),
         "item_unit_price": item.get("price"),
         "vendor_name": item.get("vendor_name"),
+        "batch_id": batch_id,
         "created_at": now_iso(),
         "updated_at": now_iso(),
     })
@@ -247,7 +247,84 @@ def create_order():
             "is_available": new_stock > 0,
             "updated_at": now_iso(),
         }, merge=True)
-    return jsonify({"order_id": order_ref.id, "uid": order_ref.id}), 201
+    return {
+        "order_id": order_ref.id,
+        "uid": order_ref.id,
+        "vendor_id": item.get("vendor_id"),
+        "item_id": item_id,
+        "total_price": total_price,
+    }, 201
+
+
+@shops_bp.post("/orders")
+@require_auth
+def create_order():
+    payload = request.get_json(silent=True) or {}
+    body, code = _create_single_order(payload)
+    return jsonify(body), code
+
+
+@shops_bp.post("/orders/batch")
+@require_auth
+def create_orders_batch():
+    """Place multiple cart lines as separate orders under one batch_id.
+
+    Enforces single-vendor cart. On partial failure, cancels already-created
+    orders in this batch (best-effort) so the client can retry cleanly.
+    Wallet deduct/credit remains client-driven (see Flutter placeOrder).
+    """
+    payload = request.get_json(silent=True) or {}
+    items = payload.get("items")
+    if not isinstance(items, list) or not items:
+        return jsonify({"detail": "items array required"}), 422
+
+    payment_method = payload.get("payment_method")
+    batch_id = col(CUSTOMER_ORDERS).document().id
+    created = []
+    vendor_ids = set()
+
+    for raw in items:
+        if not isinstance(raw, dict):
+            # rollback
+            for oid in created:
+                doc(CUSTOMER_ORDERS, oid).set(
+                    {"status": "cancelled", "updated_at": now_iso()}, merge=True
+                )
+            return jsonify({"detail": "each item must be an object"}), 422
+        line = dict(raw)
+        line["payment_method"] = payment_method or line.get("payment_method")
+        line["batch_id"] = batch_id
+        body, code = _create_single_order(line)
+        if code != 201:
+            for oid in created:
+                doc(CUSTOMER_ORDERS, oid).set(
+                    {"status": "cancelled", "updated_at": now_iso()}, merge=True
+                )
+            return jsonify({
+                "detail": body.get("detail") if isinstance(body, dict) else "Order failed",
+                "batch_id": batch_id,
+                "cancelled_order_ids": created,
+            }), code
+        created.append(body["order_id"])
+        if body.get("vendor_id"):
+            vendor_ids.add(body["vendor_id"])
+        if len(vendor_ids) > 1:
+            for oid in created:
+                doc(CUSTOMER_ORDERS, oid).set(
+                    {"status": "cancelled", "updated_at": now_iso()}, merge=True
+                )
+            return jsonify({
+                "detail": "All cart items must be from the same shop",
+                "batch_id": batch_id,
+                "cancelled_order_ids": created,
+            }), 422
+
+    return jsonify({
+        "batch_id": batch_id,
+        "order_ids": created,
+        "order_id": created[-1] if created else None,
+        "count": len(created),
+    }), 201
 
 
 @shops_bp.get("/orders")

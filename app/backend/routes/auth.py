@@ -372,10 +372,28 @@ def google_login():
             "phone": "",
             "avatar_url": decoded.get("picture"),
             "firebase_id": decoded.get("uid"),
+            "auth_provider": "google",
             "is_suspended": False,
             "created_at": now_iso(),
+            "updated_at": now_iso(),
         })
         snapshot = ref.get()
+    else:
+        # Keep Google identity fields fresh for existing accounts.
+        updates = {}
+        data_existing = snapshot.to_dict() or {}
+        firebase_uid = decoded.get("uid")
+        if firebase_uid and data_existing.get("firebase_id") != firebase_uid:
+            updates["firebase_id"] = firebase_uid
+        picture = decoded.get("picture")
+        if picture and not data_existing.get("avatar_url"):
+            updates["avatar_url"] = picture
+        if not data_existing.get("auth_provider"):
+            updates["auth_provider"] = "google"
+        if updates:
+            updates["updated_at"] = now_iso()
+            doc(USERS, snapshot.id).update(updates)
+            snapshot = doc(USERS, snapshot.id).get()
 
     data = snapshot.to_dict() or {}
     if data.get("is_suspended"):

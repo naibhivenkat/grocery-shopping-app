@@ -131,9 +131,23 @@ def smoke_test():
         record("mark all read",
                _hit(client, "POST", "/notifications/read-all", token=cust_token))
         record("get wallet", _hit(client, "GET", "/wallet", token=cust_token))
-        record("wallet credit",
-               _hit(client, "POST", "/wallet/credit",
-                    token=cust_token, body={"amount": 100, "description": "smoke"}))
+        r = record("wallet recharge initiate",
+                   _hit(client, "POST", "/wallet/recharge/initiate",
+                        token=cust_token,
+                        body={"amount": 100, "description": "smoke"}))
+        payment_id = None
+        if r.get("ok") and isinstance(r.get("body"), dict):
+            payment_id = r["body"].get("payment_id")
+        if payment_id:
+            record("wallet recharge confirm",
+                   _hit(client, "POST", "/wallet/recharge/confirm",
+                        token=cust_token, body={"payment_id": payment_id}))
+        else:
+            # Admin-only free credit is expected to fail for customers (403).
+            record("wallet credit blocked for customer",
+                   _hit(client, "POST", "/wallet/credit",
+                        token=cust_token,
+                        body={"amount": 100, "description": "smoke"}))
         record("wallet deduct",
                _hit(client, "POST", "/wallet/deduct",
                     token=cust_token, body={"amount": 10, "description": "smoke-deduct"}))
