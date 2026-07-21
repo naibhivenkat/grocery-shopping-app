@@ -15,6 +15,7 @@ from db import (
     now_iso,
     to_dict,
 )
+from firebase_db import get_user_firestore_ref
 
 
 shops_bp = Blueprint("shops", __name__)
@@ -199,27 +200,37 @@ def _create_single_order(payload: dict):
     item_snap = doc(SHOP_ITEMS, item_id).get()
     if not item_snap.exists:
         return {"detail": "Item not found"}, 404
+
     item = item_snap.to_dict() or {}
+
     if item.get("is_available") is False:
         return {"detail": "Item is not available"}, 409
+
     stock = item.get("stock_quantity")
     stock_i = None
+
     if stock is not None:
         try:
             stock_i = int(stock)
         except (TypeError, ValueError):
             stock_i = None
+
         if stock_i is not None and stock_i < quantity:
             return {"detail": "Insufficient stock"}, 409
 
     partial = payload.get("partial_amount_paid")
     partial_f = float(partial) if partial is not None else None
+
     due_amount = None
     if partial_f is not None:
         due_amount = max(0.0, total_price - partial_f)
 
+    # Keep BOTH values from the merged branches
     batch_id = payload.get("batch_id")
+    customer_name = get_user_firestore_ref(g.user_id)
+
     order_ref = col(CUSTOMER_ORDERS).document()
+
     order_ref.set({
         "customer_id": g.user_id,
         "vendor_id": item.get("vendor_id"),
@@ -239,14 +250,18 @@ def _create_single_order(payload: dict):
         "batch_id": batch_id,
         "created_at": now_iso(),
         "updated_at": now_iso(),
+        "customer_name": customer_name,
     })
+
     if stock_i is not None:
         new_stock = max(0, stock_i - quantity)
+
         doc(SHOP_ITEMS, item_id).set({
             "stock_quantity": new_stock,
             "is_available": new_stock > 0,
             "updated_at": now_iso(),
         }, merge=True)
+
     return {
         "order_id": order_ref.id,
         "uid": order_ref.id,
@@ -254,7 +269,6 @@ def _create_single_order(payload: dict):
         "item_id": item_id,
         "total_price": total_price,
     }, 201
-
 
 @shops_bp.post("/orders")
 @require_auth
