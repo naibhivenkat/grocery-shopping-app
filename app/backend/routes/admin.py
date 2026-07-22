@@ -524,28 +524,102 @@ def analytics():
     })
 
 
+# @admin_bp.post("/admin/notifications/send")
+# @require_role("admin", "super_admin")
+# def send_notification():
+#     data = request.get_json(force=True)
+#
+#     notification = {
+#         "title": data.get("title", ""),
+#         "message": data.get("message", ""),
+#         "target": data.get("target", "all"),
+#         "created_at": now_iso(),
+#     }
+#
+#     ref = col(NOTIFICATIONS).document()
+#
+#     notification["uid"] = ref.id
+#
+#     ref.set(notification)
+#
+#     return jsonify({
+#         "success": True,
+#         "notification": notification,
+#     })
+
+
 @admin_bp.post("/admin/notifications/send")
 @require_role("admin", "super_admin")
 def send_notification():
     data = request.get_json(force=True)
 
-    notification = {
-        "title": data.get("title", ""),
-        "message": data.get("message", ""),
-        "target": data.get("target", "all"),
-        "created_at": now_iso(),
-    }
+    title = data.get("title", "").strip()
+    message = data.get("message", "").strip()
+    target = data.get("target", "all")
 
-    ref = col(NOTIFICATIONS).document()
+    if not title:
+        return jsonify({"detail": "Title is required"}), 400
 
-    notification["uid"] = ref.id
+    if not message:
+        return jsonify({"detail": "Message is required"}), 400
 
-    ref.set(notification)
+    users_query = col(USERS)
 
-    return jsonify({
-        "success": True,
-        "notification": notification,
-    })
+    if target == "customer":
+        users_query = users_query.where(
+            filter=FieldFilter("role", "==", "customer")
+        )
+
+    elif target == "vendor":
+        users_query = users_query.where(
+            filter=FieldFilter("role", "==", "vendor")
+        )
+
+    elif target == "admin":
+        users_query = users_query.where(
+            filter=FieldFilter("role", "in", ["admin", "super_admin"])
+        )
+
+    users = list(users_query.stream())
+
+    db = col(USERS)._client
+    batch = db.batch()
+
+    count = 0
+
+    for user in users:
+        ref = col(NOTIFICATIONS).document()
+
+        batch.set(
+            ref,
+            {
+                "uid": ref.id,
+                "user_id": user.id,
+                "title": title,
+                "message": message,
+                "target": target,
+                "is_read": False,
+                "created_at": now_iso(),
+            },
+        )
+
+        count += 1
+
+        # Firestore max batch size = 500
+        if count % 450 == 0:
+            batch.commit()
+            batch = db.batch()
+
+    if count % 450 != 0:
+        batch.commit()
+
+    return jsonify(
+        {
+            "success": True,
+            "sent": count,
+            "target": target,
+        }
+    )
 
 
 @admin_bp.get("/admin/notifications")
