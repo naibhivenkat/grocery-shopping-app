@@ -490,6 +490,22 @@ def admin_orders():
     for doc_snap in docs:
         data = to_dict(doc_snap)
 
+        customer_name = data.get("customer_name")
+        if not isinstance(customer_name, str):
+            data["customer_name"] = ""
+
+        vendor_name = data.get("vendor_name")
+        if not isinstance(vendor_name, str):
+            data["vendor_name"] = ""
+
+        item_name = data.get("item_name")
+        if not isinstance(item_name, str):
+            data["item_name"] = ""
+
+        status = data.get("status")
+        if not isinstance(status, str):
+            data["status"] = ""
+
         orders.append(data)
 
     return jsonify(orders)
