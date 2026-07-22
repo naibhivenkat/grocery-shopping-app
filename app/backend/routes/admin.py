@@ -555,7 +555,7 @@ def send_notification():
 
     title = data.get("title", "").strip()
     message = data.get("message", "").strip()
-    target = data.get("target", "all")
+    target = data.get("target", "all").strip().lower()
 
     print("=" * 60)
     print("TARGET RECEIVED:", target)
@@ -569,27 +569,43 @@ def send_notification():
 
     users_query = col(USERS)
 
-    if target == "customer":
+    # Customers
+    if target in ("customer", "customers"):
         users_query = users_query.where(
             filter=FieldFilter("role", "==", "customer")
         )
 
-    elif target == "vendor":
+    # Vendors
+    elif target in ("vendor", "vendors"):
         users_query = users_query.where(
             filter=FieldFilter("role", "==", "vendor")
         )
 
-    elif target == "admin":
+    # Admins
+    elif target in ("admin", "admins"):
         users_query = users_query.where(
             filter=FieldFilter("role", "in", ["admin", "super_admin"])
         )
 
+    # All users
+    elif target == "all":
+        pass
+
+    else:
+        return jsonify({"detail": f"Unknown target: {target}"}), 400
+
     users = list(users_query.stream())
+
     print("=" * 60)
-    print("Users receiving notification:")
+    print(f"Sending to {len(users)} users")
+    print("=" * 60)
+
     for user in users:
-        print(user.id, user.to_dict())
-    print("=" * 60)
+        print(
+            user.id,
+            user.to_dict().get("role"),
+            user.to_dict().get("email"),
+        )
 
     db = col(USERS)._client
     batch = db.batch()
@@ -614,7 +630,6 @@ def send_notification():
 
         count += 1
 
-        # Firestore max batch size = 500
         if count % 450 == 0:
             batch.commit()
             batch = db.batch()
