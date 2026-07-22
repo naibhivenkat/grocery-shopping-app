@@ -220,6 +220,213 @@ def list_vendors():
     return jsonify(vendors)
 
 
+
+@admin_bp.get("/admin/vendors/<vendor_id>")
+@require_role("admin", "super_admin")
+def get_vendor(vendor_id):
+    snapshot = doc(USERS, vendor_id).get()
+
+    if not snapshot.exists:
+        return jsonify({
+            "detail": "Vendor not found",
+        }), 404
+
+    vendor = to_dict(snapshot)
+
+    if (
+        vendor.get("role") != "vendor"
+        and vendor.get("suspended_role") != "vendor"
+    ):
+        return jsonify({
+            "detail": "Vendor not found",
+        }), 404
+
+    vendor.pop("password_hash", None)
+
+    return jsonify({
+        "uid": vendor.get("uid", snapshot.id),
+        "full_name": vendor.get("full_name", ""),
+        "email": vendor.get("email", ""),
+        "phone": vendor.get("phone", ""),
+        "role": "vendor",
+        "is_suspended": bool(
+            vendor.get("is_suspended", False),
+        ),
+    })
+
+@admin_bp.put("/admin/vendors/<vendor_id>")
+@require_role("admin", "super_admin")
+def update_vendor(vendor_id):
+    snapshot = doc(USERS, vendor_id).get()
+
+    if not snapshot.exists:
+        return jsonify({
+            "detail": "Vendor not found",
+        }), 404
+
+    vendor = to_dict(snapshot)
+
+    if (
+        vendor.get("role") != "vendor"
+        and vendor.get("suspended_role") != "vendor"
+    ):
+        return jsonify({
+            "detail": "Vendor not found",
+        }), 404
+
+    body = request.get_json(force=True)
+
+    updates = {
+        "full_name": body.get("full_name"),
+        "email": body.get("email"),
+        "phone": body.get("phone"),
+        "is_suspended": body.get("is_suspended"),
+        "updated_at": now_iso(),
+    }
+
+    updates = {
+        k: v
+        for k, v in updates.items()
+        if v is not None
+    }
+
+    doc(USERS, vendor_id).update(updates)
+
+    log_admin_action(
+        admin_id=g.user_id,
+        admin_email=getattr(g, "user_email", ""),
+        action="Update Vendor",
+        target_id=vendor_id,
+        target_type="vendor",
+    )
+
+    return jsonify({
+        "success": True,
+    })
+
+@admin_bp.delete("/admin/vendors/<vendor_id>")
+@require_role("admin", "super_admin")
+def delete_vendor(vendor_id):
+    snapshot = doc(USERS, vendor_id).get()
+
+    if not snapshot.exists:
+        return jsonify({
+            "detail": "Vendor not found",
+        }), 404
+
+    vendor = to_dict(snapshot)
+
+    if (
+        vendor.get("role") != "vendor"
+        and vendor.get("suspended_role") != "vendor"
+    ):
+        return jsonify({
+            "detail": "Vendor not found",
+        }), 404
+
+    doc(USERS, vendor_id).delete()
+
+    log_admin_action(
+        admin_id=g.user_id,
+        admin_email=getattr(g, "user_email", ""),
+        action="Delete Vendor",
+        target_id=vendor_id,
+        target_type="vendor",
+    )
+
+    return jsonify({
+        "success": True,
+    })
+
+@admin_bp.post("/admin/vendors/<vendor_id>/suspend")
+@require_role("admin", "super_admin")
+def suspend_vendor(vendor_id):
+    snapshot = doc(USERS, vendor_id).get()
+
+    if not snapshot.exists:
+        return jsonify({
+            "detail": "Vendor not found",
+        }), 404
+
+    vendor = to_dict(snapshot)
+
+    if (
+        vendor.get("role") != "vendor"
+        and vendor.get("suspended_role") != "vendor"
+    ):
+        return jsonify({
+            "detail": "Vendor not found",
+        }), 404
+
+    current_role = vendor.get("role") or "vendor"
+
+    doc(USERS, vendor_id).set(
+        {
+            "is_suspended": True,
+            "suspended_role": current_role,
+            "suspended_at": now_iso(),
+            "updated_at": now_iso(),
+        },
+        merge=True,
+    )
+
+    log_admin_action(
+        admin_id=g.user_id,
+        admin_email=getattr(g, "user_email", ""),
+        action="Suspend Vendor",
+        target_id=vendor_id,
+        target_type="vendor",
+    )
+
+    return jsonify({
+        "success": True,
+        "message": "Vendor suspended successfully",
+    })
+
+@admin_bp.post("/admin/vendors/<vendor_id>/unsuspend")
+@require_role("admin", "super_admin")
+def unsuspend_vendor(vendor_id):
+    snapshot = doc(USERS, vendor_id).get()
+
+    if not snapshot.exists:
+        return jsonify({
+            "detail": "Vendor not found",
+        }), 404
+
+    vendor = to_dict(snapshot)
+
+    if (
+        vendor.get("role") != "vendor"
+        and vendor.get("suspended_role") != "vendor"
+    ):
+        return jsonify({
+            "detail": "Vendor not found",
+        }), 404
+
+    doc(USERS, vendor_id).set(
+        {
+            "is_suspended": False,
+            "suspended_role": None,
+            "suspended_at": None,
+            "updated_at": now_iso(),
+        },
+        merge=True,
+    )
+
+    log_admin_action(
+        admin_id=g.user_id,
+        admin_email=getattr(g, "user_email", ""),
+        action="Unsuspend Vendor",
+        target_id=vendor_id,
+        target_type="vendor",
+    )
+
+    return jsonify({
+        "success": True,
+        "message": "Vendor unsuspended successfully",
+    })
+
+
 @admin_bp.get("/admin/customers")
 @require_role("admin", "super_admin")
 def list_customers():
