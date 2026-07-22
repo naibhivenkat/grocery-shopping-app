@@ -557,6 +557,10 @@ def send_notification():
     message = data.get("message", "").strip()
     target = data.get("target", "all")
 
+    print("=" * 60)
+    print("TARGET RECEIVED:", target)
+    print("=" * 60)
+
     if not title:
         return jsonify({"detail": "Title is required"}), 400
 
@@ -581,6 +585,11 @@ def send_notification():
         )
 
     users = list(users_query.stream())
+    print("=" * 60)
+    print("Users receiving notification:")
+    for user in users:
+        print(user.id, user.to_dict())
+    print("=" * 60)
 
     db = col(USERS)._client
     batch = db.batch()
