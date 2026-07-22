@@ -524,28 +524,6 @@ def analytics():
     })
 
 
-# @admin_bp.post("/admin/notifications/send")
-# @require_role("admin", "super_admin")
-# def send_notification():
-#     data = request.get_json(force=True)
-#
-#     notification = {
-#         "title": data.get("title", ""),
-#         "message": data.get("message", ""),
-#         "target": data.get("target", "all"),
-#         "created_at": now_iso(),
-#     }
-#
-#     ref = col(NOTIFICATIONS).document()
-#
-#     notification["uid"] = ref.id
-#
-#     ref.set(notification)
-#
-#     return jsonify({
-#         "success": True,
-#         "notification": notification,
-#     })
 
 
 @admin_bp.post("/admin/notifications/send")
@@ -557,9 +535,7 @@ def send_notification():
     message = data.get("message", "").strip()
     target = data.get("target", "all").strip().lower()
 
-    print("=" * 60)
-    print("TARGET RECEIVED:", target)
-    print("=" * 60)
+
 
     if not title:
         return jsonify({"detail": "Title is required"}), 400
@@ -596,16 +572,7 @@ def send_notification():
 
     users = list(users_query.stream())
 
-    print("=" * 60)
-    print(f"Sending to {len(users)} users")
-    print("=" * 60)
 
-    for user in users:
-        print(
-            user.id,
-            user.to_dict().get("role"),
-            user.to_dict().get("email"),
-        )
 
     db = col(USERS)._client
     batch = db.batch()
