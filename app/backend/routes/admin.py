@@ -1302,6 +1302,8 @@ from db import (
 from flask import Blueprint, jsonify, request, g
 from google.cloud.firestore_v1.base_query import FieldFilter
 
+from app.backend.gmail_service import gmail_service
+
 admin_bp = Blueprint("admin", __name__)
 
 
@@ -2496,4 +2498,113 @@ def get_recent_orders():
     except Exception as e:
         return jsonify({
             "error": str(e)
+        }), 500
+
+
+# ============================================================================
+# Gmail Integration
+# ============================================================================
+
+@admin_bp.get("/admin/support/gmail/test")
+@require_role("admin", "super_admin")
+def gmail_test():
+
+    try:
+        return jsonify(
+            gmail_service.test_connection()
+        )
+
+    except Exception as e:
+        return jsonify({
+            "success": False,
+            "error": str(e),
+        }), 500
+
+
+@admin_bp.get("/admin/support/gmail/profile")
+@require_role("admin", "super_admin")
+def gmail_profile():
+
+    try:
+        return jsonify(
+            gmail_service.get_profile()
+        )
+
+    except Exception as e:
+        return jsonify({
+            "success": False,
+            "error": str(e),
+        }), 500
+
+
+@admin_bp.get("/admin/support/gmail/labels")
+@require_role("admin", "super_admin")
+def gmail_labels():
+
+    try:
+        return jsonify(
+            gmail_service.get_labels()
+        )
+
+    except Exception as e:
+        return jsonify({
+            "success": False,
+            "error": str(e),
+        }), 500
+
+
+@admin_bp.get("/admin/support/gmail/messages")
+@require_role("admin", "super_admin")
+def gmail_messages():
+
+    query = request.args.get("q", "")
+
+    max_results = int(
+        request.args.get("max_results", 20)
+    )
+
+    try:
+
+        messages = gmail_service.list_messages(
+            query=query,
+            max_results=max_results,
+        )
+
+        result = []
+
+        for message in messages:
+
+            result.append(
+                gmail_service.get_message_summary(
+                    message["id"]
+                )
+            )
+
+        return jsonify(result)
+
+    except Exception as e:
+
+        return jsonify({
+            "success": False,
+            "error": str(e),
+        }), 500
+
+
+@admin_bp.get("/admin/support/gmail/messages/<message_id>")
+@require_role("admin", "super_admin")
+def gmail_message(message_id):
+
+    try:
+
+        return jsonify(
+            gmail_service.get_message_summary(
+                message_id
+            )
+        )
+
+    except Exception as e:
+
+        return jsonify({
+            "success": False,
+            "error": str(e),
         }), 500
