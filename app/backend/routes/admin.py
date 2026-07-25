@@ -1302,7 +1302,7 @@ from db import (
 from flask import Blueprint, jsonify, request, g
 from google.cloud.firestore_v1.base_query import FieldFilter
 
-from app.backend.gmail_service import gmail_service
+from gmail_service import gmail_service
 
 admin_bp = Blueprint("admin", __name__)
 
