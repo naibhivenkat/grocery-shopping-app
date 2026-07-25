@@ -2704,3 +2704,71 @@ def gmail_reply():
             "success": False,
             "error": str(e),
         }), 500
+
+
+@admin_bp.post("/admin/support/gmail/send")
+@require_role("admin", "super_admin")
+def gmail_send():
+    """
+    Send a brand-new Gmail message.
+    """
+
+    try:
+        data = request.get_json(force=True)
+
+        to = (data.get("to") or "").strip()
+        cc = (data.get("cc") or "").strip()
+        bcc = (data.get("bcc") or "").strip()
+        subject = (data.get("subject") or "").strip()
+        body = (data.get("body") or "").strip()
+
+        attachments = data.get("attachments") or []
+
+        if not isinstance(attachments, list):
+            return jsonify({
+                "success": False,
+                "error": "attachments must be a list",
+            }), 400
+
+        if not to:
+            return jsonify({
+                "success": False,
+                "error": "to is required",
+            }), 400
+
+        if not subject:
+            return jsonify({
+                "success": False,
+                "error": "subject is required",
+            }), 400
+
+        if not body:
+            return jsonify({
+                "success": False,
+                "error": "body is required",
+            }), 400
+
+        result = gmail_service.send_email(
+            to=to,
+            cc=cc,
+            bcc=bcc,
+            subject=subject,
+            body=body,
+            attachments=attachments,
+        )
+
+        return jsonify({
+            "success": True,
+            "message_id": result.get("id"),
+            "thread_id": result.get("threadId"),
+        })
+
+    except Exception as e:
+        current_app.logger.exception(
+            "Failed to send Gmail message"
+        )
+
+        return jsonify({
+            "success": False,
+            "error": str(e),
+        }), 500

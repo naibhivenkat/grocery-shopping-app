@@ -19,11 +19,17 @@ No Support Ticket logic.
 
 from __future__ import annotations
 
-import base64
+
 from email.header import decode_header, make_header
 from typing import Any
-import base64
+
 from email.mime.text import MIMEText
+from email.mime.multipart import MIMEMultipart
+from email.mime.base import MIMEBase
+from email import encoders
+import mimetypes
+import os
+import base64
 
 from routes.gmail_auth import get_gmail_service
 
@@ -303,6 +309,78 @@ class GmailService:
         )
 
         return response
+
+    def send_email(
+            self,
+            to: str,
+            subject: str,
+            body: str,
+            cc: str = "",
+            bcc: str = "",
+            attachments: list[str] | None = None,
+    ) -> dict:
+        """
+        Send a brand-new Gmail message with optional attachments.
+        """
+
+        message = MIMEMultipart()
+
+        message["To"] = to
+        message["Subject"] = subject
+
+        if cc:
+            message["Cc"] = cc
+
+        if bcc:
+            message["Bcc"] = bcc
+
+        message.attach(
+            MIMEText(body, "plain", "utf-8")
+        )
+
+        for attachment in attachments or []:
+            filename = attachment.get("name")
+            encoded = attachment.get("bytes")
+
+            if not filename or not encoded:
+                continue
+
+            file_bytes = base64.b64decode(encoded)
+
+            content_type = (
+                    mimetypes.guess_type(filename)[0]
+                    or "application/octet-stream"
+            )
+
+            maintype, subtype = content_type.split("/", 1)
+
+            part = MIMEBase(maintype, subtype)
+            part.set_payload(file_bytes)
+
+            encoders.encode_base64(part)
+
+            part.add_header(
+                "Content-Disposition",
+                f'attachment; filename="{filename}"',
+            )
+
+            message.attach(part)
+
+        raw = base64.urlsafe_b64encode(
+            message.as_bytes()
+        ).decode()
+
+        return (
+            self.service.users()
+            .messages()
+            .send(
+                userId="me",
+                body={
+                    "raw": raw,
+                },
+            )
+            .execute()
+        )
 
 
 gmail_service = GmailService()
