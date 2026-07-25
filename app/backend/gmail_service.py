@@ -291,20 +291,6 @@ class GmailService:
             .execute()
         )
 
-    def get_thread(
-        self,
-        thread_id: str,
-    ) -> dict:
-
-        return (
-            self.service.users()
-            .threads()
-            .get(
-                userId="me",
-                id=thread_id,
-            )
-            .execute()
-        )
 
     # ------------------------------------------------------------------
     # Helpers
@@ -414,6 +400,47 @@ class GmailService:
             "label_ids": message.get("labelIds", []),
             "internal_date": message.get("internalDate"),
         }
+
+    def get_thread(
+            self,
+            thread_id: str,
+    ) -> list[dict]:
+        """
+        Returns all messages in a Gmail conversation.
+        """
+
+        thread = (
+            self.service.users()
+            .threads()
+            .get(
+                userId="me",
+                id=thread_id,
+                format="full",
+            )
+            .execute()
+        )
+
+        results = []
+
+        for message in thread.get("messages", []):
+            payload = message.get("payload", {})
+
+            results.append(
+                {
+                    "id": message.get("id"),
+                    "thread_id": message.get("threadId"),
+                    "snippet": message.get("snippet", ""),
+                    "subject": self.get_subject(payload),
+                    "from": self.get_from(payload),
+                    "to": self.get_to(payload),
+                    "date": self.get_date(payload),
+                    "body": self.extract_plain_text(payload),
+                    "label_ids": message.get("labelIds", []),
+                    "internal_date": message.get("internalDate"),
+                }
+            )
+
+        return results
 
 
 gmail_service = GmailService()

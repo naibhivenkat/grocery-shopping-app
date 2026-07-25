@@ -1299,10 +1299,11 @@ from db import (
     NOTIFICATIONS,
     APP_SETTINGS
 )
-from flask import Blueprint, jsonify, request, g
+from flask import Blueprint, jsonify, request, g, current_app
 from google.cloud.firestore_v1.base_query import FieldFilter
 
 from gmail_service import gmail_service
+
 
 admin_bp = Blueprint("admin", __name__)
 
@@ -2608,3 +2609,36 @@ def gmail_message(message_id):
             "success": False,
             "error": str(e),
         }), 500
+
+
+
+@admin_bp.get("/support/gmail/thread/<thread_id>")
+@require_role("admin", "super_admin")
+def gmail_thread(thread_id: str):
+    """
+    Get all messages in a Gmail conversation thread.
+    """
+    try:
+        gmail = gmail_service
+
+        messages = gmail.get_thread(thread_id)
+
+        return jsonify({
+            "success": True,
+            "thread_id": thread_id,
+            "count": len(messages),
+            "messages": messages,
+        })
+
+    except Exception as e:
+        current_app.logger.exception("Failed to fetch Gmail thread")
+
+        return (
+            jsonify(
+                {
+                    "success": False,
+                    "error": str(e),
+                }
+            ),
+            500,
+        )
