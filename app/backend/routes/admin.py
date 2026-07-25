@@ -2612,7 +2612,7 @@ def gmail_message(message_id):
 
 
 
-@admin_bp.get("/support/gmail/thread/<thread_id>")
+@admin_bp.get("/admin/support/gmail/thread/<thread_id>")
 @require_role("admin", "super_admin")
 def gmail_thread(thread_id: str):
     """
@@ -2642,3 +2642,65 @@ def gmail_thread(thread_id: str):
             ),
             500,
         )
+
+@admin_bp.post("/admin/support/gmail/reply")
+@require_role("admin", "super_admin")
+def gmail_reply():
+    """
+    Reply to a Gmail conversation.
+    """
+
+    try:
+        data = request.get_json(force=True)
+
+        thread_id = data.get("thread_id")
+        to = data.get("to")
+        subject = data.get("subject")
+        body = data.get("body")
+
+        if not thread_id:
+            return jsonify({
+                "success": False,
+                "error": "thread_id is required",
+            }), 400
+
+        if not to:
+            return jsonify({
+                "success": False,
+                "error": "to is required",
+            }), 400
+
+        if not subject:
+            return jsonify({
+                "success": False,
+                "error": "subject is required",
+            }), 400
+
+        if not body:
+            return jsonify({
+                "success": False,
+                "error": "body is required",
+            }), 400
+
+        gmail = gmail_service
+
+        result = gmail.reply_to_thread(
+            thread_id=thread_id,
+            to=to,
+            subject=subject,
+            body=body,
+        )
+
+        return jsonify({
+            "success": True,
+            "message_id": result.get("id"),
+            "thread_id": result.get("threadId"),
+        })
+
+    except Exception as e:
+        current_app.logger.exception("Failed to send Gmail reply")
+
+        return jsonify({
+            "success": False,
+            "error": str(e),
+        }), 500
