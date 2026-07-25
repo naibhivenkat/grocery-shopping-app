@@ -289,14 +289,7 @@ jobs:
             --allow-unauthenticated \
             --port=8080 \
             --set-env-vars=FLASK_ENV=production,JWT_SECRET=${{ secrets.JWT_SECRET }} \
-            --update-secrets=FIREBASE_CREDENTIALS_JSON=FIREBASE_CREDENTIALS_JSON:latest,\
-            SENDINBLUE_API_KEY=SENDINBLUE_API_KEY:latest,\
-            FROM_EMAIL=FROM_EMAIL:latest,\
-            GOOGLE_CLIENT_ID=GOOGLE_CLIENT_ID:latest,\
-            GOOGLE_CLIENT_SECRET=GOOGLE_CLIENT_SECRET:latest,\
-            GOOGLE_REFRESH_TOKEN=GOOGLE_REFRESH_TOKEN:latest,\
-            SUPPORT_EMAIL=SUPPORT_EMAIL:latest,\
-            GMAIL_ACCOUNT=GMAIL_ACCOUNT:latest
+            --update-secrets=FIREBASE_CREDENTIALS_JSON=FIREBASE_CREDENTIALS_JSON:latest,SENDINBLUE_API_KEY=SENDINBLUE_API_KEY:latest,FROM_EMAIL=FROM_EMAIL:latest,GOOGLE_CLIENT_ID=GOOGLE_CLIENT_ID:latest,GOOGLE_CLIENT_SECRET=GOOGLE_CLIENT_SECRET:latest,GOOGLE_REFRESH_TOKEN=GOOGLE_REFRESH_TOKEN:latest,SUPPORT_EMAIL=SUPPORT_EMAIL:latest,GMAIL_ACCOUNT=GMAIL_ACCOUNT:latest
 
       # 9️⃣ Wait for Cloud Run to stabilize
       - name: Wait for deployment
