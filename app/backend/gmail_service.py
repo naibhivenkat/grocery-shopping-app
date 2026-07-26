@@ -309,15 +309,44 @@ class GmailService:
             to: str,
             subject: str,
             body: str,
+            attachments=None,
     ) -> dict:
         """
         Send a reply in an existing Gmail thread.
         """
 
-        message = MIMEText(body, "plain", "utf-8")
+        message = MIMEMultipart()
 
         message["To"] = to
         message["Subject"] = subject
+        message["MIME-Version"] = "1.0"
+
+        message.attach(
+            MIMEText(body, "plain", "utf-8")
+        )
+
+        for uploaded in attachments or []:
+            uploaded.seek(0)
+
+            mime_type = uploaded.mimetype or "application/octet-stream"
+
+            if "/" in mime_type:
+                main, sub = mime_type.split("/", 1)
+            else:
+                main = "application"
+                sub = "octet-stream"
+
+            part = MIMEBase(main, sub)
+            part.set_payload(uploaded.read())
+
+            encoders.encode_base64(part)
+
+            part.add_header(
+                "Content-Disposition",
+                f'attachment; filename="{uploaded.filename}"',
+            )
+
+            message.attach(part)
 
         raw = base64.urlsafe_b64encode(
             message.as_bytes()
@@ -337,7 +366,6 @@ class GmailService:
         )
 
         return response
-
     def send_email(
             self,
             to: str,
