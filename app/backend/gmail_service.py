@@ -236,6 +236,40 @@ class GmailService:
 
         return ""
 
+    def extract_attachments(self, payload: dict) -> list[dict]:
+        """
+        Recursively extract attachment metadata from a Gmail message payload.
+        """
+
+        attachments = []
+
+        def walk(part: dict):
+            filename = part.get("filename", "")
+
+            body = part.get("body", {})
+
+            attachment_id = body.get("attachmentId")
+
+            if filename and attachment_id:
+                attachments.append(
+                    {
+                        "filename": filename,
+                        "mime_type": part.get(
+                            "mimeType",
+                            "application/octet-stream",
+                        ),
+                        "attachment_id": attachment_id,
+                        "size": body.get("size", 0),
+                    }
+                )
+
+            for child in part.get("parts", []):
+                walk(child)
+
+        walk(payload)
+
+        return attachments
+
     def get_message_summary(
         self,
         message_id: str,
@@ -258,6 +292,8 @@ class GmailService:
             "body": self.extract_plain_text(payload),
             "label_ids": message.get("labelIds", []),
             "internal_date": message.get("internalDate"),
+
+            "attachments": self.extract_attachments(payload),
         }
 
     def get_thread(
@@ -297,8 +333,9 @@ class GmailService:
                     "body": self.extract_plain_text(payload),
                     "label_ids": message.get("labelIds", []),
                     "internal_date": message.get("internalDate"),
-                }
 
+                    "attachments": self.extract_attachments(payload),
+                }
             )
 
         return results
@@ -437,6 +474,59 @@ class GmailService:
             )
             .execute()
         )
+
+    def download_attachment(
+            self,
+            message_id: str,
+            attachment_id: str,
+    ) -> tuple[bytes, str]:
+        """
+        Download a Gmail attachment.
+        """
+
+        message = self.get_message(message_id)
+
+        payload = message.get("payload", {})
+
+        filename = "attachment"
+
+        mime_type = "application/octet-stream"
+
+        def find_attachment(part: dict):
+            nonlocal filename, mime_type
+
+            body = part.get("body", {})
+
+            if body.get("attachmentId") == attachment_id:
+                filename = part.get("filename") or filename
+                mime_type = part.get("mimeType") or mime_type
+                return True
+
+            for child in part.get("parts", []):
+                if find_attachment(child):
+                    return True
+
+            return False
+
+        find_attachment(payload)
+
+        response = (
+            self.service.users()
+            .messages()
+            .attachments()
+            .get(
+                userId="me",
+                messageId=message_id,
+                id=attachment_id,
+            )
+            .execute()
+        )
+
+        data = base64.urlsafe_b64decode(
+            response["data"].encode()
+        )
+
+        return data, filename, mime_type
 
 
 gmail_service = GmailService()

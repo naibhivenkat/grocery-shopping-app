@@ -16,10 +16,12 @@ from db import (
     NOTIFICATIONS,
     APP_SETTINGS
 )
-from flask import Blueprint, jsonify, request, g, current_app
+from flask import Blueprint, jsonify, request, g, current_app, send_file
 from google.cloud.firestore_v1.base_query import FieldFilter
 
 from gmail_service import gmail_service
+
+from io import BytesIO
 
 
 admin_bp = Blueprint("admin", __name__)
@@ -1491,3 +1493,40 @@ def gmail_send():
             "success": False,
             "error": str(e),
         }), 500
+
+
+
+@admin_bp.get(
+    "/admin/support/gmail/attachment/<message_id>/<attachment_id>"
+)
+@require_role("admin", "super_admin")
+def gmail_download_attachment(
+    message_id: str,
+    attachment_id: str,
+):
+    try:
+        data, filename, mime_type = (
+            gmail_service.download_attachment(
+                message_id,
+                attachment_id,
+            )
+        )
+
+        return send_file(
+            BytesIO(data),
+            mimetype=mime_type,
+            as_attachment=True,
+            download_name=filename,
+        )
+
+    except Exception as e:
+        current_app.logger.exception(
+            "Failed to download Gmail attachment"
+        )
+
+        return jsonify(
+            {
+                "success": False,
+                "error": str(e),
+            }
+        ), 500
