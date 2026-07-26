@@ -88,25 +88,6 @@ class GmailService:
     # Messages
     # ------------------------------------------------------------------
 
-    # def list_messages(
-
-    #     self,
-    #     query: str = "",
-    #     max_results: int = 20,
-    # ) -> list[dict]:
-    #
-    #     response = (
-    #         self.service.users()
-    #         .messages()
-    #         .list(
-    #             userId="me",
-    #             q=query,
-    #             maxResults=max_results,
-    #         )
-    #         .execute()
-    #     )
-    #
-    #     return response.get("messages", [])
 
     def list_messages(
             self,
@@ -141,6 +122,14 @@ class GmailService:
         )
 
         return response.get("messages", [])
+
+    def get_reply_to(self, payload: dict) -> str:
+        return self.get_header(
+            payload.get("headers", []),
+            "Reply-To",
+        )
+
+
 
     def get_message(
         self,
@@ -255,6 +244,7 @@ class GmailService:
         message = self.get_message(message_id)
 
         payload = message.get("payload", {})
+        reply_to = self.get_reply_to(payload)
 
         return {
             "id": message.get("id"),
@@ -262,6 +252,7 @@ class GmailService:
             "snippet": message.get("snippet", ""),
             "subject": self.get_subject(payload),
             "from": self.get_from(payload),
+            "reply_to": reply_to,
             "to": self.get_to(payload),
             "date": self.get_date(payload),
             "body": self.extract_plain_text(payload),
@@ -300,12 +291,14 @@ class GmailService:
                     "snippet": message.get("snippet", ""),
                     "subject": self.get_subject(payload),
                     "from": self.get_from(payload),
+                    "reply_to": self.get_reply_to(payload),
                     "to": self.get_to(payload),
                     "date": self.get_date(payload),
                     "body": self.extract_plain_text(payload),
                     "label_ids": message.get("labelIds", []),
                     "internal_date": message.get("internalDate"),
                 }
+
             )
 
         return results
