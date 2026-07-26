@@ -88,18 +88,53 @@ class GmailService:
     # Messages
     # ------------------------------------------------------------------
 
+    # def list_messages(
+
+    #     self,
+    #     query: str = "",
+    #     max_results: int = 20,
+    # ) -> list[dict]:
+    #
+    #     response = (
+    #         self.service.users()
+    #         .messages()
+    #         .list(
+    #             userId="me",
+    #             q=query,
+    #             maxResults=max_results,
+    #         )
+    #         .execute()
+    #     )
+    #
+    #     return response.get("messages", [])
+
     def list_messages(
-        self,
-        query: str = "",
-        max_results: int = 20,
+            self,
+            query: str = "",
+            max_results: int = 20,
     ) -> list[dict]:
+        """
+        Returns only support emails.
+
+        Default:
+            - Must have Support label
+            - Must be in Inbox
+            - Excludes Sent mail
+
+        Additional search text from the UI is appended.
+        """
+
+        gmail_query = "label:Support in:inbox -label:SENT"
+
+        if query:
+            gmail_query += f" {query}"
 
         response = (
             self.service.users()
             .messages()
             .list(
                 userId="me",
-                q=query,
+                q=gmail_query,
                 maxResults=max_results,
             )
             .execute()
