@@ -124,7 +124,7 @@ class GmailService:
         Additional search text from the UI is appended.
         """
 
-        gmail_query = "label:Support in:inbox -label:SENT"
+        gmail_query = "label:Support"
 
         if query:
             gmail_query += f" {query}"
