@@ -19,7 +19,7 @@ No Support Ticket logic.
 
 from __future__ import annotations
 
-
+import re
 from email.header import decode_header, make_header
 from typing import Any
 
@@ -88,7 +88,6 @@ class GmailService:
     # Messages
     # ------------------------------------------------------------------
 
-
     def list_messages(
             self,
             query: str = "",
@@ -129,12 +128,10 @@ class GmailService:
             "Reply-To",
         )
 
-
-
     def get_message(
-        self,
-        message_id: str,
-        fmt: str = "full",
+            self,
+            message_id: str,
+            fmt: str = "full",
     ) -> dict:
 
         return (
@@ -148,15 +145,14 @@ class GmailService:
             .execute()
         )
 
-
     # ------------------------------------------------------------------
     # Helpers
     # ------------------------------------------------------------------
 
     @staticmethod
     def get_header(
-        headers: list[dict],
-        name: str,
+            headers: list[dict],
+            name: str,
     ) -> str:
 
         for h in headers:
@@ -200,8 +196,8 @@ class GmailService:
         )
 
     def extract_plain_text(
-        self,
-        payload: dict,
+            self,
+            payload: dict,
     ) -> str:
 
         mime = payload.get("mimeType")
@@ -210,31 +206,59 @@ class GmailService:
             data = payload.get("body", {}).get("data")
 
             if data:
-                return base64.urlsafe_b64decode(
+                text = base64.urlsafe_b64decode(
                     data.encode()
                 ).decode(
                     "utf-8",
                     errors="ignore",
                 )
 
+                return self.clean_email_body(text)
+
         for part in payload.get("parts", []):
+            text = self.extract_plain_text(part)
 
-            if part.get("mimeType") == "text/plain":
-
-                data = (
-                    part.get("body", {})
-                    .get("data")
-                )
-
-                if data:
-                    return base64.urlsafe_b64decode(
-                        data.encode()
-                    ).decode(
-                        "utf-8",
-                        errors="ignore",
-                    )
+            if text:
+                return text
 
         return ""
+
+    import re
+
+    def clean_email_body(
+            self,
+            body: str,
+    ) -> str:
+        if not body:
+            return ""
+
+        body = body.replace("\r\n", "\n")
+
+        # Remove quoted conversation
+        split_patterns = [
+            r"\nOn .+? wrote:",
+            r"\nFrom:.*",
+            r"\nSent:.*",
+            r"\nTo:.*",
+            r"\nSubject:.*",
+            r"\n-----Original Message-----",
+            r"\n_{10,}",
+        ]
+
+        for pattern in split_patterns:
+            match = re.search(
+                pattern,
+                body,
+                flags=re.IGNORECASE | re.DOTALL,
+            )
+            if match:
+                body = body[:match.start()]
+                break
+
+        # Remove excessive blank lines
+        body = re.sub(r"\n{3,}", "\n\n", body)
+
+        return body.strip()
 
     def extract_attachments(self, payload: dict) -> list[dict]:
         """
@@ -271,8 +295,8 @@ class GmailService:
         return attachments
 
     def get_message_summary(
-        self,
-        message_id: str,
+            self,
+            message_id: str,
     ) -> dict:
 
         message = self.get_message(message_id)
@@ -403,6 +427,7 @@ class GmailService:
         )
 
         return response
+
     def send_email(
             self,
             to: str,
