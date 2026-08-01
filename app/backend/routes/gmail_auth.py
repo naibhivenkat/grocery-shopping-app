@@ -18,6 +18,7 @@ from google.auth.transport.requests import Request
 from google.oauth2.credentials import Credentials
 from googleapiclient.discovery import build
 
+from google.auth.exceptions import RefreshError
 
 GMAIL_SCOPES = [
     "https://mail.google.com/",
@@ -56,10 +57,15 @@ def get_credentials() -> Credentials:
         scopes=GMAIL_SCOPES,
     )
 
-    creds.refresh(Request())
+    try:
+        creds.refresh(Request())
+    except RefreshError as e:
+        raise GmailAuthError(
+            "Google refresh token is invalid or expired. "
+            "Generate a new GOOGLE_REFRESH_TOKEN and update Cloud Run."
+        ) from e
 
     return creds
-
 
 def get_gmail_service():
     """
