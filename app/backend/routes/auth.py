@@ -311,7 +311,8 @@ def reset_password():
     print("EMAIL:", email)
     print("OTP:", otp)
 
-    ref = _otp_ref(email)
+    #ref = _otp_ref(email)
+    ref = _password_reset_otp_ref(email)
     print("DOC PATH:", ref.path)
 
     otp_snapshot = ref.get()
