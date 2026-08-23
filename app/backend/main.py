@@ -16,6 +16,7 @@ from firebase_admin import credentials
 from flask import Flask, jsonify
 from flask_cors import CORS
 
+from routes.services import services_bp
 from routes.admin import admin_bp
 from routes.ai import ai_bp
 from routes.auth import auth_bp
@@ -120,6 +121,7 @@ def create_app() -> Flask:
         bookings_bp,
         availability_bp,
         service_wallet_bp,
+        services_bp
     ):
         app.register_blueprint(bp)
 
