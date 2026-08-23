@@ -81,7 +81,7 @@
 
 
 
-"""Firestore access helpers for the `localshop/v1/*` schema."""
+"""Firestore access helpers for the `localshop/v2/*` schema."""
 
 from datetime import datetime, timezone
 from typing import Any
@@ -90,7 +90,7 @@ from firebase_admin import firestore
 
 
 ROOT_COLLECTION = "localshop"
-VERSION_DOC = "v1"
+VERSION_DOC = "v2"
 
 # Collection names (kept in sync with
 # lib/core/constants/firebase_constants.dart).
@@ -127,7 +127,7 @@ def db():
 
 
 def col(name: str):
-    """Returns a CollectionReference at `localshop/v1/<name>`."""
+    """Returns a CollectionReference at `localshop/v2/<name>`."""
     return db().collection(ROOT_COLLECTION).document(VERSION_DOC).collection(name)
 
 
