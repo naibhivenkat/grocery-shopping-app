@@ -7,7 +7,7 @@ vendor-scoped subset in the shape expected by `InventoryItemModel`.
 from flask import Blueprint, g, jsonify, request
 from google.cloud.firestore_v1.base_query import FieldFilter
 
-from auth_utils import require_role
+from auth_utils import require_auth
 from db import SHOP_ITEMS, col, doc, now_iso, to_dict
 
 
@@ -23,7 +23,7 @@ def _inventory_shape(d) -> dict:
 
 
 @inventory_bp.get("/inventory")
-@require_role("vendor")
+@require_auth
 def list_inventory():
     query = col(SHOP_ITEMS).where(
         filter=FieldFilter("vendor_id", "==", g.user_id)
@@ -32,7 +32,7 @@ def list_inventory():
 
 
 @inventory_bp.put("/inventory/<item_id>/stock")
-@require_role("vendor")
+@require_auth
 def update_stock(item_id):
     payload = request.get_json(silent=True) or {}
     try:
@@ -57,7 +57,7 @@ def update_stock(item_id):
 
 
 @inventory_bp.post("/inventory/bulk-update")
-@require_role("vendor")
+@require_auth
 def bulk_update():
     payload = request.get_json(silent=True) or {}
     items = payload.get("items") or []
@@ -93,7 +93,7 @@ def bulk_update():
 
 
 @inventory_bp.get("/inventory/low-stock")
-@require_role("vendor")
+@require_auth
 def low_stock():
     query = col(SHOP_ITEMS).where(
         filter=FieldFilter("vendor_id", "==", g.user_id)

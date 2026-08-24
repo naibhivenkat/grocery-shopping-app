@@ -3,8 +3,9 @@
 from flask import Blueprint, g, jsonify, request
 from google.cloud.firestore_v1.base_query import FieldFilter
 
-from auth_utils import require_role
+from auth_utils import require_auth
 from db import CUSTOMER_ORDERS, SHOP_ITEMS, USERS, col, doc, now_iso, to_dict
+
 
 
 vendors_bp = Blueprint("vendors", __name__)
@@ -28,7 +29,7 @@ def _vendor_profile_fields():
 
 
 @vendors_bp.get("/vendors/items")
-@require_role("vendor")
+@require_auth
 def list_items():
     query = col(SHOP_ITEMS).where(
         filter=FieldFilter("vendor_id", "==", g.user_id)
@@ -37,7 +38,7 @@ def list_items():
 
 
 @vendors_bp.post("/vendors/items")
-@require_role("vendor")
+@require_auth
 def add_item():
     payload = request.get_json(silent=True) or {}
     name = (payload.get("name") or "").strip()
@@ -72,7 +73,7 @@ def _assert_owner(item_id: str):
 
 
 @vendors_bp.put("/vendors/items/<item_id>")
-@require_role("vendor")
+@require_auth
 def update_item(item_id):
     ref, err = _assert_owner(item_id)
     if err:
@@ -93,7 +94,7 @@ def update_item(item_id):
 
 
 @vendors_bp.delete("/vendors/items/<item_id>")
-@require_role("vendor")
+@require_auth
 def delete_item(item_id):
     ref, err = _assert_owner(item_id)
     if err:
@@ -103,7 +104,7 @@ def delete_item(item_id):
 
 
 @vendors_bp.get("/vendors/orders")
-@require_role("vendor")
+@require_auth
 def list_orders():
     query = col(CUSTOMER_ORDERS).where(
         filter=FieldFilter("vendor_id", "==", g.user_id)
@@ -112,7 +113,7 @@ def list_orders():
 
 
 @vendors_bp.put("/vendors/orders/<order_id>/status")
-@require_role("vendor")
+@require_auth
 def update_order_status(order_id):
     payload = request.get_json(silent=True) or {}
     status = payload.get("status")

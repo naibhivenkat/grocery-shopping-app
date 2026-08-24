@@ -42,7 +42,7 @@ def my_subscription():
 
 
 @subscriptions_bp.post("/subscriptions/subscribe")
-@require_role("vendor")
+@require_auth
 def subscribe():
     payload = request.get_json(silent=True) or {}
     plan_id = payload.get("plan_id")

@@ -67,7 +67,7 @@ def get_ledger(ledger_id):
 
 
 @khata_bp.post("/khata/ledgers")
-@require_role("vendor")
+@require_auth
 def create_ledger():
     payload = request.get_json(silent=True) or {}
     customer_id = payload.get("customer_id")
@@ -126,7 +126,7 @@ def _with_party_names(ledger: dict) -> dict:
 
 
 @khata_bp.get("/khata/customers/search")
-@require_role("vendor")
+@require_auth
 def search_customers():
     query = (request.args.get("q") or "").strip().lower()
     if len(query) < 2:
