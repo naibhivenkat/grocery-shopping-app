@@ -4,7 +4,7 @@ from flask import Blueprint, g, jsonify, request
 from google.cloud.firestore_v1.base_query import FieldFilter
 
 from auth_utils import require_auth
-from db import USERS, col, doc, now_iso, to_dict
+from db import USERS, USER_FAVORITES, col, doc, now_iso, to_dict
 
 services_bp = Blueprint("services", __name__)
 
@@ -329,3 +329,86 @@ def calculate_price():
         "per_30min_price": per_30,
         "minimum_charge": min_charge
     }), 200
+
+
+@services_bp.get("/services/favourites")
+@require_auth
+def get_favourites():
+    """Get the authenticated user's favourite providers."""
+    # Fetch all favourites for the authenticated user
+    query = col(USER_FAVORITES).where(filter=FieldFilter("user_id", "==", g.user_id))
+
+    providers = []
+    for fav_snap in query.stream():
+        fav_data = fav_snap.to_dict() or {}
+        provider_id = fav_data.get("provider_id")
+
+        # Skip if this is a shop item favourite (which would have an item_id instead)
+        if not provider_id:
+            continue
+
+        # Look up provider details
+        user_snap = doc(USERS, provider_id).get()
+        prof_snap = doc(PROVIDER_PROFILES, provider_id).get()
+
+        if not user_snap.exists:
+            continue
+
+        user_data = user_snap.to_dict() or {}
+        prof_data = prof_snap.to_dict() or {} if prof_snap.exists else {}
+
+        # Preserve the ProviderEntity-compatible fields expected by Flutter
+        providers.append({
+            "id": provider_id,
+            "provider_id": provider_id,
+            "provider_name": user_data.get("full_name") or user_data.get("username") or "Provider",
+            "location": prof_data.get("location"),
+            "photo_base64": user_data.get("avatar_url") or user_data.get("photo_base64"),
+            "rating": user_data.get("rating") or prof_data.get("rating"),
+            "completed_jobs": prof_data.get("completed_jobs", 0),
+            "verified": prof_data.get("is_verified", False),
+            "available_today": prof_data.get("is_active", True),
+        })
+
+    return jsonify({"providers": providers}), 200
+
+
+@services_bp.post("/services/favourites/add")
+@require_auth
+def add_favourite():
+    """Add a provider to the authenticated user's favourites."""
+    payload = request.get_json(silent=True) or {}
+    provider_id = payload.get("provider_id")
+
+    if not provider_id:
+        return jsonify({"detail": "provider_id is required"}), 400
+
+    # Idempotent document ID merging user and provider
+    fav_id = f"{g.user_id}_{provider_id}"
+
+    doc(USER_FAVORITES, fav_id).set({
+        "user_id": g.user_id,
+        "provider_id": provider_id,
+        "type": "provider",
+        "created_at": now_iso()
+    }, merge=True)
+
+    return jsonify({"success": True, "detail": "Provider added to favourites"}), 200
+
+
+@services_bp.post("/services/favourites/remove")
+@require_auth
+def remove_favourite():
+    """Remove a provider from the authenticated user's favourites."""
+    payload = request.get_json(silent=True) or {}
+    provider_id = payload.get("provider_id")
+
+    if not provider_id:
+        return jsonify({"detail": "provider_id is required"}), 400
+
+    fav_id = f"{g.user_id}_{provider_id}"
+
+    # Deleting a non-existent document in Firestore does not throw an error, making this idempotent
+    doc(USER_FAVORITES, fav_id).delete()
+
+    return jsonify({"success": True, "detail": "Provider removed from favourites"}), 200
