@@ -129,3 +129,40 @@ def send_message(room_id):
         })
 
     return jsonify(to_dict(msg_ref.get())), 201
+
+
+@chat_bp.get("/services/chat/<booking_id>")
+@require_auth
+def get_legacy_chat(booking_id):
+    query = col(MESSAGES).where(filter=FieldFilter("chat_room_id", "==", booking_id))
+    messages = [to_dict(d) for d in query.stream()]
+    messages.sort(key=lambda m: m.get("created_at") or "")
+    return jsonify({"messages": messages})
+
+
+@chat_bp.post("/services/chat/send")
+@require_auth
+def send_legacy_chat():
+    payload = request.get_json(silent=True) or {}
+    booking_id = payload.get("booking_id")
+    text = payload.get("message")
+
+    msg_ref = col(MESSAGES).document()
+    msg_ref.set({
+        "chat_room_id": booking_id,
+        "sender_id": g.user_id,
+        "text": text,
+        "created_at": now_iso(),
+    })
+    return jsonify({"success": True})
+
+
+@chat_bp.get("/services/chat/templates")
+def get_chat_templates():
+    return jsonify({"templates": ["I'm on my way", "Running 5 minutes late", "Can you share the exact location?"]})
+
+
+@chat_bp.post("/services/chat/read")
+@require_auth
+def mark_legacy_chat_read():
+    return jsonify({"success": True})  # Handled implicitly in V2

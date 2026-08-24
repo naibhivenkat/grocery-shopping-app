@@ -1,4 +1,5 @@
 """`/payments/*` endpoints consumed by `PaymentRemoteDataSource`."""
+import json
 
 from flask import Blueprint, g, jsonify, request
 from google.cloud.firestore_v1.base_query import FieldFilter
@@ -120,3 +121,55 @@ def reject_payment(payment_id):
     if vendor_id:
         _notify(vendor_id, "Payment rejected", "Please retry with a valid transaction.", payment_id)
     return jsonify({"ok": True})
+
+
+@payments_bp.get("/services/payments/history")
+@require_auth
+def get_service_payment_history():
+    # Ignore client 'user_id' parameter, enforce JWT identity
+    query = col("service_wallet_transactions").where(filter=FieldFilter("user_id", "==", g.user_id))
+    items = [to_dict(d) for d in query.stream()]
+    items.sort(key=lambda p: p.get("created_at", ""), reverse=True)
+    # Contract: flutter expects response.data['history']
+    return jsonify({"history": items})
+
+
+@payments_bp.post("/services/payment/wallet")
+@require_auth
+def process_wallet_payment_legacy():
+    payload = request.get_json(silent=True) or {}
+    booking_id = payload.get("booking_id")
+    amount = payload.get("amount")
+
+    if not booking_id or not amount:
+        return jsonify({"success": False, "detail": "Missing booking_id or amount"}), 400
+
+    # Redirects safely to V2 logic
+    from bookings import confirm_booking
+    request.environ['CONTENT_TYPE'] = 'application/json'
+    request.data = json.dumps({"payment_method": "wallet"}).encode()
+    response, code = confirm_booking(booking_id)
+    return jsonify({"success": code == 200})
+
+
+@payments_bp.post("/services/payment/cash")
+@require_auth
+def process_cash_payment_legacy():
+    payload = request.get_json(silent=True) or {}
+    booking_id = payload.get("booking_id")
+
+    from .bookings import confirm_booking
+    request.environ['CONTENT_TYPE'] = 'application/json'
+    request.data = json.dumps({"payment_method": "cash"}).encode()
+    response, code = confirm_booking(booking_id)
+    return jsonify({"success": code == 200})
+
+
+@payments_bp.post("/services/payment/refund")
+@require_auth
+def process_refund_legacy():
+    payload = request.get_json(silent=True) or {}
+    booking_id = payload.get("booking_id")
+    from service_wallet import process_refund
+    process_refund(booking_id)
+    return jsonify({"success": True})

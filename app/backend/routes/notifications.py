@@ -1,6 +1,6 @@
 """`/notifications/*` endpoints consumed by `NotificationRemoteDataSource`."""
 
-from flask import Blueprint, g, jsonify
+from flask import Blueprint, g, jsonify, request
 from google.cloud.firestore_v1.base_query import FieldFilter
 
 from auth_utils import require_auth
@@ -54,3 +54,27 @@ def mark_all_read():
     if count % 450:
         batch.commit()
     return jsonify({"ok": True, "updated": count})
+
+
+
+@notifications_bp.get("/services/notifications")
+@require_auth
+def get_legacy_notifications():
+    # Ignores query param 'user_id' -> enforces g.user_id
+    query = col(NOTIFICATIONS).where(filter=FieldFilter("user_id", "==", g.user_id))
+    items = [to_dict(d) for d in query.stream()]
+    items.sort(key=lambda n: n.get("created_at") or "", reverse=True)
+    return jsonify({"notifications": items})
+
+@notifications_bp.post("/services/notifications/read")
+@require_auth
+def mark_legacy_notification_read():
+    payload = request.get_json(silent=True) or {}
+    notification_id = payload.get("notification_id")
+    return mark_read(notification_id)
+
+@notifications_bp.post("/services/notifications/read-all")
+@require_auth
+def mark_all_legacy_notifications_read():
+    # Discard client 'user_id' payload, rely entirely on JWT g.user_id
+    return mark_all_read()

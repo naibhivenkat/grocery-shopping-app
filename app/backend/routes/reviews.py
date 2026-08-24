@@ -71,3 +71,24 @@ def list_vendor_reviews(vendor_id):
     items = [to_dict(d) for d in query.stream()]
     items.sort(key=lambda r: r.get("created_at") or "", reverse=True)
     return jsonify(items)
+
+
+
+@reviews_bp.post("/services/ratings/submit")
+@require_auth
+def submit_legacy_rating():
+    # Redirects to V2 logic
+    return add_review()
+
+@reviews_bp.get("/services/ratings/<provider_id>")
+def get_legacy_provider_reviews(provider_id):
+    query = col(REVIEWS).where(filter=FieldFilter("vendor_id", "==", provider_id))
+    items = [to_dict(d) for d in query.stream()]
+    return jsonify({"reviews": items})
+
+@reviews_bp.get("/services/ratings/<provider_id>/aggregate")
+def get_legacy_provider_aggregate(provider_id):
+    query = col(REVIEWS).where(filter=FieldFilter("vendor_id", "==", provider_id))
+    ratings = [float((d.to_dict() or {}).get("rating", 0)) for d in query.stream()]
+    avg = sum(ratings) / len(ratings) if ratings else 0.0
+    return jsonify({"rating": avg})

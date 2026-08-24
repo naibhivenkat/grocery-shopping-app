@@ -460,3 +460,23 @@ def get_booking_detail(booking_id):
         return jsonify({"detail": "Forbidden: Not authorized to view"}), 403
     b["id"] = booking_id
     return jsonify({"booking": b}), 200
+
+
+@bookings_bp.get("/services/dashboard/<provider_id>")
+@require_auth
+def get_legacy_provider_dashboard(provider_id):
+    # Enforce Auth
+    if provider_id != g.user_id:
+        return jsonify({"detail": "Forbidden"}), 403
+
+    e_snap = doc("provider_earnings", g.user_id).get()
+    lifetime = float((e_snap.to_dict() or {}).get("lifetime_total", 0.0)) if e_snap.exists else 0.0
+
+    return jsonify({
+        "dashboard": {
+            "total_earnings": lifetime,
+            "jobs_completed": len(list(
+                col(COLL_BOOKINGS).where(filter=FieldFilter("provider_id", "==", g.user_id)).where(
+                    filter=FieldFilter("status", "==", "completed")).stream()))
+        }
+    })
