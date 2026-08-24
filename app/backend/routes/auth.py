@@ -150,14 +150,31 @@ def _send_otp_email(
 def _login_response(snapshot):
     data = snapshot.to_dict() or {}
     user = safe_delete_fields(to_dict(snapshot), "password_hash")
-    token = create_token(snapshot.id, data.get("role") or "customer")
+
+    role = data.get("role") or "customer"
+
+    # Existing V2 backend JWT — DO NOT REMOVE.
+    token = create_token(snapshot.id, role)
+
+    # Firebase Auth identity must use the same UID as the backend user ID.
+    firebase_custom_token = firebase_auth.create_custom_token(
+        snapshot.id,
+        {
+            "role": role,
+        },
+    )
+
+    # firebase-admin returns bytes in some versions.
+    if isinstance(firebase_custom_token, bytes):
+        firebase_custom_token = firebase_custom_token.decode("utf-8")
+
     return jsonify({
         "success": True,
         "access_token": token,
         "token": token,
+        "firebase_custom_token": firebase_custom_token,
         "user": user,
     })
-
 
 @auth_bp.post("/auth/send_otp")
 @auth_bp.post("/send_otp")
