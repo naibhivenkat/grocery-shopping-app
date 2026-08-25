@@ -3,7 +3,7 @@
 from flask import Blueprint, g, jsonify, request
 from google.cloud.firestore_v1.base_query import FieldFilter
 
-from auth_utils import require_auth, require_role
+from auth_utils import require_auth, require_role, _extract_token, decode_token
 from db import (
     CATEGORIES,
     CUSTOMER_ORDERS,
@@ -68,9 +68,21 @@ def _with_vendor_profile(item: dict) -> dict:
 @shops_bp.get("/shops")
 def list_shops():
     city_id = request.args.get("city_id")
+
+    # Soft Authentication: Determine who is making the request without forcing a 401
+    current_user_id = None
+    token = _extract_token()
+    if token:
+        try:
+            payload = decode_token(token)
+            current_user_id = payload.get("sub")
+        except Exception:
+            pass # Silently fallback to guest behavior
+
     query = col(SHOP_ITEMS)
     if city_id:
         query = query.where(filter=FieldFilter("city_id", "==", city_id))
+
     items = []
     for d in query.stream():
         item = to_dict(d)
@@ -83,6 +95,11 @@ def list_shops():
                     continue
             except (TypeError, ValueError):
                 pass
+
+        # Primary Enforcement: Exclude the authenticated user's own items
+        if current_user_id and item.get("vendor_id") == current_user_id:
+            continue
+
         items.append(_with_vendor_profile(item))
     return jsonify(items)
 
