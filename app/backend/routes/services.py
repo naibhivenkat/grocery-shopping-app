@@ -182,71 +182,148 @@ def list_target_provider_services(provider_id):
 
 @services_bp.get("/services/available")
 def discover_available_services():
-    """Public discovery of available services. Filters out own services if JWT is passed."""
-    category_id = request.args.get("category_id")
-    if not category_id:
-        return jsonify({"detail": "category_id required"}), 400
+    """Public discovery of available services.
 
-    # Optional Auth check to exclude self-booking listings seamlessly
+    Without category_id:
+        Returns all active, non-deleted provider services.
+
+    With category_id:
+        Returns only active, non-deleted services belonging to that category.
+
+    If a valid JWT is supplied, the authenticated provider's own services
+    are excluded to prevent self-booking.
+    """
+    category_id = request.args.get("category_id")
+
+    # Optional Auth check to exclude self-booking listings seamlessly.
     actor_id = None
     auth_header = request.headers.get("Authorization", "")
+
     if auth_header.startswith("Bearer "):
         token = auth_header[7:].strip()
+
         try:
             from auth_utils import decode_token
+
             payload = decode_token(token)
             actor_id = payload.get("sub")
         except Exception:
-            pass  # Fail silently for public endpoint; it's optional
+            # Public endpoint: invalid/missing optional auth should not fail
+            # the service discovery request.
+            pass
 
+    # Base query:
+    # - service must not be deleted
+    # - service must be active
     query = col(PROVIDER_SERVICES).where(
-        filter=FieldFilter("service_category_id", "==", category_id)
-    ).where(
         filter=FieldFilter("is_deleted", "==", False)
     ).where(
         filter=FieldFilter("is_active", "==", True)
     )
+
+    # Category is optional.
+    # If provided, filter by category.
+    if category_id:
+        query = query.where(
+            filter=FieldFilter(
+                "service_category_id",
+                "==",
+                category_id,
+            )
+        )
+
     result = []
+
     for s in query.stream():
         data = s.to_dict() or {}
         provider_id = data.get("provider_id")
 
-        # Exclude own services to prevent self-booking visibility
+        # Skip malformed service documents without a provider.
+        if not provider_id:
+            continue
+
+        # Exclude own services to prevent self-booking visibility.
         if actor_id and provider_id == actor_id:
             continue
 
-        # Look up canonical user and provider profile
+        # Look up canonical user and provider profile.
         user_snap = doc(USERS, provider_id).get()
         prof_snap = doc(PROVIDER_PROFILES, provider_id).get()
 
-        user_data = user_snap.to_dict() or {} if user_snap.exists else {}
-        prof_data = prof_snap.to_dict() or {} if prof_snap.exists else {}
+        user_data = (
+            user_snap.to_dict() or {}
+            if user_snap.exists
+            else {}
+        )
 
-        # Preserve legacy Flutter contract output fields
+        prof_data = (
+            prof_snap.to_dict() or {}
+            if prof_snap.exists
+            else {}
+        )
+
+        # Preserve the existing Flutter contract.
         result.append({
             "id": s.id,
+
+            # Service information
             "service_name": data.get("title"),
+            "service_category_id": data.get("service_category_id"),
+
+            # Provider information
             "provider_id": provider_id,
-            "provider_name": user_data.get("full_name") or user_data.get("username") or "Provider",
+            "provider_name": (
+                user_data.get("full_name")
+                or user_data.get("username")
+                or "Provider"
+            ),
+
             "location": prof_data.get("location"),
-            "photo_base64": user_data.get("avatar_url") or user_data.get("photo_base64"),
+
+            "photo_base64": (
+                user_data.get("avatar_url")
+                or user_data.get("photo_base64")
+            ),
+
+            # Pricing
             "fixed_price": data.get("fixed_price"),
             "min_price": data.get("min_price"),
             "pricing_unit": data.get("pricing_unit"),
-            "rating": user_data.get("rating") or prof_data.get("rating"),
-            "completed_jobs": prof_data.get("completed_jobs", 0),
-            "verified": prof_data.get("is_verified", False),
-            "available_today": prof_data.get("is_active", True),
+
+            # Provider metadata
+            "rating": (
+                user_data.get("rating")
+                or prof_data.get("rating")
+            ),
+
+            "completed_jobs": prof_data.get(
+                "completed_jobs",
+                0,
+            ),
+
+            "verified": prof_data.get(
+                "is_verified",
+                False,
+            ),
+
+            # Provider availability
+            "available_today": prof_data.get(
+                "is_active",
+                True,
+            ),
         })
 
-    # Sort logic matching legacy system
-    result.sort(key=lambda x: (
-        not x.get("available_today", True),
-        -(x.get("rating") or 0)
-    ))
+    # Sort:
+    # 1. Available today first
+    # 2. Higher-rated providers first
+    result.sort(
+        key=lambda x: (
+            not x.get("available_today", True),
+            -(x.get("rating") or 0),
+        )
+    )
 
     return jsonify(result), 200
-
 
 @services_bp.get("/services/<service_id>")
 def get_service_detail(service_id):
