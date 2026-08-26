@@ -201,8 +201,11 @@ def discover_available_services():
 
     query = col(PROVIDER_SERVICES).where(
         filter=FieldFilter("service_category_id", "==", category_id)
-    ).where(filter=FieldFilter("is_deleted", "==", False))
-
+    ).where(
+        filter=FieldFilter("is_deleted", "==", False)
+    ).where(
+        filter=FieldFilter("is_active", "==", True)
+    )
     result = []
     for s in query.stream():
         data = s.to_dict() or {}
