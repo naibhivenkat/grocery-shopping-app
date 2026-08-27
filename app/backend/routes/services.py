@@ -493,28 +493,27 @@ def remove_favourite():
 
     return jsonify({"success": True, "detail": "Provider removed from favourites"}), 200
 
-
 @services_bp.get("/services/addresses")
 def get_customer_addresses():
+    """Return saved addresses for a customer."""
     customer_id = request.args.get("customer_id")
 
     if not customer_id:
         return jsonify({
-            "error": "customer_id is required"
+            "detail": "customer_id is required"
         }), 400
 
     try:
-        user_ref = db.collection("users").document(customer_id)
-        user_doc = user_ref.get()
+        customer_snap = doc(USERS, customer_id).get()
 
-        if not user_doc.exists:
+        if not customer_snap.exists:
             return jsonify({
                 "addresses": []
             }), 200
 
-        user_data = user_doc.to_dict() or {}
+        customer_data = customer_snap.to_dict() or {}
 
-        addresses = user_data.get("addresses", [])
+        addresses = customer_data.get("addresses", [])
 
         if not isinstance(addresses, list):
             addresses = []
@@ -530,5 +529,5 @@ def get_customer_addresses():
         )
 
         return jsonify({
-            "error": "Failed to retrieve addresses"
+            "detail": "Failed to retrieve customer addresses"
         }), 500
