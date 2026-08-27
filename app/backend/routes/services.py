@@ -1,6 +1,6 @@
 """`/services` and `/provider/services` endpoints for LocalShop V2."""
 
-from flask import Blueprint, g, jsonify, request
+from flask import Blueprint, g, jsonify, request, current_app
 from google.cloud.firestore_v1.base_query import FieldFilter
 
 from auth_utils import require_auth
@@ -492,3 +492,43 @@ def remove_favourite():
     doc(USER_FAVORITES, fav_id).delete()
 
     return jsonify({"success": True, "detail": "Provider removed from favourites"}), 200
+
+
+@services_bp.get("/services/addresses")
+def get_customer_addresses():
+    customer_id = request.args.get("customer_id")
+
+    if not customer_id:
+        return jsonify({
+            "error": "customer_id is required"
+        }), 400
+
+    try:
+        user_ref = db.collection("users").document(customer_id)
+        user_doc = user_ref.get()
+
+        if not user_doc.exists:
+            return jsonify({
+                "addresses": []
+            }), 200
+
+        user_data = user_doc.to_dict() or {}
+
+        addresses = user_data.get("addresses", [])
+
+        if not isinstance(addresses, list):
+            addresses = []
+
+        return jsonify({
+            "addresses": addresses
+        }), 200
+
+    except Exception as e:
+        current_app.logger.exception(
+            "Failed to get addresses for customer %s",
+            customer_id,
+        )
+
+        return jsonify({
+            "error": "Failed to retrieve addresses"
+        }), 500
