@@ -72,6 +72,12 @@ def create_pending_booking():
     duration = int(payload.get("duration", 60))
     booking_id = datetime.utcnow().strftime("%Y%m%d%H%M%S")
 
+    # Calculate financials for the pending snapshot
+    service_price = _calculate_service_cost(svc_data, duration)
+    platform_fee = round(service_price * 0.05, 2)
+    tax = round((service_price + platform_fee) * 0.18, 2)
+    final_total = round(service_price + platform_fee + tax, 2)
+
     booking_data = {
         "booking_id": booking_id,
         "service_id": service_id,
@@ -82,6 +88,13 @@ def create_pending_booking():
         "duration": duration,
         "pricing_type": svc_data.get("pricing_type", "fixed"),
         "status": "pending_payment",
+        "service_price": service_price,
+        "provider_earning": service_price,
+        "platform_fee": platform_fee,
+        "tax": tax,
+        "final_total": final_total,
+        "platform_earning": round(final_total - service_price, 2),
+        "commission": round(final_total * 0.10, 2),
         "created_at": now_iso()
     }
 
