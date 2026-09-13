@@ -89,8 +89,8 @@ jobs:
             --region=${{ env.REGION }} \
             --allow-unauthenticated \
             --port=8080 \
-            --set-env-vars=FLASK_ENV=production,JWT_SECRET=${{ secrets.JWT_SECRET }} \
-            --update-secrets=FIREBASE_CREDENTIALS_JSON=FIREBASE_CREDENTIALS_JSON:latest,SENDINBLUE_API_KEY=SENDINBLUE_API_KEY:latest,FROM_EMAIL=FROM_EMAIL:latest
+            --set-env-vars=FLASK_ENV=production,ENABLE_LEGACY_ROUTES=0 \
+            --update-secrets=FIREBASE_CREDENTIALS_JSON=FIREBASE_CREDENTIALS_JSON:latest,SENDINBLUE_API_KEY=SENDINBLUE_API_KEY:latest,FROM_EMAIL=FROM_EMAIL:latest,JWT_SECRET=JWT_SECRET:latest,RAZORPAY_KEY_ID=RAZORPAY_KEY_ID:latest,RAZORPAY_KEY_SECRET=RAZORPAY_KEY_SECRET:latest,RAZORPAY_WEBHOOK_SECRET=RAZORPAY_WEBHOOK_SECRET:latest,WEBHOOK_SECRET=WEBHOOK_SECRET:latest
 
       # 9️⃣ Wait for Cloud Run to stabilize
       - name: Wait for deployment
@@ -182,4 +182,3 @@ jobs:
           done
 
           echo "✅✅ Cleanup finished ✅✅"
-

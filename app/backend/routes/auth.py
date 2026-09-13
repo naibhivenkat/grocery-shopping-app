@@ -21,7 +21,7 @@ from db import USERS, col, doc, now_iso, safe_delete_fields, to_dict
 auth_bp = Blueprint("auth", __name__)
 log = logging.getLogger(__name__)
 
-_ALLOWED_ROLES = {"customer", "vendor", "admin", "super_admin"}
+_ALLOWED_ROLES = {"customer", "vendor", "service", "admin", "super_admin"}
 _OTP_TTL_MINUTES = int(os.getenv("AUTH_OTP_TTL_MINUTES", "10"))
 
 

@@ -2,22 +2,16 @@ import logging
 import uuid
 from datetime import datetime
 
-import razorpay
 from flask import Blueprint, request, jsonify
 from google.cloud import firestore
 
 import firebase_db
 from firebase_db import db
+from razorpay_config import get_razorpay_client
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
 logger = logging.getLogger("order_api")
 wallet_bp = Blueprint("wallet", __name__)
-
-# 🔹 Initialize Razorpay client
-RAZORPAY_KEY_ID = "rzp_test_RKK3DuGSaxK9fR"
-RAZORPAY_KEY_SECRET = "VgVc96Pdn3t5T8ieX0nb2ajt"
-razorpay_client = razorpay.Client(auth=(RAZORPAY_KEY_ID, RAZORPAY_KEY_SECRET))
-
 
 def get_user_ref(user_id):
     return db.collection("users").document(user_id)
@@ -241,7 +235,7 @@ def create_wallet_order():
     razorpay_amount = int(amount * 100)
 
     # create order in Razorpay
-    order = razorpay_client.order.create({
+    order = get_razorpay_client().order.create({
         "amount": razorpay_amount,
         "currency": "INR",
         # FIXED RECEIPT (must be ≤ 40 characters)
@@ -276,7 +270,7 @@ def verify_wallet_payment():
 
     # Verify signature
     try:
-        razorpay_client.utility.verify_payment_signature({
+        get_razorpay_client().utility.verify_payment_signature({
             "razorpay_order_id": razorpay_order_id,
             "razorpay_payment_id": razorpay_payment_id,
             "razorpay_signature": signature

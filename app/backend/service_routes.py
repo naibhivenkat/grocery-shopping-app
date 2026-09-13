@@ -1,7 +1,7 @@
 import logging
+import uuid
 from datetime import datetime, timedelta, timezone
 
-import razorpay
 from flask import Blueprint, request, jsonify
 from google.cloud import firestore
 
@@ -40,16 +40,12 @@ from service_firebase_db import (
     notify_provider
 )
 from service_notifications_helper import register_fcm_token
+from razorpay_config import get_razorpay_client, get_razorpay_key_id
 
 service_bp = Blueprint("service_bp", __name__)
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger("service_api")
-
-# 🔹 Razorpay
-RAZORPAY_KEY_ID = "rzp_test_RKK3DuGSaxK9fR"
-RAZORPAY_KEY_SECRET = "VgVc96Pdn3t5T8ieX0nb2ajt"
-razorpay_client = razorpay.Client(auth=(RAZORPAY_KEY_ID, RAZORPAY_KEY_SECRET))
 
 COLL_SERVICE_BOOKINGS = "service_bookings"
 # cOLL_SERVICE_PENDING = "service_pending_bookings"
@@ -349,25 +345,28 @@ def create_payment_order():
     body = request.get_json(force=True)
 
     amount = float(body.get("amount"))
+    booking_id = body.get("booking_id")
 
-    order = razorpay_client.order.create({
+    order = get_razorpay_client().order.create({
         "amount": int(amount * 100),
         "currency": "INR",
         "payment_capture": 1
     })
     IST = timezone(timedelta(hours=5, minutes=30))
     time_of_update = datetime.now(IST).replace(microsecond=0).isoformat()
-    backend_id = datetime.utcnow().strftime("%Y%m%d%H%M%S")
+    backend_id = uuid.uuid4().hex
 
     db.collection("payment_orders").document(backend_id).set({
         "razorpay_order_id": order["id"],
         "amount": amount,
+        "booking_id": booking_id,
         "status": "created",
         "created_at": time_of_update
     })
 
     return ok({
         "razorpay_order_id": order["id"],
+        "razorpay_key_id": get_razorpay_key_id(),
         "backend_order_id": backend_id
     })
 
@@ -382,7 +381,7 @@ def verify_payment():
     backend_order_id = body["backend_order_id"]
 
     try:
-        razorpay_client.utility.verify_payment_signature({
+        get_razorpay_client().utility.verify_payment_signature({
             "razorpay_order_id": razorpay_order_id,
             "razorpay_payment_id": payment_id,
             "razorpay_signature": signature
@@ -415,14 +414,14 @@ def wallet_create_order():
 
     try:
         # 1️⃣ Create Razorpay order
-        razorpay_order = razorpay_client.order.create({
+        razorpay_order = get_razorpay_client().order.create({
             "amount": int(amount * 100),  # paisa
             "currency": "INR",
             "payment_capture": 1
         })
         IST = timezone(timedelta(hours=5, minutes=30))
         time_of_update = datetime.now(IST).replace(microsecond=0).isoformat()
-        backend_order_id = datetime.utcnow().strftime("%Y%m%d%H%M%S")
+        backend_order_id = uuid.uuid4().hex
 
         # 2️⃣ Store backend order
         db.collection("service_payment_orders").document(backend_order_id).set({
@@ -463,7 +462,7 @@ def wallet_verify():
     body = request.json
 
     try:
-        razorpay_client.utility.verify_payment_signature({
+        get_razorpay_client().utility.verify_payment_signature({
             "razorpay_order_id": body["order_id"],
             "razorpay_payment_id": body["payment_id"],
             "razorpay_signature": body["signature"]

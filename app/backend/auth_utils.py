@@ -12,7 +12,13 @@ from flask import g, jsonify, request
 
 from db import col, now_iso
 
-JWT_SECRET = os.getenv("JWT_SECRET", "localshop-dev-secret-change-me")
+_configured_jwt_secret = os.getenv("JWT_SECRET")
+if os.getenv("FLASK_ENV", "").lower() == "production":
+    if not _configured_jwt_secret or len(_configured_jwt_secret) < 32:
+        raise RuntimeError(
+            "JWT_SECRET must be configured with at least 32 characters in production"
+        )
+JWT_SECRET = _configured_jwt_secret or "localshop-dev-secret-change-me"
 JWT_ALGORITHM = "HS256"
 JWT_EXPIRE_DAYS = int(os.getenv("JWT_EXPIRE_DAYS", "30"))
 _PBKDF2_ITER = 120_000
@@ -21,12 +27,13 @@ AUDIT_LOGS = "audit_logs"
 
 
 def log_admin_action(
-        admin_id,
-        admin_email,
-        action,
-        target_id,
-        target_type,
+    admin_id: str,
+    admin_email: str,
+    action: str,
+    target_id: str,
+    target_type: str,
 ):
+    """Write a minimal audit record for privileged administrative actions."""
     col(AUDIT_LOGS).document().set({
         "admin_id": admin_id,
         "admin_email": admin_email,
@@ -113,30 +120,14 @@ def require_auth(fn):
             user_data = user_snapshot.to_dict() or {}
 
             if user_data.get("is_suspended"):
-                return jsonify({
-                    "detail": "Account is suspended"
-                }), 403
-
-            g.user_role = (
-                    user_data.get("role")
-                    or payload.get("role", "customer")
-            )
-
+                return jsonify({"detail": "Account is suspended"}), 403
+            g.user_role = user_data.get("role") or payload.get("role", "customer")
             g.user_email = user_data.get("email", "")
-
-            g.user_name = (
-                    user_data.get("full_name")
-                    or user_data.get("username", "")
-            )
-
+            g.user_name = user_data.get("full_name") or user_data.get("username", "")
         else:
-
             g.user_role = payload.get("role", "customer")
-
             g.user_email = ""
-
             g.user_name = ""
-
         return fn(*args, **kwargs)
 
     return wrapper
@@ -156,3 +147,19 @@ def require_role(*roles: str):
         return wrapper
 
     return decorator
+
+
+def require_webhook_secret(fn):
+    """Protect non-Razorpay webhook endpoints with a shared secret."""
+
+    @wraps(fn)
+    def wrapper(*args, **kwargs):
+        expected = os.getenv("WEBHOOK_SECRET")
+        provided = request.headers.get("X-Webhook-Secret") or request.args.get("secret")
+        if not expected:
+            return jsonify({"detail": "Webhook secret not configured on server"}), 503
+        if not provided or not hmac.compare_digest(provided, expected):
+            return jsonify({"detail": "Invalid or missing webhook secret"}), 401
+        return fn(*args, **kwargs)
+
+    return wrapper

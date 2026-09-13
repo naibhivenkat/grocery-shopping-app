@@ -1,7 +1,7 @@
 # LocalShop Finder Backend
 
-Flask REST API that backs the `lib/features/**/data/datasources/*.dart`
-clients of the LocalShop Finder Flutter app. All data lives in Firestore
+Flask REST API that backs the authenticated LocalShop Finder clients. All
+data lives in Firestore
 under `localshop/v1/<collection>` (same path the Flutter `FirebaseConstants`
 reads from).
 
@@ -28,6 +28,10 @@ the source of each blueprint:
 | Payments    | `routes/payments.py`     | `POST /payments` `GET /payments` `GET /payments/all` `POST /payments/<id>/verify` `POST /payments/<id>/reject` |
 | Wallet      | `routes/wallet.py`       | `GET /wallet` `GET /wallet/transactions` `POST /wallet/credit` `POST /wallet/deduct` |
 | Khata       | `routes/khata.py`        | `GET/POST /khata/ledgers` `GET /khata/ledgers/<id>/transactions` `POST /khata/transactions` `POST /khata/ledgers/<id>/settle` |
+| Services    | `routes/services.py` `routes/provider_profiles.py` | `GET/PUT /provider/profile` `POST/PUT/DELETE /provider/services/<id>` `GET /provider/services` `GET /providers/<id>/services` `GET /services/available` |
+| Bookings    | `routes/availability.py` `routes/bookings.py` | `GET /provider/availability` `PUT /provider/availability` `GET /providers/<id>/availability` `POST /bookings/create-pending` `POST /bookings/<id>/confirm|accept|reject|start|complete|cancel` `GET /bookings` `GET /provider/bookings` |
+| Service wallet | `routes/service_wallet.py` | `GET /service-wallet` `GET /service-wallet/transactions` `POST /service-wallet/withdraw` |
+| Support Center | `routes/support.py`, `routes/gmail_admin.py` | `GET /admin/support` `GET /admin/support/<id>` `POST /admin/support/<id>/reply` `POST /admin/support/<id>/notes` `POST /admin/support/webhook` `POST /admin/support/sync` plus admin-only Gmail read/send/attachment endpoints |
 
 All authenticated endpoints expect `Authorization: Bearer <jwt>` — the token
 returned by `/auth/login` or `/auth/register`.
@@ -60,6 +64,27 @@ Optional:
 - `AUTH_OTP_DEBUG_RESPONSE=1` — includes OTP in the JSON response for local
   debugging only. Do not enable in production.
 - `FLASK_DEBUG=1` to enable Flask's debug reloader.
+- `RAZORPAY_KEY_ID`, `RAZORPAY_KEY_SECRET`, and `RAZORPAY_WEBHOOK_SECRET` —
+  required for payment creation, signature verification, refunds, and the
+  `POST /webhooks/razorpay` endpoint. Store these in Secret Manager or the
+  Cloud Run environment; never commit them or return the secret to clients.
+- `ENABLE_LEGACY_ROUTES=1` only for a controlled migration of older
+  client-supplied-ID service routes; leave unset in production.
+- `WEBHOOK_SECRET` — required by the authenticated Support Center webhook;
+  store it in Secret Manager and send it as `X-Webhook-Secret`.
+- `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`, and `GOOGLE_REFRESH_TOKEN` —
+  optional Gmail OAuth credentials for Support Center sync and mail actions.
+  Missing or invalid credentials fail closed with `503`.
+
+Razorpay webhooks are idempotent for captured/paid/failed events. A captured
+service payment also transitions its pending booking to `confirmed` when the
+payment order contains `booking_id`.
+
+Customer wallet recharge is intentionally not implemented by the Flask
+`/wallet/recharge/*` aliases: they return `410 Gone`. The production mobile
+checkout creates and verifies Razorpay orders through the Firebase
+`razorpayApi` Function, and its webhook performs the wallet settlement. This
+keeps a client from converting an unverified local intent into wallet credit.
 
 ## Local development
 

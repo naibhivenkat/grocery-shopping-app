@@ -2,23 +2,17 @@ import datetime
 import logging
 import uuid
 
-import razorpay
 from firebase_admin import firestore
 from flask import Blueprint, request, jsonify
 
 import firebase_db
+from razorpay_config import get_razorpay_client
 
 # logging.basicConfig(level=logging.INFO)
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
 logger = logging.getLogger("order_api")
 
 khata_bp = Blueprint("khata_bp", __name__)
-
-RAZORPAY_KEY_ID = "rzp_test_RKK3DuGSaxK9fR"       # todo: Need to Change with live api Id
-RAZORPAY_KEY_SECRET = "VgVc96Pdn3t5T8ieX0nb2ajt"  # todo: Need to Change with live api Key
-
-razorpay_client = razorpay.Client(auth=(RAZORPAY_KEY_ID, RAZORPAY_KEY_SECRET))
-
 
 # --------------------------------------------------------
 # CREATE LEDGER
@@ -461,7 +455,7 @@ def create_khata_razorpay_order():
 
     try:
         # Create Razorpay Order
-        razorpay_order = razorpay_client.order.create({
+        razorpay_order = get_razorpay_client().order.create({
             "amount": int(amount * 100),
             "currency": "INR",
             "receipt": backend_order_id,
@@ -509,7 +503,7 @@ def verify_khata_razorpay_payment():
         # ---------------------------
         # 1️⃣ VERIFY SIGNATURE SAFELY
         # ---------------------------
-        razorpay_client.utility.verify_payment_signature({
+        get_razorpay_client().utility.verify_payment_signature({
             "razorpay_order_id": razorpay_order_id,
             "razorpay_payment_id": razorpay_payment_id,
             "razorpay_signature": razorpay_signature

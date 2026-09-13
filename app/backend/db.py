@@ -32,6 +32,10 @@ KHATA_LEDGERS = "khata_ledgers"
 KHATA_TRANSACTIONS = "khata_transactions"
 SUPPORT_TICKETS = "support_tickets"
 APP_SETTINGS = "app_settings"
+SUPPORT_MESSAGES = "support_messages"
+SUPPORT_INTERNAL_NOTES = "support_internal_notes"
+SUPPORT_SYNC = "support_sync"
+AUDIT_LOGS = "audit_logs"
 
 def db():
     """Lazy Firestore client — avoids touching firebase_admin at import time."""

@@ -1,6 +1,5 @@
 import calendar
 import logging
-import razorpay
 import uuid
 from datetime import datetime
 from datetime import datetime, timedelta, timezone
@@ -13,6 +12,7 @@ from service_notifications_helper import (
 )
 
 import firebase_db
+from razorpay_config import get_razorpay_client
 from service_notifications_helper import create_service_notification
 
 logging.basicConfig(level=logging.INFO)
@@ -20,9 +20,6 @@ logger = logging.getLogger("service")
 
 db = firebase_db.db
 
-RAZORPAY_KEY_ID = "rzp_test_RKK3DuGSaxK9fR"
-RAZORPAY_KEY_SECRET = "VgVc96Pdn3t5T8ieX0nb2ajt"
-razorpay_client = razorpay.Client(auth=(RAZORPAY_KEY_ID, RAZORPAY_KEY_SECRET))
 IST = timezone(timedelta(hours=5, minutes=30))
 # ==========================
 # COLLECTIONS
@@ -777,7 +774,7 @@ def refund_razorpay_payment(booking):
         or 0
     )
 
-    refund = razorpay_client.payment.refund(payment_id, {
+    refund = get_razorpay_client().payment.refund(payment_id, {
         "amount": int(customer_refund_amount * 100),
         "speed": "optimum",
         "notes": {

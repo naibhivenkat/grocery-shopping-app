@@ -9,7 +9,6 @@ blueprints in the `routes/` package and persist data in Firestore under
 import json
 import logging
 import os
-import traceback
 
 import firebase_admin
 from firebase_admin import credentials
@@ -30,9 +29,17 @@ from routes.referrals import referrals_bp
 from routes.reviews import reviews_bp
 from routes.shops import shops_bp
 from routes.smoke import smoke_bp
+from routes.support import support_bp
+from routes.gmail_admin import gmail_admin_bp
 from routes.subscriptions import subscriptions_bp
 from routes.vendors import vendors_bp
 from routes.wallet import wallet_bp
+from routes.provider_profiles import provider_profiles_bp
+from routes.services import services_bp
+from routes.availability import availability_bp
+from routes.bookings import bookings_bp
+from routes.service_wallet import service_wallet_bp
+from razorpay_webhook import razorpay_webhook_bp
 
 
 logging.basicConfig(
@@ -99,6 +106,10 @@ def _register_legacy_blueprints(app: Flask) -> None:
     API still comes up cleanly.
     """
 
+    if os.getenv("ENABLE_LEGACY_ROUTES", "0") != "1":
+        log.info("Legacy blueprints disabled; using authenticated V2 routes")
+        return
+
     legacy = (
         # (module path, attribute name, optional url_prefix)
         ("khata", "khata_bp", "/api/khata"),
@@ -149,6 +160,14 @@ def create_app() -> Flask:
         khata_bp,
         profile_bp,
         smoke_bp,
+        support_bp,
+        gmail_admin_bp,
+        provider_profiles_bp,
+        services_bp,
+        availability_bp,
+        bookings_bp,
+        service_wallet_bp,
+        razorpay_webhook_bp,
     ):
         app.register_blueprint(bp)
 
@@ -188,16 +207,8 @@ def create_app() -> Flask:
 
     @app.errorhandler(Exception)
     def on_unhandled(err):
-        # Log full traceback to Cloud Logging and surface the exception in
-        # the JSON response. Safe for this dev instance — no secrets are
-        # stored on the request path. Remove `error`/`trace` fields before
-        # production if desired.
         log.exception("Unhandled exception on %s", os.getenv("K_SERVICE", "local"))
-        return jsonify({
-            "detail": "Internal server error",
-            "error": f"{type(err).__name__}: {err}",
-            "trace": traceback.format_exc().splitlines()[-6:],
-        }), 500
+        return jsonify({"detail": "Internal server error"}), 500
 
     return app
 
