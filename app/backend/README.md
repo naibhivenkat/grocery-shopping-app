@@ -76,6 +76,89 @@ Optional:
   optional Gmail OAuth credentials for Support Center sync and mail actions.
   Missing or invalid credentials fail closed with `503`.
 
+## Cloud Run deployment and Secret Manager
+
+The deployment workflow passes these Secret Manager references to Cloud Run:
+
+```text
+FIREBASE_CREDENTIALS_JSON
+SENDINBLUE_API_KEY
+FROM_EMAIL
+JWT_SECRET
+RAZORPAY_KEY_ID
+RAZORPAY_KEY_SECRET
+RAZORPAY_WEBHOOK_SECRET
+WEBHOOK_SECRET
+```
+
+Every referenced secret must already exist in the same GCP project used by the
+deployment. If Cloud Run reports `secret ... was not found`, create the missing
+secret and add at least one version before retrying. For the failure reported
+by the latest deployment, the missing names were:
+
+```text
+JWT_SECRET
+RAZORPAY_KEY_ID
+RAZORPAY_KEY_SECRET
+RAZORPAY_WEBHOOK_SECRET
+WEBHOOK_SECRET
+```
+
+Create empty Secret Manager containers first, if needed:
+
+```bash
+PROJECT_ID="your-gcp-project-id"
+
+for NAME in \
+  JWT_SECRET \
+  RAZORPAY_KEY_ID \
+  RAZORPAY_KEY_SECRET \
+  RAZORPAY_WEBHOOK_SECRET \
+  WEBHOOK_SECRET; do
+  gcloud secrets describe "$NAME" --project="$PROJECT_ID" >/dev/null 2>&1 || \
+    gcloud secrets create "$NAME" \
+      --replication-policy=automatic \
+      --project="$PROJECT_ID"
+done
+```
+
+Add versions without putting values in source control or in the deploy command.
+Replace the example values only in your local shell:
+
+```bash
+printf '%s' 'replace-with-a-long-random-jwt-secret' |
+  gcloud secrets versions add JWT_SECRET --data-file=- --project="$PROJECT_ID"
+
+printf '%s' 'replace-with-razorpay-key-id' |
+  gcloud secrets versions add RAZORPAY_KEY_ID --data-file=- --project="$PROJECT_ID"
+
+printf '%s' 'replace-with-razorpay-key-secret' |
+  gcloud secrets versions add RAZORPAY_KEY_SECRET --data-file=- --project="$PROJECT_ID"
+
+printf '%s' 'replace-with-razorpay-webhook-secret' |
+  gcloud secrets versions add RAZORPAY_WEBHOOK_SECRET --data-file=- --project="$PROJECT_ID"
+
+printf '%s' 'replace-with-support-webhook-secret' |
+  gcloud secrets versions add WEBHOOK_SECRET --data-file=- --project="$PROJECT_ID"
+```
+
+Use a JWT secret of at least 32 characters in production. Razorpay values must
+come from the same Razorpay account configured for the mobile checkout, and
+`WEBHOOK_SECRET` must match the value sent in the `X-Webhook-Secret` header.
+Do not commit these values or print them in CI logs.
+
+The Cloud Run runtime service account also needs Secret Manager access. Grant
+`roles/secretmanager.secretAccessor` to that service account for the project,
+then verify the references before retrying:
+
+```bash
+for NAME in JWT_SECRET RAZORPAY_KEY_ID RAZORPAY_KEY_SECRET \
+  RAZORPAY_WEBHOOK_SECRET WEBHOOK_SECRET; do
+  gcloud secrets describe "$NAME" --project="$PROJECT_ID" \
+    --format='value(name)'
+done
+```
+
 Razorpay webhooks are idempotent for captured/paid/failed events. A captured
 service payment also transitions its pending booking to `confirmed` when the
 payment order contains `booking_id`.
