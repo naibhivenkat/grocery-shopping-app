@@ -43,6 +43,46 @@ jobs:
         with:
           project_id: ${{ secrets.GCP_PROJECT_ID }}
 
+      # Keep sensitive runtime values in GitHub Actions Secrets. This step
+      # mirrors the five backend secrets into Secret Manager so the deploy
+      # command below can continue using Cloud Run secret references.
+      - name: Sync backend secrets to Secret Manager
+        env:
+          PROJECT_ID: ${{ secrets.GCP_PROJECT_ID }}
+          JWT_SECRET_VALUE: ${{ secrets.JWT_SECRET }}
+          RAZORPAY_KEY_ID_VALUE: ${{ secrets.RAZORPAY_KEY_ID }}
+          RAZORPAY_KEY_SECRET_VALUE: ${{ secrets.RAZORPAY_KEY_SECRET }}
+          RAZORPAY_WEBHOOK_SECRET_VALUE: ${{ secrets.RAZORPAY_WEBHOOK_SECRET }}
+          WEBHOOK_SECRET_VALUE: ${{ secrets.WEBHOOK_SECRET }}
+        run: |
+          set -euo pipefail
+
+          declare -A SECRET_VALUES=(
+            [JWT_SECRET]="$JWT_SECRET_VALUE"
+            [RAZORPAY_KEY_ID]="$RAZORPAY_KEY_ID_VALUE"
+            [RAZORPAY_KEY_SECRET]="$RAZORPAY_KEY_SECRET_VALUE"
+            [RAZORPAY_WEBHOOK_SECRET]="$RAZORPAY_WEBHOOK_SECRET_VALUE"
+            [WEBHOOK_SECRET]="$WEBHOOK_SECRET_VALUE"
+          )
+
+          for NAME in "${!SECRET_VALUES[@]}"; do
+            VALUE="${SECRET_VALUES[$NAME]}"
+            if [[ -z "$VALUE" ]]; then
+              echo "::error::GitHub Actions secret $NAME is not configured"
+              exit 1
+            fi
+
+            if ! gcloud secrets describe "$NAME" --project="$PROJECT_ID" >/dev/null 2>&1; then
+              gcloud secrets create "$NAME" \
+                --replication-policy=automatic \
+                --project="$PROJECT_ID"
+            fi
+
+            printf '%s' "$VALUE" | gcloud secrets versions add "$NAME" \
+              --data-file=- \
+              --project="$PROJECT_ID"
+          done
+
       # 4️⃣ Docker auth
       - name: Configure Docker auth
         run: |

@@ -104,6 +104,25 @@ RAZORPAY_WEBHOOK_SECRET
 WEBHOOK_SECRET
 ```
 
+The GitHub Actions deployment now handles these five secrets automatically.
+Before pushing backend changes, add the following repository-level GitHub
+Actions Secrets under **Settings → Secrets and variables → Actions**:
+
+```text
+JWT_SECRET
+RAZORPAY_KEY_ID
+RAZORPAY_KEY_SECRET
+RAZORPAY_WEBHOOK_SECRET
+WEBHOOK_SECRET
+```
+
+The workflow validates that each value exists, creates the corresponding
+Secret Manager secret when necessary, and adds a new version before deploying
+Cloud Run. The GitHub Actions service account therefore needs permission to
+create and version secrets (`roles/secretmanager.admin`, or an equivalent
+custom role); the Cloud Run runtime service account still needs
+`roles/secretmanager.secretAccessor`.
+
 Create empty Secret Manager containers first, if needed:
 
 ```bash
