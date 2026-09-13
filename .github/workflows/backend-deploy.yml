@@ -136,6 +136,18 @@ jobs:
       - name: Wait for deployment
         run: sleep 45
 
+      # Cloud Run can accept a deployment while the revision is failing its
+      # startup probe. Verify the public health route so a broken revision
+      # fails CI instead of silently serving 503s to the mobile app.
+      - name: Verify deployed health
+        run: |
+          SERVICE_URL=$(gcloud run services describe ${{ env.SERVICE_NAME }} \
+            --region=${{ env.REGION }} \
+            --format='value(status.url)')
+          curl --fail --show-error --silent \
+            --retry 5 --retry-delay 5 --retry-all-errors \
+            "$SERVICE_URL/health"
+
         # 🔟 Get currently deployed digest (IMPORTANT)
       - name: Get deployed digest
         run: |

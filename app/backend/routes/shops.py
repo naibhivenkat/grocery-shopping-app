@@ -15,10 +15,28 @@ from db import (
     now_iso,
     to_dict,
 )
-from firebase_db import get_user_firestore_ref
 
 
 shops_bp = Blueprint("shops", __name__)
+
+
+def _customer_name(user_id: str) -> str:
+    """Resolve the display name without importing the legacy Firebase loader."""
+    snapshot = doc(USERS, user_id).get()
+    if not snapshot.exists:
+        fallback = (
+            col(USERS)
+            .where(filter=FieldFilter("customerId", "==", user_id))
+            .limit(1)
+            .stream()
+        )
+        snapshot = next(iter(fallback), None)
+
+    if snapshot is None or not snapshot.exists:
+        return ""
+
+    data = snapshot.to_dict() or {}
+    return data.get("full_name") or data.get("name") or data.get("username") or ""
 
 
 # ── Shop item browsing ─────────────────────────────────────────────────────
@@ -227,7 +245,7 @@ def _create_single_order(payload: dict):
 
     # Keep BOTH values from the merged branches
     batch_id = payload.get("batch_id")
-    customer_name = get_user_firestore_ref(g.user_id)
+    customer_name = _customer_name(g.user_id)
 
     order_ref = col(CUSTOMER_ORDERS).document()
 

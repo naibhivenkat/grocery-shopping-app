@@ -15,32 +15,6 @@ from firebase_admin import credentials
 from flask import Flask, jsonify
 from flask_cors import CORS
 
-from routes.admin import admin_bp
-from routes.ai import ai_bp
-from routes.auth import auth_bp
-from routes.chat import chat_bp
-from routes.cities import cities_bp
-from routes.inventory import inventory_bp
-from routes.khata import khata_bp
-from routes.notifications import notifications_bp
-from routes.payments import payments_bp
-from routes.profile import profile_bp
-from routes.referrals import referrals_bp
-from routes.reviews import reviews_bp
-from routes.shops import shops_bp
-from routes.smoke import smoke_bp
-from routes.support import support_bp
-from routes.gmail_admin import gmail_admin_bp
-from routes.subscriptions import subscriptions_bp
-from routes.vendors import vendors_bp
-from routes.wallet import wallet_bp
-from routes.provider_profiles import provider_profiles_bp
-from routes.services import services_bp
-from routes.availability import availability_bp
-from routes.bookings import bookings_bp
-from routes.service_wallet import service_wallet_bp
-from razorpay_webhook import razorpay_webhook_bp
-
 
 logging.basicConfig(
     level=logging.INFO,
@@ -93,6 +67,38 @@ def _init_firebase() -> None:
 
 
 _init_firebase()
+
+
+# Import route modules only after Firebase has been initialized.  The V2
+# routes use lazy Firestore access, while optional legacy modules still have
+# import-time Firebase assumptions.  Keeping initialization first prevents a
+# Gunicorn worker from crashing during boot and leaving Cloud Run at its
+# generic 503 response.
+from routes.admin import admin_bp
+from routes.ai import ai_bp
+from routes.auth import auth_bp
+from routes.chat import chat_bp
+from routes.cities import cities_bp
+from routes.inventory import inventory_bp
+from routes.khata import khata_bp
+from routes.notifications import notifications_bp
+from routes.payments import payments_bp
+from routes.profile import profile_bp
+from routes.referrals import referrals_bp
+from routes.reviews import reviews_bp
+from routes.shops import shops_bp
+from routes.smoke import smoke_bp
+from routes.support import support_bp
+from routes.gmail_admin import gmail_admin_bp
+from routes.subscriptions import subscriptions_bp
+from routes.vendors import vendors_bp
+from routes.wallet import wallet_bp
+from routes.provider_profiles import provider_profiles_bp
+from routes.services import services_bp
+from routes.availability import availability_bp
+from routes.bookings import bookings_bp
+from routes.service_wallet import service_wallet_bp
+from razorpay_webhook import razorpay_webhook_bp
 
 
 def _register_legacy_blueprints(app: Flask) -> None:
