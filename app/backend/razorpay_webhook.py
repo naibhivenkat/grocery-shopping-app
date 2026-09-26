@@ -7,6 +7,7 @@ from flask import Blueprint, jsonify, request
 
 from db import db as get_db
 from razorpay_config import verify_webhook_signature
+from routes.razorpay_api import fail_payment_order, settle_payment_order
 
 
 razorpay_webhook_bp = Blueprint("razorpay_webhook", __name__)
@@ -68,6 +69,22 @@ def razorpay_webhook():
 
     ref = snapshot.reference
     current = snapshot.to_dict() or {}
+    if collection == "payment_orders":
+        if event in ("payment.captured", "order.paid"):
+            settle_payment_order(
+                snapshot.id,
+                payment.get("id"),
+                request.headers.get("X-Razorpay-Event-Id"),
+            )
+        elif event == "payment.failed":
+            fail_payment_order(
+                snapshot.id,
+                payment.get("id"),
+                request.headers.get("X-Razorpay-Event-Id"),
+                payment.get("error_description"),
+            )
+        return jsonify({"received": True, "collection": collection}), 200
+
     if event in ("payment.captured", "order.paid"):
         if current.get("status") != "paid":
             ref.update({

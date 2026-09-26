@@ -83,6 +83,7 @@ from routes.inventory import inventory_bp
 from routes.khata import khata_bp
 from routes.notifications import notifications_bp
 from routes.payments import payments_bp
+from routes.razorpay_api import razorpay_api_bp
 from routes.profile import profile_bp
 from routes.referrals import referrals_bp
 from routes.reviews import reviews_bp
@@ -162,6 +163,7 @@ def create_app() -> Flask:
         inventory_bp,
         reviews_bp,
         payments_bp,
+        razorpay_api_bp,
         wallet_bp,
         khata_bp,
         profile_bp,
