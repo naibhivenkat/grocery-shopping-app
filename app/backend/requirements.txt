@@ -30,3 +30,6 @@ reportlab==4.2.2
 
 # --- Env loading ---
 python-dotenv==1.0.0
+
+# --- Bounded catalog image decoding/re-encoding ---
+Pillow==12.3.0

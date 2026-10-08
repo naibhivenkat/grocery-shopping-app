@@ -85,6 +85,9 @@ from routes.notifications import notifications_bp
 from routes.payments import payments_bp
 from routes.razorpay_api import razorpay_api_bp
 from routes.profile import profile_bp
+from routes.promotions import promotions_bp
+from routes.order_refunds import order_refunds_bp
+from routes.media import media_bp
 from routes.referrals import referrals_bp
 from routes.reviews import reviews_bp
 from routes.shops import shops_bp
@@ -167,6 +170,9 @@ def create_app() -> Flask:
         wallet_bp,
         khata_bp,
         profile_bp,
+        promotions_bp,
+        order_refunds_bp,
+        media_bp,
         smoke_bp,
         support_bp,
         gmail_admin_bp,
@@ -181,22 +187,6 @@ def create_app() -> Flask:
 
     _register_legacy_blueprints(app)
 
-    import traceback
-    from flask import jsonify
-
-    @app.errorhandler(Exception)
-    def handle_exception(e):
-        print("\n" + "=" * 80)
-        print("UNHANDLED EXCEPTION")
-        print("=" * 80)
-        traceback.print_exc()
-        print("=" * 80 + "\n")
-
-        return jsonify({
-            "error": str(e),
-            "type": type(e).__name__,
-        }), 500
-
     @app.get("/")
     def index():
         return jsonify({"ok": True, "service": "localshop-finder-backend"})
@@ -204,6 +194,27 @@ def create_app() -> Flask:
     @app.get("/health")
     def health():
         return jsonify({"status": "healthy"})
+
+    @app.get("/features")
+    def features():
+        return jsonify({"wallet_enabled": False, "promotions_enabled": True,
+                        "promotion_billing": "free", "khata_vendor_confirmed": True,
+                        "backend_contract_version": 2,
+                        "release": os.getenv("BACKEND_RELEASE", "local")})
+
+    @app.before_request
+    def disabled_wallet():
+        from flask import request
+        # Preserve historic balances and payment settlement; block new wallet use.
+        if request.path.startswith(("/wallet", "/service-wallet")) and request.method != "OPTIONS":
+            return jsonify({"detail": "Wallet is temporarily disabled",
+                            "code": "WALLET_DISABLED"}), 410
+        # Existing APK action requests send JSON Content-Type with no body.
+        # Preserve those actions while rejecting malformed/non-object bodies.
+        if request.is_json and request.get_data() and request.method in {"POST", "PUT", "PATCH"}:
+            payload = request.get_json(silent=True)
+            if not isinstance(payload, dict):
+                return jsonify({"detail": "A valid JSON object is required"}), 422
 
     @app.errorhandler(404)
     def not_found(_err):
@@ -215,6 +226,9 @@ def create_app() -> Flask:
 
     @app.errorhandler(Exception)
     def on_unhandled(err):
+        from werkzeug.exceptions import HTTPException
+        if isinstance(err, HTTPException):
+            return jsonify({"detail": err.description}), err.code
         log.exception("Unhandled exception on %s", os.getenv("K_SERVICE", "local"))
         return jsonify({"detail": "Internal server error"}), 500
 

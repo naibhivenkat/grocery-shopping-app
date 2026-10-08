@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import base64
 import binascii
+import re
 from io import BytesIO
 
 from flask import Blueprint, jsonify, request, send_file
@@ -52,8 +53,10 @@ def gmail_messages():
     try:
         limit = max(1, min(int(request.args.get("limit", "20")), 100))
     except ValueError:
-        limit = 20
+        return jsonify({"detail": "Invalid message limit"}), 422
     query = request.args.get("q", "")
+    if len(query) > 4096:
+        return jsonify({"detail": "Search query is too long"}), 422
     return _call(lambda: [
         gmail_service.get_message_summary(item["id"])
         for item in gmail_service.list_messages(query, limit)
@@ -78,6 +81,20 @@ def gmail_thread(thread_id: str):
     ])
 
 
+def _send_payload():
+    payload = request.get_json(silent=True) or {}
+    if not isinstance(payload, dict):
+        raise ValueError("JSON object required")
+    for field, limit in (("to", 320), ("subject", 998), ("body", 200000), ("thread_id", 128), ("message_id", 128)):
+        value = payload.get(field)
+        if value is not None and (not isinstance(value, str) or len(value) > limit):
+            raise ValueError(f"Invalid {field}")
+    required = ("to", "body", "subject") if request.path.endswith("/send") else ("to", "body")
+    if any(not isinstance(payload.get(k),str) or not payload[k].strip() for k in required):
+        raise ValueError("Recipient, body and subject are required")
+    return payload
+
+
 def _json_attachments(items):
     if items is None:
         items = []
@@ -86,20 +103,28 @@ def _json_attachments(items):
     if len(items) > 10:
         raise ValueError("At most 10 attachments are allowed")
     result = []
+    total = 0
     for item in items or []:
-        if not isinstance(item, dict) or not item.get("name"):
+        if (not isinstance(item, dict) or not isinstance(item.get("name"), str)
+            or not 1 <= len(item["name"]) <= 255 or any(c in item["name"] for c in ("\r", "\n", "/", "\\"))):
             raise ValueError("Each attachment needs a name")
         encoded = item.get("data") or item.get("bytes") or ""
-        if not isinstance(encoded, str):
+        if not isinstance(encoded, str) or len(encoded) > 14 * 1024 * 1024:
             raise ValueError("Attachment data must be base64 text")
         try:
-            decoded = base64.urlsafe_b64decode(
-                encoded + "=" * (-len(encoded) % 4)
+            decoded = base64.b64decode(
+                encoded + "=" * (-len(encoded) % 4), altchars=b"-_", validate=True
             )
         except (ValueError, binascii.Error) as exc:
             raise ValueError("Attachment data must be valid base64") from exc
         if len(decoded) > 10 * 1024 * 1024:
             raise ValueError("Each attachment must be 10 MB or smaller")
+        total += len(decoded)
+        if total > 20 * 1024 * 1024:
+            raise ValueError("Attachments must total 20 MB or smaller")
+        mime = item.get("mime_type")
+        if mime is not None and (not isinstance(mime, str) or not re.fullmatch(r"[A-Za-z0-9.+_-]+/[A-Za-z0-9.+_-]+", mime)):
+            raise ValueError("Invalid attachment MIME type")
         result.append({
             "name": item["name"],
             "mime_type": item.get("mime_type"),
@@ -111,8 +136,8 @@ def _json_attachments(items):
 @gmail_admin_bp.post("/admin/support/gmail/send")
 @require_role("admin", "super_admin")
 def gmail_send():
-    payload = request.get_json(silent=True) or {}
     try:
+        payload = _send_payload()
         result = gmail_service.send_email(
             str(payload.get("to") or ""),
             str(payload.get("subject") or ""),
@@ -131,14 +156,21 @@ def gmail_send():
 @gmail_admin_bp.post("/admin/support/gmail/reply")
 @require_role("admin", "super_admin")
 def gmail_reply():
-    payload = request.get_json(silent=True) or {}
     try:
+        payload = _send_payload()
+        parent = payload.get("message_id")
+        if not parent or not re.fullmatch(r"[A-Za-z0-9_-]{1,128}", parent):
+            raise ValueError("A valid Gmail parent message_id is required")
+        raw = gmail_service.get_message(parent, "metadata")
+        parsed = gmail_service.parse_message(raw)
+        if payload.get("thread_id") and payload["thread_id"] != parsed.get("threadId"):
+            raise ValueError("Gmail thread mismatch")
         result = gmail_service.send_email(
             str(payload.get("to") or ""),
-            str(payload.get("subject") or "Re: Support request"),
+            str(parsed.get("subject") or "Support request"),
             str(payload.get("body") or ""),
-            thread_id=str(payload.get("thread_id") or "") or None,
-            in_reply_to=str(payload.get("message_id") or "") or None,
+            thread_id=parsed.get("threadId"),
+            in_reply_to=parsed.get("message_id_header"),
             attachments=_json_attachments(payload.get("attachments")),
         )
         return jsonify({"success": True, "message_id": result.get("id")}), 200
@@ -165,6 +197,8 @@ def gmail_attachment(message_id: str, attachment_id: str):
         )
     except GmailAuthError as exc:
         return jsonify({"detail": str(exc)}), 503
+    except ValueError as exc:
+        return jsonify({"detail": str(exc)}), 422
     except Exception:
         return jsonify({"detail": "Gmail attachment unavailable"}), 502
 
@@ -177,5 +211,7 @@ def support_sync():
         return jsonify({"success": True, **sync_service.process_webhook_queue()}), 200
     except GmailAuthError as exc:
         return jsonify({"detail": str(exc)}), 503
+    except ValueError as exc:
+        return jsonify({"detail": str(exc)}), 422
     except Exception:
         return jsonify({"detail": "Support synchronization failed"}), 502

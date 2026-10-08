@@ -10,6 +10,7 @@ import os
 from functools import lru_cache
 
 import razorpay
+import requests
 
 
 def _required(name: str) -> str:
@@ -19,9 +20,18 @@ def _required(name: str) -> str:
     return value
 
 
+class BoundedRazorpaySession(requests.Session):
+    """Bound connect/read waits; requests' default adapters never retry charges."""
+    def request(self, method, url, **kwargs):
+        if kwargs.get("timeout") is None:
+            kwargs["timeout"] = (5, 20)
+        return super().request(method, url, **kwargs)
+
+
 @lru_cache(maxsize=1)
 def get_razorpay_client():
-    return razorpay.Client(auth=(_required("RAZORPAY_KEY_ID"), _required("RAZORPAY_KEY_SECRET")))
+    return razorpay.Client(session=BoundedRazorpaySession(),
+        auth=(_required("RAZORPAY_KEY_ID"), _required("RAZORPAY_KEY_SECRET")))
 
 
 def get_razorpay_key_id() -> str:

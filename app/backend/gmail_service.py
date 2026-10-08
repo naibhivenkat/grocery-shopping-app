@@ -10,6 +10,8 @@ from email.mime.base import MIMEBase
 from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
 from typing import Any
+from email.utils import parseaddr
+import re
 
 from routes.gmail_auth import get_gmail_service
 
@@ -29,7 +31,15 @@ class GmailService:
     def service(self):
         if self._service is None:
             self._service = get_gmail_service()
+            transport = getattr(self._service, "_http", None)
+            raw_http = getattr(transport, "http", transport)
+            if raw_http is not None:
+                raw_http.timeout = 20
         return self._service
+
+    @staticmethod
+    def _execute(api_request, *, retries=2):
+        return api_request.execute(num_retries=retries)
 
     @staticmethod
     def header(headers: list[dict], name: str) -> str:
@@ -46,7 +56,7 @@ class GmailService:
             return value
 
     def test_connection(self) -> dict[str, Any]:
-        profile = self.service.users().getProfile(userId="me").execute()
+        profile = self._execute(self.service.users().getProfile(userId="me"))
         return {
             "success": True,
             "connected": True,
@@ -57,10 +67,10 @@ class GmailService:
         }
 
     def get_profile(self) -> dict[str, Any]:
-        return self.service.users().getProfile(userId="me").execute()
+        return self._execute(self.service.users().getProfile(userId="me"))
 
     def get_labels(self) -> list[dict]:
-        return self.service.users().labels().list(userId="me").execute().get(
+        return self._execute(self.service.users().labels().list(userId="me")).get(
             "labels", []
         )
 
@@ -68,30 +78,59 @@ class GmailService:
         gmail_query = "label:Support in:inbox -label:sent"
         if query.strip():
             gmail_query = f"{gmail_query} {query.strip()}"
-        return self.service.users().messages().list(
-            userId="me", q=gmail_query, maxResults=max_results
-        ).execute().get("messages", [])
+        maximum = max(1, min(int(max_results), 500))
+        result, token = [], None
+        for _ in range(5):
+            response = self._execute(self.service.users().messages().list(
+                userId="me", q=gmail_query, maxResults=min(100, maximum-len(result)),
+                **({"pageToken":token} if token else {})))
+            result.extend(response.get("messages", []))
+            token = response.get("nextPageToken")
+            if not token or len(result) >= maximum:
+                break
+        return result[:maximum]
 
     def get_message(self, message_id: str, fmt: str = "full") -> dict:
-        return self.service.users().messages().get(
+        return self._execute(self.service.users().messages().get(
             userId="me", id=message_id, format=fmt
-        ).execute()
+        ))
 
     def get_thread(self, thread_id: str) -> list[dict]:
-        return self.service.users().threads().get(
+        return self._execute(self.service.users().threads().get(
             userId="me", id=thread_id, format="full"
-        ).execute().get("messages", [])
+        )).get("messages", [])
 
-    def list_history(self, history_id: str) -> list[dict]:
-        response = self.service.users().history().list(
-            userId="me", startHistoryId=history_id, historyTypes=["messageAdded"]
-        ).execute()
-        return response.get("history", [])
+    def list_history(self, history_id: str, label_id: str | None = None):
+        token = None
+        for _ in range(20):
+            response = self._execute(self.service.users().history().list(
+                userId="me", startHistoryId=history_id, historyTypes=["messageAdded"], maxResults=100,
+                **({"labelId":label_id} if label_id else {}),
+                **({"pageToken":token} if token else {})))
+            yield from response.get("history", [])
+            token = response.get("nextPageToken")
+            if not token:
+                return
+        # Synchronizer persists the cursor after each completed record, so
+        # remaining pages resume on the next bounded run without skipping mail.
+        raise ValueError("History page limit reached; run synchronization again")
+
+    def find_sent_message(self, message_id_header: str):
+        if not message_id_header or any(c in message_id_header for c in ('\r','\n')):
+            return None
+        response = self._execute(self.service.users().messages().list(
+            userId="me", q=f"in:sent rfc822msgid:{message_id_header.strip('<>')}", maxResults=10))
+        for item in response.get("messages", []):
+            raw = self.get_message(item["id"], "metadata")
+            headers = (raw.get("payload") or {}).get("headers") or []
+            if self.header(headers, "Message-ID").strip() == message_id_header:
+                return {"id":item["id"]}
+        return None
 
     def get_attachment(self, message_id: str, attachment_id: str) -> bytes:
-        data = self.service.users().messages().attachments().get(
+        data = self._execute(self.service.users().messages().attachments().get(
             userId="me", messageId=message_id, id=attachment_id
-        ).execute().get("data")
+        )).get("data")
         return _decode(data)
 
     def _body(self, payload: dict) -> tuple[str, str]:
@@ -124,6 +163,9 @@ class GmailService:
             "body_text": plain,
             "body_html": html,
             "internal_date": message.get("internalDate"),
+            "message_id_header": self.header(headers, "Message-ID"),
+            "references": self.header(headers, "References"),
+            "label_ids": message.get("labelIds") or [],
         }
 
     def get_message_summary(self, message_id: str) -> dict[str, Any]:
@@ -138,10 +180,17 @@ class GmailService:
         thread_id: str | None = None,
         in_reply_to: str | None = None,
         attachments: list[dict] | None = None,
+        message_id_header: str | None = None,
     ) -> dict[str, Any]:
         if not to.strip() or not subject.strip() or not body.strip():
             raise ValueError("to, subject, and body are required")
+        _, address = parseaddr(to)
+        if (not re.fullmatch(r"[^\s@,<>]+@[^\s@,<>]+\.[^\s@,<>]+",address)
+            or any(c in to+subject+(in_reply_to or '')+(message_id_header or '') for c in ('\r','\n'))):
+            raise ValueError("Invalid email recipient or headers")
         message = MIMEMultipart()
+        if message_id_header:
+            message["Message-ID"] = message_id_header
         message["To"] = to.strip()
         message["Subject"] = subject.strip()
         if in_reply_to:
@@ -164,7 +213,9 @@ class GmailService:
         request = self.service.users().messages().send(
             userId="me", body={"raw": raw, **({"threadId": thread_id} if thread_id else {})}
         )
-        return request.execute()
+        # Gmail send has no idempotency API; automatic retries could duplicate
+        # customer mail after a lost response. Callers persist/reconcile identity.
+        return self._execute(request, retries=0)
 
 
 gmail_service = GmailService()

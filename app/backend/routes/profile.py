@@ -9,7 +9,9 @@ from db import SHOP_ITEMS, USERS, col, doc, now_iso, safe_delete_fields, to_dict
 
 profile_bp = Blueprint("profile", __name__)
 
-_IMMUTABLE_FIELDS = {"uid", "id", "email", "role", "created_at", "password_hash"}
+_PROFILE_FIELDS = {"full_name", "username", "phone", "city_id", "city_name",
+                   "latitude", "longitude", "shop_name", "shop_address",
+                   "address", "avatar_url", "photo_base64", "language"}
 
 
 @profile_bp.get("/profile")
@@ -25,7 +27,9 @@ def get_profile():
 @require_auth
 def update_profile():
     payload = request.get_json(silent=True) or {}
-    cleaned = {k: v for k, v in payload.items() if k not in _IMMUTABLE_FIELDS}
+    if not isinstance(payload, dict) or set(payload) - _PROFILE_FIELDS:
+        return jsonify({"detail": "Only editable profile fields are allowed"}), 422
+    cleaned = dict(payload)
     cleaned["updated_at"] = now_iso()
     doc(USERS, g.user_id).set(cleaned, merge=True)
     item_updates = {}

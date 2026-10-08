@@ -1,128 +1,175 @@
-"""`/khata/*` endpoints consumed by `KhataRemoteDataSource`.
+"""Vendor-confirmed khata balances, updated atomically with their ledger entries."""
 
-Implements the vendor-side khata (credit-book) ledger: each vendor can have
-multiple customer ledgers tracking outstanding balance via typed
-transactions (credit, debit, settlement).
-"""
+import hashlib
+import json
+from decimal import Decimal, InvalidOperation, ROUND_HALF_UP
 
+from firebase_admin import firestore
 from flask import Blueprint, g, jsonify, request
 from google.cloud.firestore_v1.base_query import FieldFilter
 
-from auth_utils import require_auth, require_role
-from db import (
-    KHATA_LEDGERS,
-    KHATA_TRANSACTIONS,
-    USERS,
-    col,
-    doc,
-    now_iso,
-    to_dict,
-)
-
+from auth_utils import require_role
+from db import KHATA_LEDGERS, KHATA_TRANSACTIONS, USERS, col, db, doc, now_iso, to_dict
 
 khata_bp = Blueprint("khata_v2", __name__)
+_MAX_PAISE = 1_000_000_000
 
 
-def _recompute_balance(ledger_id: str, ledger_ref) -> float:
-    balance = 0.0
-    for d in (
-        col(KHATA_TRANSACTIONS)
-        .where(filter=FieldFilter("ledger_id", "==", ledger_id))
-        .stream()
-    ):
-        data = d.to_dict() or {}
-        try:
-            amount = float(data.get("amount") or 0)
-        except (TypeError, ValueError):
-            amount = 0.0
-        t = data.get("type")
-        if t == "credit":
-            balance += amount
-        elif t in ("debit", "settlement"):
-            balance -= amount
-    ledger_ref.set({"balance": balance, "updated_at": now_iso()}, merge=True)
-    return balance
+class KhataError(ValueError):
+    def __init__(self, detail, status=422):
+        self.detail, self.status = detail, status
+        super().__init__(detail)
+
+
+@khata_bp.errorhandler(KhataError)
+def _khata_error(error):
+    return jsonify({"detail": error.detail}), error.status
+
+
+def _money_paise(value, *, allow_zero=False):
+    """Validate finite INR amounts and calculate with integer paise."""
+    if isinstance(value, bool) or not isinstance(value, (str, int, float, Decimal)):
+        raise KhataError("amount must be a finite number")
+    try:
+        amount = Decimal(str(value))
+        if not amount.is_finite() or amount < 0 or amount > Decimal("10000000"):
+            raise KhataError("amount must be between 0 and 10000000 INR")
+        paise = int((amount * 100).quantize(Decimal("1"), rounding=ROUND_HALF_UP))
+    except (InvalidOperation, ValueError, OverflowError):
+        raise KhataError("amount must be a finite number") from None
+    if not allow_zero and paise <= 0:
+        raise KhataError("amount must be at least 0.01 INR")
+    return paise
+
+
+def _identifier(value, label):
+    if not isinstance(value, str) or not value.strip() or "/" in value or len(value) > 200:
+        raise KhataError(f"{label} must be a valid identifier")
+    return value.strip()
+
+
+def _payload():
+    payload = request.get_json(silent=True)
+    if not isinstance(payload, dict):
+        raise KhataError("JSON object required")
+    return payload
+
+
+def _text(value, label, limit):
+    if value is None:
+        return ""
+    if not isinstance(value, str) or len(value) > limit:
+        raise KhataError(f"{label} must be text of at most {limit} characters")
+    return value.strip()
+
+
+def _ledger_id(vendor_id, customer_id):
+    return "pair_" + hashlib.sha256(json.dumps([vendor_id, customer_id]).encode()).hexdigest()
+
+
+def lookup_ledger_txn(transaction, vendor_id, customer_id):
+    """Read only: call before any transaction writes, including order writes.
+
+    New ledgers have a deterministic pair ID to serialize concurrent creation.
+    Existing ledgers retain their IDs and opening balances. Duplicate legacy
+    ledgers require reconciliation instead of silently picking one balance.
+    """
+    canonical = doc(KHATA_LEDGERS, _ledger_id(vendor_id, customer_id))
+    snapshot = canonical.get(transaction=transaction)
+    query = col(KHATA_LEDGERS).where(filter=FieldFilter("vendor_id", "==", vendor_id)).where(
+        filter=FieldFilter("customer_id", "==", customer_id)
+    )
+    matches = list(transaction.get(query))
+    if len(matches) > 1:
+        raise KhataError("Duplicate customer ledgers require reconciliation", 409)
+    if snapshot.exists:
+        data = snapshot.to_dict() or {}
+        if data.get("vendor_id") != vendor_id or data.get("customer_id") != customer_id:
+            raise KhataError("Ledger parties do not match", 409)
+        return canonical, data, True
+    if matches:
+        return matches[0].reference, matches[0].to_dict() or {}, True
+    return canonical, {}, False
+
+
+def _parties_txn(transaction, vendor_id, customer_id):
+    vendor_id = _identifier(vendor_id, "vendor_id")
+    customer_id = _identifier(customer_id, "customer_id")
+    vendor = doc(USERS, vendor_id).get(transaction=transaction)
+    customer = doc(USERS, customer_id).get(transaction=transaction)
+    if not vendor.exists or (vendor.to_dict() or {}).get("role") != "vendor":
+        raise KhataError("Vendor account not found", 404)
+    if not customer.exists or (customer.to_dict() or {}).get("role") != "customer":
+        raise KhataError("Customer account not found", 404)
+    vendor_data, customer_data = vendor.to_dict() or {}, customer.to_dict() or {}
+    if vendor_data.get("is_suspended") or customer_data.get("is_suspended"):
+        raise KhataError("Ledger party account is suspended", 403)
+    return vendor_data, customer_data
+
+
+def _name(data, *, vendor=False):
+    return (data.get("shop_name") if vendor else None) or data.get("full_name") or data.get("username") or ("Shop" if vendor else "Customer")
+
+
+def _with_party_names(ledger):
+    for party in ("vendor", "customer"):
+        if ledger.get(f"{party}_id") and not ledger.get(f"{party}_name"):
+            snapshot = doc(USERS, ledger[f"{party}_id"]).get()
+            if snapshot.exists:
+                ledger[f"{party}_name"] = _name(snapshot.to_dict() or {}, vendor=party == "vendor")
+    return ledger
+
+
+def _owned_ledger(ledger_id):
+    snapshot = doc(KHATA_LEDGERS, _identifier(ledger_id, "ledger_id")).get()
+    if not snapshot.exists:
+        raise KhataError("Ledger not found", 404)
+    ledger = to_dict(snapshot)
+    if g.user_id not in {ledger.get("vendor_id"), ledger.get("customer_id")}:
+        raise KhataError("Not your ledger", 403)
+    return ledger
 
 
 @khata_bp.get("/khata/ledgers")
-@require_auth
+@require_role("vendor", "customer")
 def list_ledgers():
     field = "vendor_id" if g.user_role == "vendor" else "customer_id"
-    query = col(KHATA_LEDGERS).where(filter=FieldFilter(field, "==", g.user_id))
-    items = [_with_party_names(to_dict(d)) for d in query.stream()]
+    items = [_with_party_names(to_dict(d)) for d in col(KHATA_LEDGERS).where(filter=FieldFilter(field, "==", g.user_id)).stream()]
     items.sort(key=lambda item: item.get("updated_at") or "", reverse=True)
     return jsonify(items)
 
 
 @khata_bp.get("/khata/ledgers/<ledger_id>")
-@require_auth
+@require_role("vendor", "customer")
 def get_ledger(ledger_id):
-    snap = doc(KHATA_LEDGERS, ledger_id).get()
-    if not snap.exists:
-        return jsonify({"detail": "Ledger not found"}), 404
-    ledger = to_dict(snap)
-    if g.user_id not in {ledger.get("vendor_id"), ledger.get("customer_id")}:
-        return jsonify({"detail": "Not your ledger"}), 403
-    return jsonify(_with_party_names(ledger))
+    return jsonify(_with_party_names(_owned_ledger(ledger_id)))
 
 
 @khata_bp.post("/khata/ledgers")
 @require_role("vendor")
 def create_ledger():
-    payload = request.get_json(silent=True) or {}
-    customer_id = payload.get("customer_id")
-    customer_name = payload.get("customer_name") or ""
-    if not customer_id:
-        return jsonify({"detail": "customer_id is required"}), 422
+    payload = _payload()
+    customer_id = _identifier(payload.get("customer_id"), "customer_id")
+    _text(payload.get("customer_name"), "customer_name", 200)
 
-    existing = (
-        col(KHATA_LEDGERS)
-        .where(filter=FieldFilter("vendor_id", "==", g.user_id))
-        .stream()
-    )
-    for ledger in existing:
-        data = to_dict(ledger)
-        if data.get("customer_id") == customer_id:
+    @firestore.transactional
+    def _create(transaction):
+        vendor, customer = _parties_txn(transaction, g.user_id, customer_id)
+        ref, data, exists = lookup_ledger_txn(transaction, g.user_id, customer_id)
+        if exists:
             if data.get("status") == "settled":
-                ledger.reference.set({
-                    "status": "active",
-                    "updated_at": now_iso(),
-                }, merge=True)
-                data = to_dict(ledger.reference.get())
-            return jsonify(_with_party_names(data)), 200
+                data = {**data, "status": "active", "updated_at": now_iso()}
+                transaction.set(ref, {"status": "active", "updated_at": data["updated_at"]}, merge=True)
+            return {**data, "uid": ref.id}, 200
+        timestamp = now_iso()
+        data = {"vendor_id": g.user_id, "vendor_name": _name(vendor, vendor=True),
+                "customer_id": customer_id, "customer_name": _name(customer),
+                "balance": 0.0, "status": "active", "created_at": timestamp, "updated_at": timestamp}
+        transaction.set(ref, data)
+        return {**data, "uid": ref.id}, 201
 
-    ref = col(KHATA_LEDGERS).document()
-    vendor = doc(USERS, g.user_id).get()
-    vendor_data = vendor.to_dict() or {}
-    ref.set({
-        "vendor_id": g.user_id,
-        "vendor_name": vendor_data.get("shop_name")
-            or vendor_data.get("full_name")
-            or vendor_data.get("username")
-            or "Shop",
-        "customer_id": customer_id,
-        "customer_name": customer_name,
-        "balance": 0.0,
-        "status": "active",
-        "created_at": now_iso(),
-        "updated_at": now_iso(),
-    })
-    return jsonify(to_dict(ref.get())), 201
-
-
-def _with_party_names(ledger: dict) -> dict:
-    vendor_id = ledger.get("vendor_id")
-    if vendor_id and not ledger.get("vendor_name"):
-        vendor = doc(USERS, vendor_id).get()
-        if vendor.exists:
-            data = vendor.to_dict() or {}
-            ledger["vendor_name"] = (
-                data.get("shop_name")
-                or data.get("full_name")
-                or data.get("username")
-                or "Shop"
-            )
-    return ledger
+    body, status = _create(db().transaction())
+    return jsonify(body), status
 
 
 @khata_bp.get("/khata/customers/search")
@@ -131,122 +178,109 @@ def search_customers():
     query = (request.args.get("q") or "").strip().lower()
     if len(query) < 2:
         return jsonify([])
-
     matches = []
     for snap in col(USERS).where(filter=FieldFilter("role", "==", "customer")).stream():
         customer = to_dict(snap)
-        haystack = " ".join(
-            str(customer.get(field) or "").lower()
-            for field in ("full_name", "username", "email", "phone")
-        )
-        if query not in haystack:
+        if customer.get("is_suspended"):
             continue
-        customer.pop("password_hash", None)
-        matches.append({
-            "uid": customer.get("uid"),
-            "id": customer.get("uid"),
-            "full_name": customer.get("full_name") or customer.get("username") or "",
-            "email": customer.get("email") or "",
-            "phone": customer.get("phone") or "",
-        })
+        haystack = " ".join(str(customer.get(field) or "").lower() for field in ("full_name", "username", "email", "phone"))
+        if query in haystack:
+            matches.append({"uid": snap.id, "id": snap.id, "full_name": _name(customer),
+                            "email": customer.get("email") or "", "phone": customer.get("phone") or ""})
         if len(matches) >= 20:
             break
-
     return jsonify(matches)
 
 
 @khata_bp.get("/khata/ledgers/<ledger_id>/transactions")
-@require_auth
+@require_role("vendor", "customer")
 def list_ledger_transactions(ledger_id):
-    ledger_snap = doc(KHATA_LEDGERS, ledger_id).get()
-    if not ledger_snap.exists:
-        return jsonify({"detail": "Ledger not found"}), 404
-    data = ledger_snap.to_dict() or {}
-    if g.user_id not in {data.get("vendor_id"), data.get("customer_id")}:
-        return jsonify({"detail": "Not your ledger"}), 403
-
-    query = col(KHATA_TRANSACTIONS).where(
-        filter=FieldFilter("ledger_id", "==", ledger_id)
-    )
-    items = [to_dict(d) for d in query.stream()]
-    items.sort(key=lambda t: t.get("created_at") or "")
+    _owned_ledger(ledger_id)
+    items = [to_dict(d) for d in col(KHATA_TRANSACTIONS).where(filter=FieldFilter("ledger_id", "==", ledger_id)).stream()]
+    items.sort(key=lambda item: item.get("created_at") or "")
     return jsonify(items)
 
 
+def _idempotency_ref(ledger_id, payload):
+    key = request.headers.get("Idempotency-Key") or payload.get("idempotency_key")
+    if key is None:
+        return col(KHATA_TRANSACTIONS).document()
+    key = _text(key, "idempotency_key", 200)
+    if not key:
+        raise KhataError("idempotency_key must not be empty")
+    digest = hashlib.sha256(json.dumps([ledger_id, key]).encode()).hexdigest()
+    return doc(KHATA_TRANSACTIONS, "request_" + digest)
+
+
 @khata_bp.post("/khata/transactions")
-@require_auth
+@require_role("vendor")
 def record_transaction():
-    payload = request.get_json(silent=True) or {}
-    ledger_id = payload.get("ledger_id")
+    payload = _payload()
+    ledger_id = _identifier(payload.get("ledger_id"), "ledger_id")
     txn_type = payload.get("type")
-    try:
-        amount = float(payload.get("amount"))
-    except (TypeError, ValueError):
-        return jsonify({"detail": "amount is required"}), 422
-    description = payload.get("description") or ""
+    if not isinstance(txn_type, str) or txn_type not in {"credit", "debit", "settlement"}:
+        raise KhataError("Valid transaction type required")
+    amount = _money_paise(payload.get("amount"))
+    description = _text(payload.get("description"), "description", 1000)
+    payment_method = _text(payload.get("payment_method"), "payment_method", 40) or None
+    ledger_ref, txn_ref = doc(KHATA_LEDGERS, ledger_id), _idempotency_ref(ledger_id, payload)
 
-    if not ledger_id or txn_type not in {"credit", "debit", "settlement"}:
-        return jsonify({"detail": "ledger_id and valid type required"}), 422
-    if amount <= 0:
-        return jsonify({"detail": "amount must be positive"}), 422
+    @firestore.transactional
+    def _record(transaction):
+        snapshot = ledger_ref.get(transaction=transaction)
+        if not snapshot.exists:
+            raise KhataError("Ledger not found", 404)
+        ledger = snapshot.to_dict() or {}
+        if ledger.get("vendor_id") != g.user_id:
+            raise KhataError("Only the ledger vendor can confirm payments or credit", 403)
+        _parties_txn(transaction, ledger.get("vendor_id"), ledger.get("customer_id"))
+        previous = txn_ref.get(transaction=transaction)
+        data = {"ledger_id": ledger_id, "vendor_id": ledger.get("vendor_id"),
+                "customer_id": ledger.get("customer_id"), "type": txn_type, "amount": amount / 100,
+                "description": description, "payment_method": payment_method, "recorded_by": g.user_id}
+        if previous.exists:
+            existing = previous.to_dict() or {}
+            if any(existing.get(key) != value for key, value in data.items()):
+                raise KhataError("Idempotency key already used for a different transaction", 409)
+            return {**existing, "uid": txn_ref.id}, 200
+        balance = _money_paise(ledger.get("balance", 0), allow_zero=True)
+        updated = balance + amount if txn_type == "credit" else balance - amount
+        if updated < 0:
+            raise KhataError("Payment exceeds outstanding balance")
+        if updated > _MAX_PAISE:
+            raise KhataError("Outstanding balance exceeds supported limit")
+        timestamp = now_iso()
+        data["created_at"] = timestamp
+        transaction.set(txn_ref, data)
+        transaction.set(ledger_ref, {"balance": updated / 100, "status": "active", "updated_at": timestamp}, merge=True)
+        return {**data, "uid": txn_ref.id}, 201
 
-    ledger_ref = doc(KHATA_LEDGERS, ledger_id)
-    ledger_snap = ledger_ref.get()
-    if not ledger_snap.exists:
-        return jsonify({"detail": "Ledger not found"}), 404
-    ledger = ledger_snap.to_dict() or {}
-    if g.user_id not in {ledger.get("vendor_id"), ledger.get("customer_id")}:
-        return jsonify({"detail": "Not your ledger"}), 403
-    is_vendor = g.user_id == ledger.get("vendor_id")
-    if not is_vendor and txn_type != "debit":
-        return jsonify({"detail": "Customers can only record payments"}), 403
-    if not is_vendor:
-        balance = float(ledger.get("balance") or 0)
-        if amount > balance:
-            return jsonify({"detail": "Payment exceeds outstanding balance"}), 422
-
-    txn_ref = col(KHATA_TRANSACTIONS).document()
-    txn_ref.set({
-        "ledger_id": ledger_id,
-        "vendor_id": ledger.get("vendor_id"),
-        "customer_id": ledger.get("customer_id"),
-        "type": txn_type,
-        "amount": amount,
-        "description": description,
-        "payment_method": payload.get("payment_method"),
-        "created_at": now_iso(),
-    })
-    _recompute_balance(ledger_id, ledger_ref)
-    ledger_ref.set({"status": "active"}, merge=True)
-    return jsonify(to_dict(txn_ref.get())), 201
+    body, status = _record(db().transaction())
+    return jsonify(body), status
 
 
 @khata_bp.post("/khata/ledgers/<ledger_id>/settle")
-@require_auth
+@require_role("vendor")
 def settle_ledger(ledger_id):
-    ledger_ref = doc(KHATA_LEDGERS, ledger_id)
-    ledger_snap = ledger_ref.get()
-    if not ledger_snap.exists:
-        return jsonify({"detail": "Ledger not found"}), 404
-    ledger = ledger_snap.to_dict() or {}
-    if g.user_id not in {ledger.get("vendor_id"), ledger.get("customer_id")}:
-        return jsonify({"detail": "Not your ledger"}), 403
+    ledger_ref = doc(KHATA_LEDGERS, _identifier(ledger_id, "ledger_id"))
+    txn_ref = col(KHATA_TRANSACTIONS).document()
 
-    balance = float(ledger.get("balance") or 0)
-    if balance > 0:
-        col(KHATA_TRANSACTIONS).document().set({
-            "ledger_id": ledger_id,
-            "vendor_id": ledger.get("vendor_id"),
-            "customer_id": ledger.get("customer_id"),
-            "type": "settlement",
-            "amount": balance,
-            "description": "Ledger settled",
-            "payment_method": None,
-            "created_at": now_iso(),
-        })
-    ledger_ref.set({
-        "balance": 0.0,
-        "status": "settled",
-        "updated_at": now_iso(),
-    }, merge=True)
-    return jsonify({"ok": True})
+    @firestore.transactional
+    def _settle(transaction):
+        snapshot = ledger_ref.get(transaction=transaction)
+        if not snapshot.exists:
+            raise KhataError("Ledger not found", 404)
+        ledger = snapshot.to_dict() or {}
+        if ledger.get("vendor_id") != g.user_id:
+            raise KhataError("Only the ledger vendor can settle it", 403)
+        _parties_txn(transaction, ledger.get("vendor_id"), ledger.get("customer_id"))
+        balance = _money_paise(ledger.get("balance", 0), allow_zero=True)
+        timestamp = now_iso()
+        if balance:
+            transaction.set(txn_ref, {"ledger_id": ledger_id, "vendor_id": ledger.get("vendor_id"),
+                "customer_id": ledger.get("customer_id"), "type": "settlement", "amount": balance / 100,
+                "description": "Ledger settled", "payment_method": None, "recorded_by": g.user_id, "created_at": timestamp})
+        transaction.set(ledger_ref, {"balance": 0.0, "status": "settled", "updated_at": timestamp}, merge=True)
+        return {"ok": True}
+
+    return jsonify(_settle(db().transaction()))

@@ -5,133 +5,107 @@ from google.cloud.firestore_v1.base_query import FieldFilter
 
 from auth_utils import require_auth
 from db import USERS, USER_FAVORITES, col, doc, now_iso, to_dict
+from routes.provider_profiles import ValidationError, validation_response, valid_id, json_object, text, finite_number, schedule
+from routes.bookings import _calculate_service_cost
 
 services_bp = Blueprint("services", __name__)
+
+services_bp.register_error_handler(ValidationError, validation_response)
 
 PROVIDER_SERVICES = "provider_services"
 PROVIDER_PROFILES = "provider_profiles"
 
 
-def _check_provider_capability(user_id: str) -> bool:
-    """Verifies the authenticated user has activated provider capability."""
-    return doc(PROVIDER_PROFILES, user_id).get().exists
+SERVICE_FIELDS = {
+    "title", "description", "service_category_id", "pricing_unit", "pricing_type", "fixed_price", "min_price",
+    "hourly_price", "per_30min_price", "minimum_charge", "inspection_charge", "working_schedule", "is_active",
+}
+
+
+def _provider_data(user_id):
+    valid_id(user_id, "provider_id")
+    user = doc(USERS, user_id).get()
+    profile = doc(PROVIDER_PROFILES, user_id).get()
+    user_data = user.to_dict() or {} if user.exists else {}
+    profile_data = profile.to_dict() or {} if profile.exists else {}
+    if not user.exists or not profile.exists or user_data.get("is_suspended") or profile_data.get("is_active") is False:
+        return None
+    return user_data, profile_data
+
+
+def _service_content(payload, current=None):
+    data = dict(current or {})
+    data.update(payload)
+    data["title"] = text(data.get("title"), "title", 120, True)
+    data["description"] = text(data.get("description"), "description", 2000)
+    category = data.get("service_category_id")
+    if category in (None, ""):
+        category = ""
+    else:
+        valid_id(category, "service_category_id")
+    data["service_category_id"] = category
+    pricing_type = data.get("pricing_type", "fixed")
+    if pricing_type not in ("fixed", "visit", "hourly", "per_30min", "time_based"):
+        raise ValidationError("Invalid pricing_type")
+    data["pricing_type"] = pricing_type
+    data["pricing_unit"] = text(data.get("pricing_unit", pricing_type), "pricing_unit", 30, True)
+    for field in ("fixed_price", "hourly_price", "per_30min_price", "minimum_charge", "inspection_charge"):
+        data[field] = finite_number(data.get(field) if data.get(field) not in (None, "") else 0, field)
+    data["min_price"] = None if data.get("min_price") in (None, "") else finite_number(data["min_price"], "min_price")
+    if not isinstance(data.get("is_active", True), bool):
+        raise ValidationError("is_active must be true or false")
+    data["is_active"] = data.get("is_active", True)
+    if data.get("working_schedule") is not None:
+        data["working_schedule"] = schedule(data["working_schedule"])
+    try:
+        _calculate_service_cost(data, 30)
+    except ValueError as error:
+        raise ValidationError(str(error))
+    return {field: data.get(field) for field in SERVICE_FIELDS}
 
 
 @services_bp.post("/provider/services")
 @require_auth
 def create_service():
-    """Create a new service. Actor is strictly g.user_id."""
-    if not _check_provider_capability(g.user_id):
-        return jsonify({"detail": "Provider profile required to create services"}), 403
-
-    payload = request.get_json(silent=True) or {}
-
-    # Ignore any client-supplied provider_id
-    # Enforce canonical identity mapping
-    provider_id = g.user_id
-    service_ref = col(PROVIDER_SERVICES).document()
-
-    # Safe float extraction matching legacy pricing engine preservation
-    try:
-        fixed_price = float(payload.get("fixed_price")) if payload.get("fixed_price") not in [None, ""] else 0.0
-        min_price = float(payload.get("min_price")) if payload.get("min_price") not in [None, ""] else None
-        hourly_price = float(payload.get("hourly_price")) if payload.get("hourly_price") not in [None, ""] else 0.0
-        per_30min_price = float(payload.get("per_30min_price") or 0.0)
-        minimum_charge = float(payload.get("minimum_charge")) if payload.get("minimum_charge") not in [None,
-                                                                                                       ""] else 0.0
-        inspection_charge = float(payload.get("inspection_charge") or 0.0)
-    except (TypeError, ValueError):
-        return jsonify({"detail": "Invalid pricing format"}), 400
-
-    service_data = {
-        "provider_id": provider_id,
-        "service_category_id": payload.get("service_category_id", ""),
-        "title": payload.get("title", ""),
-        "description": payload.get("description", ""),
-
-        "fixed_price": fixed_price,
-        "pricing_unit": payload.get("pricing_unit", "fixed"),
-        "min_price": min_price,
-
-        "pricing_type": payload.get("pricing_type", "fixed"),
-        "hourly_price": hourly_price,
-        "per_30min_price": per_30min_price,
-        "minimum_charge": minimum_charge,
-        "inspection_charge": inspection_charge,
-
-        "working_schedule": payload.get("working_schedule"),
-        "is_active": bool(payload.get("is_active", True)),
-        "is_deleted": False,
-        "created_at": now_iso(),
-        "updated_at": now_iso(),
-    }
-
-    service_ref.set(service_data)
-
-    return jsonify({**service_data, "id": service_ref.id}), 201
+    if not _provider_data(g.user_id):
+        raise ValidationError("An active provider profile is required", 403)
+    data = _service_content(json_object(SERVICE_FIELDS))
+    ref = col(PROVIDER_SERVICES).document()
+    timestamp = now_iso()
+    data.update({"provider_id": g.user_id, "is_deleted": False, "created_at": timestamp, "updated_at": timestamp})
+    ref.set(data)
+    return jsonify({**data, "id": ref.id}), 201
 
 
 @services_bp.put("/provider/services/<service_id>")
 @require_auth
 def update_service(service_id):
-    """Update an existing service. Verifies ownership."""
-    snap = doc(PROVIDER_SERVICES, service_id).get()
-    if not snap.exists:
-        return jsonify({"detail": "Service not found"}), 404
-
-    current_data = snap.to_dict() or {}
-
-    # Ownership Check
-    if current_data.get("provider_id") != g.user_id:
-        return jsonify({"detail": "Forbidden: You do not own this service"}), 403
-
-    payload = request.get_json(silent=True) or {}
-    updates = {"updated_at": now_iso()}
-
-    # Safe updates mapping
-    if "title" in payload:
-        updates["title"] = payload["title"]
-    if "description" in payload:
-        updates["description"] = payload["description"]
-    if "service_category_id" in payload:
-        updates["service_category_id"] = payload["service_category_id"]
-    if "pricing_unit" in payload:
-        updates["pricing_unit"] = payload["pricing_unit"]
-    if "pricing_type" in payload:
-        updates["pricing_type"] = payload["pricing_type"]
-    if "working_schedule" in payload:
-        updates["working_schedule"] = payload["working_schedule"]
-    if "is_active" in payload:
-        updates["is_active"] = bool(payload["is_active"])
-
-    try:
-        if "fixed_price" in payload:
-            updates["fixed_price"] = float(payload["fixed_price"]) if payload["fixed_price"] not in [None, ""] else 0.0
-        if "min_price" in payload:
-            updates["min_price"] = float(payload["min_price"]) if payload["min_price"] not in [None, ""] else None
-        if "hourly_price" in payload:
-            updates["hourly_price"] = float(payload["hourly_price"]) if payload["hourly_price"] not in [None,
-                                                                                                        ""] else 0.0
-        if "per_30min_price" in payload:
-            updates["per_30min_price"] = float(payload.get("per_30min_price") or 0.0)
-        if "minimum_charge" in payload:
-            updates["minimum_charge"] = float(payload["minimum_charge"]) if payload["minimum_charge"] not in [None,
-                                                                                                              ""] else 0.0
-        if "inspection_charge" in payload:
-            updates["inspection_charge"] = float(payload.get("inspection_charge") or 0.0)
-    except (TypeError, ValueError):
-        return jsonify({"detail": "Invalid pricing format"}), 400
-
-    doc(PROVIDER_SERVICES, service_id).set(updates, merge=True)
-
-    updated_snap = doc(PROVIDER_SERVICES, service_id).get()
-    return jsonify({**updated_snap.to_dict(), "id": service_id}), 200
+    valid_id(service_id, "service_id")
+    ref = doc(PROVIDER_SERVICES, service_id)
+    snapshot = ref.get()
+    if not snapshot.exists:
+        raise ValidationError("Service not found", 404)
+    current = snapshot.to_dict() or {}
+    if current.get("provider_id") != g.user_id:
+        raise ValidationError("You do not own this service", 403)
+    if current.get("is_deleted"):
+        raise ValidationError("Service not found", 404)
+    if not _provider_data(g.user_id):
+        raise ValidationError("An active provider profile is required", 403)
+    payload = json_object(SERVICE_FIELDS)
+    if not payload:
+        raise ValidationError("At least one service field is required")
+    data = _service_content(payload, current)
+    data["updated_at"] = now_iso()
+    ref.update(data)
+    return jsonify({**(ref.get().to_dict() or {}), "id": service_id})
 
 
 @services_bp.delete("/provider/services/<service_id>")
 @require_auth
 def delete_service(service_id):
     """Soft-delete an existing service. Verifies ownership."""
+    valid_id(service_id, "service_id")
     snap = doc(PROVIDER_SERVICES, service_id).get()
     if not snap.exists:
         return jsonify({"detail": "Service not found"}), 404
@@ -167,6 +141,8 @@ def list_own_services():
 @services_bp.get("/providers/<provider_id>/services")
 def list_target_provider_services(provider_id):
     """List public services belonging to a specific provider."""
+    if not _provider_data(provider_id):
+        return jsonify([])
     query = col(PROVIDER_SERVICES).where(
         filter=FieldFilter("provider_id", "==", provider_id)
     ).where(filter=FieldFilter("is_deleted", "==", False))
@@ -174,6 +150,12 @@ def list_target_provider_services(provider_id):
     services = []
     for s in query.stream():
         data = s.to_dict() or {}
+        if data.get("is_active") is False:
+            continue
+        try:
+            data.update(_service_content({}, data))
+        except ValidationError:
+            continue
         data["id"] = s.id
         services.append(data)
 
@@ -194,6 +176,8 @@ def discover_available_services():
     are excluded to prevent self-booking.
     """
     category_id = request.args.get("category_id")
+    if category_id:
+        valid_id(category_id, "category_id")
 
     # Optional Auth check to exclude self-booking listings seamlessly.
     actor_id = None
@@ -241,26 +225,20 @@ def discover_available_services():
         # Skip malformed service documents without a provider.
         if not provider_id:
             continue
+        try:
+            available_provider = _provider_data(provider_id)
+            data.update(_service_content({}, data))
+        except (ValidationError, ValueError):
+            continue
+        if not available_provider:
+            continue
 
         # Exclude own services to prevent self-booking visibility.
         if actor_id and provider_id == actor_id:
             continue
 
         # Look up canonical user and provider profile.
-        user_snap = doc(USERS, provider_id).get()
-        prof_snap = doc(PROVIDER_PROFILES, provider_id).get()
-
-        user_data = (
-            user_snap.to_dict() or {}
-            if user_snap.exists
-            else {}
-        )
-
-        prof_data = (
-            prof_snap.to_dict() or {}
-            if prof_snap.exists
-            else {}
-        )
+        user_data, prof_data = available_provider
 
         # Preserve the existing Flutter contract.
         result.append({
@@ -297,7 +275,7 @@ def discover_available_services():
             "inspection_charge": data.get("inspection_charge", 0),
 
             # Provider metadata
-            "rating": (
+            "rating": _rating(
                 user_data.get("rating")
                 or prof_data.get("rating")
             ),
@@ -325,96 +303,65 @@ def discover_available_services():
     result.sort(
         key=lambda x: (
             not x.get("available_today", True),
-            -(x.get("rating") or 0),
+            -_rating(x.get("rating")),
         )
     )
 
     return jsonify(result), 200
 
+def _rating(value):
+    try:
+        return finite_number(value or 0, "rating", 0, 5)
+    except ValidationError:
+        return 0
+
+
 @services_bp.get("/services/<service_id>")
 def get_service_detail(service_id):
-    """Get details of a specific service."""
+    valid_id(service_id, "service_id")
     snap = doc(PROVIDER_SERVICES, service_id).get()
-    if not snap.exists or snap.to_dict().get("is_deleted"):
-        return jsonify({"detail": "Service not found"}), 404
-
-    data = snap.to_dict() or {}
-    data["id"] = snap.id
-
-    provider_id = data.get("provider_id")
-    if provider_id:
-        user_snap = doc(USERS, provider_id).get()
-        prof_snap = doc(PROVIDER_PROFILES, provider_id).get()
-
-        user_data = user_snap.to_dict() or {} if user_snap.exists else {}
-        prof_data = prof_snap.to_dict() or {} if prof_snap.exists else {}
-
-        # Merge canonical identity presentation
-        data["provider_name"] = user_data.get("full_name") or user_data.get("username") or "Provider"
-        data["location"] = prof_data.get("location")
-        data["photo_base64"] = user_data.get("avatar_url") or user_data.get("photo_base64")
-
-    return jsonify(data), 200
+    data = snap.to_dict() or {} if snap.exists else {}
+    if not snap.exists or data.get("is_deleted") or data.get("is_active") is False:
+        raise ValidationError("Service not found", 404)
+    provider = _provider_data(data.get("provider_id"))
+    if not provider:
+        raise ValidationError("Service not available", 404)
+    user, profile = provider
+    try:
+        data.update(_service_content({}, data))
+    except ValidationError:
+        raise ValidationError("Service not available", 404)
+    return jsonify({**data, "id": snap.id,
+        "provider_name": user.get("full_name") or user.get("username") or "Provider",
+        "location": profile.get("location"), "photo_base64": user.get("avatar_url") or user.get("photo_base64"),
+    })
 
 
 @services_bp.post("/services/calculate-price")
 def calculate_price():
-    """Preserved legacy pricing logic wrapped in V2 endpoint."""
-    body = request.get_json(silent=True) or {}
-    service_id = body.get("service_id")
-
-    try:
-        duration = int(body.get("duration", 60))
-    except (TypeError, ValueError):
-        duration = 60
-
-    if not service_id:
-        return jsonify({"detail": "service_id required"}), 400
-
+    body = json_object({"service_id", "duration"})
+    service_id = valid_id(body.get("service_id"), "service_id")
+    duration = body.get("duration", 60)
+    if isinstance(duration, bool) or not isinstance(duration, int) or not 30 <= duration <= 480 or duration % 30:
+        raise ValidationError("duration must be 30-minute intervals up to 8 hours")
     snap = doc(PROVIDER_SERVICES, service_id).get()
-    if not snap.exists:
-        return jsonify({"detail": "Service not found"}), 404
-
-    svc = snap.to_dict() or {}
-
-    pricing_type = svc.get("pricing_type", "fixed")
-    fixed_price = float(svc.get("fixed_price", 0))
-    hourly_price = float(svc.get("hourly_price", 0))
-    per_30 = float(svc.get("per_30min_price", 0))
-    min_charge = float(svc.get("minimum_charge", 0))
-    visit_charge = float(svc.get("inspection_charge", 0))
-
-    if pricing_type == "fixed":
-        base = fixed_price
-    elif pricing_type == "visit":
-        base = visit_charge
-    else:
-        hours = duration / 60
-        if per_30 > 0:
-            cost = (duration / 30) * per_30
-        else:
-            cost = hours * hourly_price
-
-        if cost < min_charge:
-            cost = min_charge
-
-        base = round(cost, 2)
-
-    platform_fee = base * 0.05
-    tax = base * 0.18
-    total = base + platform_fee + tax
-
-    return jsonify({
-        "service_cost": round(base, 2),
-        "platform_fee": round(platform_fee, 2),
-        "tax": round(tax, 2),
-        "total_cost": round(total, 2),
-        "pricing_type": pricing_type,
-        "visit_charge": visit_charge,
-        "hourly_price": hourly_price,
-        "per_30min_price": per_30,
-        "minimum_charge": min_charge
-    }), 200
+    svc = snap.to_dict() or {} if snap.exists else {}
+    if not snap.exists or svc.get("is_deleted") or svc.get("is_active") is False or not _provider_data(svc.get("provider_id")):
+        raise ValidationError("Service not available", 404)
+    try:
+        base = _calculate_service_cost(svc, duration)
+    except ValueError as error:
+        raise ValidationError(str(error))
+    fee = round(base * 0.05, 2)
+    tax = round((base + fee) * 0.18, 2)
+    total = round(base + fee + tax, 2)
+    if total > 10_000_000:
+        raise ValidationError("Quote exceeds the payment limit")
+    return jsonify({"service_cost": base, "platform_fee": fee, "tax": tax,
+        "total_cost": total, "pricing_type": svc.get("pricing_type", "fixed"),
+        "visit_charge": svc.get("inspection_charge", 0), "hourly_price": svc.get("hourly_price", 0),
+        "per_30min_price": svc.get("per_30min_price", 0), "minimum_charge": svc.get("minimum_charge", 0),
+    })
 
 
 @services_bp.get("/services/favourites")
@@ -437,12 +384,14 @@ def get_favourites():
         user_snap = doc(USERS, provider_id).get()
         prof_snap = doc(PROVIDER_PROFILES, provider_id).get()
 
-        if not user_snap.exists:
+        if not user_snap.exists or not prof_snap.exists:
             continue
 
         user_data = user_snap.to_dict() or {}
         prof_data = prof_snap.to_dict() or {} if prof_snap.exists else {}
 
+        if user_data.get("is_suspended") or prof_data.get("is_active") is False:
+            continue
         # Preserve the ProviderEntity-compatible fields expected by Flutter
         providers.append({
             "id": provider_id,
@@ -450,7 +399,7 @@ def get_favourites():
             "provider_name": user_data.get("full_name") or user_data.get("username") or "Provider",
             "location": prof_data.get("location"),
             "photo_base64": user_data.get("avatar_url") or user_data.get("photo_base64"),
-            "rating": user_data.get("rating") or prof_data.get("rating"),
+            "rating": _rating(user_data.get("rating") or prof_data.get("rating")),
             "completed_jobs": prof_data.get("completed_jobs", 0),
             "verified": prof_data.get("is_verified", False),
             "available_today": prof_data.get("is_active", True),
@@ -463,12 +412,14 @@ def get_favourites():
 @require_auth
 def add_favourite():
     """Add a provider to the authenticated user's favourites."""
-    payload = request.get_json(silent=True) or {}
-    provider_id = payload.get("provider_id")
+    payload = json_object({"provider_id"})
+    provider_id = valid_id(payload.get("provider_id"), "provider_id")
 
     if not provider_id:
         return jsonify({"detail": "provider_id is required"}), 400
 
+    if not _provider_data(provider_id):
+        raise ValidationError("Provider not available", 404)
     # Idempotent document ID merging user and provider
     fav_id = f"{g.user_id}_{provider_id}"
 
@@ -486,8 +437,8 @@ def add_favourite():
 @require_auth
 def remove_favourite():
     """Remove a provider from the authenticated user's favourites."""
-    payload = request.get_json(silent=True) or {}
-    provider_id = payload.get("provider_id")
+    payload = json_object({"provider_id"})
+    provider_id = valid_id(payload.get("provider_id"), "provider_id")
 
     if not provider_id:
         return jsonify({"detail": "provider_id is required"}), 400
@@ -500,9 +451,12 @@ def remove_favourite():
     return jsonify({"success": True, "detail": "Provider removed from favourites"}), 200
 
 @services_bp.get("/services/addresses")
+@require_auth
 def get_customer_addresses():
     """Return saved addresses for a customer."""
-    customer_id = request.args.get("customer_id")
+    customer_id = valid_id(request.args.get("customer_id"), "customer_id")
+    if customer_id != g.user_id and g.user_role not in ("admin", "super_admin"):
+        raise ValidationError("You cannot view another customer's addresses", 403)
 
     if not customer_id:
         return jsonify({

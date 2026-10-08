@@ -63,8 +63,11 @@ def _register(client, email: str, password: str, role: str, full_name: str) -> t
 
 @smoke_bp.get("/debug/smoke-test")
 def smoke_test():
+    # This legacy suite creates users and mutates data. Never expose it in prod.
+    if os.getenv("FLASK_ENV", "").lower() == "production" or os.getenv("ENABLE_MUTATING_SMOKE_TEST") != "1":
+        return jsonify({"detail": "Mutating smoke tests are disabled"}), 404
     expected_key = os.getenv("SMOKE_TEST_KEY")
-    if expected_key and request.args.get("key") != expected_key:
+    if not expected_key or request.headers.get("X-Smoke-Test-Key") != expected_key:
         return jsonify({"detail": "Forbidden"}), 403
 
     client = current_app.test_client()

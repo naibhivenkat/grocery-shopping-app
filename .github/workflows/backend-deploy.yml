@@ -31,6 +31,18 @@ jobs:
       - name: Checkout source
         uses: actions/checkout@v4
 
+      - name: Set up Python for backend validation
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Validate backend before deployment
+        working-directory: app/backend
+        run: |
+          python -m pip install -r requirements.txt
+          python -m unittest discover -s tests -v
+          python -m compileall -q main.py auth_utils.py routes tests
+
       # 2️⃣ Authenticate to GCP
       - name: Authenticate to Google Cloud
         uses: google-github-actions/auth@v2
@@ -94,42 +106,20 @@ jobs:
       - name: Install jq
         run: sudo apt-get install jq -y
 
-      # 6️⃣ Detect tag vs branch
-      - name: Detect release tag
-        run: |
-          if [[ "${GITHUB_REF}" == refs/tags/* ]]; then
-            echo "IS_TAG=true" >> $GITHUB_ENV
-            VERSION_TAG=${GITHUB_REF#refs/tags/}
-            echo "VERSION_TAG=$VERSION_TAG" >> $GITHUB_ENV
-          else
-            echo "IS_TAG=false" >> $GITHUB_ENV
-          fi
-
-      # 7️⃣ Build & Push
-      - name: Build & Push image
+      - name: Build immutable backend image
         run: |
           IMAGE_BASE="${{ env.REGION }}-docker.pkg.dev/${{ secrets.GCP_PROJECT_ID }}/${{ env.REPOSITORY }}/${{ env.IMAGE_NAME }}"
-
-          if [ "$IS_TAG" = "true" ]; then
-          echo "Building RELEASE image: $VERSION_TAG"
-          gcloud builds submit app/backend \
-           --tag "$IMAGE_BASE:latest" \
-           --tag "$IMAGE_BASE:$VERSION_TAG"
-          else
-          echo "Building branch image"
-          gcloud builds submit app/backend \
-           --tag "$IMAGE_BASE:latest"
-          fi
+          gcloud builds submit app/backend --tag "$IMAGE_BASE:${GITHUB_SHA}"
 
       # 8️⃣ Deploy Cloud Run
       - name: Deploy to Cloud Run
         run: |
           gcloud run deploy ${{ env.SERVICE_NAME }} \
-            --image=${{ env.REGION }}-docker.pkg.dev/${{ secrets.GCP_PROJECT_ID }}/${{ env.REPOSITORY }}/${{ env.IMAGE_NAME }}:latest \
+            --image=${{ env.REGION }}-docker.pkg.dev/${{ secrets.GCP_PROJECT_ID }}/${{ env.REPOSITORY }}/${{ env.IMAGE_NAME }}:${{ github.sha }} \
             --region=${{ env.REGION }} \
             --allow-unauthenticated \
             --port=8080 \
-            --set-env-vars=FLASK_ENV=production,ENABLE_LEGACY_ROUTES=0 \
+            --update-env-vars=FLASK_ENV=production,ENABLE_LEGACY_ROUTES=0,FIREBASE_STORAGE_BUCKET=groceryapp-fe2ec.firebasestorage.app,BACKEND_RELEASE=${{ github.sha }} \
             --update-secrets=FIREBASE_CREDENTIALS_JSON=FIREBASE_CREDENTIALS_JSON:latest,SENDINBLUE_API_KEY=SENDINBLUE_API_KEY:latest,FROM_EMAIL=FROM_EMAIL:latest,JWT_SECRET=JWT_SECRET:latest,RAZORPAY_KEY_ID=RAZORPAY_KEY_ID:latest,RAZORPAY_KEY_SECRET=RAZORPAY_KEY_SECRET:latest,RAZORPAY_WEBHOOK_SECRET=RAZORPAY_WEBHOOK_SECRET:latest,WEBHOOK_SECRET=WEBHOOK_SECRET:latest
 
       # 9️⃣ Wait for Cloud Run to stabilize
@@ -147,6 +137,7 @@ jobs:
           curl --fail --show-error --silent \
             --retry 5 --retry-delay 5 --retry-all-errors \
             "$SERVICE_URL/health"
+          python app/backend/scripts/verify_deployed.py --base-url "$SERVICE_URL" --phase release
 
         # 🔟 Get currently deployed digest (IMPORTANT)
       - name: Get deployed digest
@@ -162,75 +153,5 @@ jobs:
           echo "DEPLOYED_DIGEST=$DEPLOYED_DIGEST" >> $GITHUB_ENV
           echo "Deployed digest protected: $DEPLOYED_DIGEST"
 
-     # 1️⃣1️⃣ Cleanup on Artifact
-      - name: Cleanup docker images (tags + branch builds)
-        run: |
-          echo "🧹 Artifact cleanup started..."
-          
-          REGION="${{ env.REGION }}"
-          PROJECT="${{ secrets.GCP_PROJECT_ID }}"
-          REPO="${{ env.REPOSITORY }}"
-          IMAGE="${{ env.IMAGE_NAME }}"
-          
-          IMAGE_PATH="$REGION-docker.pkg.dev/$PROJECT/$REPO/$IMAGE"
-          
-          ########################################
-          # STEP 1 — CLEAN OLD VERSION TAGS
-          ########################################
-          
-          TAGS=$(gcloud artifacts docker tags list "$IMAGE_PATH" --format="value(tag)")
-          
-          echo "All tags:"
-          echo "$TAGS"
-          
-          NEWEST_V=$(echo "$TAGS" | grep '^v' | sort -Vr | head -n1)
-          
-          echo " ✅ Keep latest + $NEWEST_V"
-          
-          for TAG in $TAGS; do
-          
-          if [[ "$TAG" == "latest" ]]; then continue; fi
-          if [[ "$TAG" == "$NEWEST_V" ]]; then continue; fi
-          
-          echo "Deleting old tag: $TAG"
-          
-          gcloud artifacts docker images delete \
-          "$IMAGE_PATH:$TAG" \
-          --quiet --delete-tags
-          
-          done
-          
-          ########################################
-          # STEP 2 — DELETE UNTAGGED BRANCH DIGESTS (FINAL FIX)
-          ########################################
-            
-          echo "Finding untagged branch images..."
-          
-          DEPLOYED_SHA=$(echo "$DEPLOYED_DIGEST" | awk -F@ '{print $2}')
-          
-          gcloud artifacts versions list \
-          --package="$IMAGE" \
-          --repository="$REPO" \
-          --location="$REGION" \
-          --format=json > versions.json
-          
-          for VERSION in $(jq -r '.[] | select(.tags==null or (.tags|length==0)) | .name' versions.json); do
-        
-          VERSION_SHA=$(echo "$VERSION" | awk -F: '{print $2}')
-        
-          # skip ONLY exact deployed digest
-          if [[ "$VERSION_SHA" == "$DEPLOYED_SHA" ]]; then
-          echo "Skipping deployed digest: $VERSION_SHA"
-          continue
-          fi
-        
-          echo "Deleting untagged version: $VERSION_SHA"
-        
-          gcloud artifacts versions delete "$VERSION" \
-          --repository="$REPO" \
-          --location="$REGION" \
-          --quiet 2>/dev/null || true
-          
-          done
 
-          echo "✅✅ Cleanup finished ✅✅"
+      # Retain revision images for rollback; cleanup is a separate operation.

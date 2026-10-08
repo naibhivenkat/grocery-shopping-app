@@ -4,7 +4,7 @@ from flask import Blueprint, g, jsonify
 from google.cloud.firestore_v1.base_query import FieldFilter
 
 from auth_utils import require_auth
-from db import NOTIFICATIONS, col, doc, to_dict
+from db import NOTIFICATIONS, col, doc, db, to_dict
 
 
 notifications_bp = Blueprint("notifications", __name__)
@@ -40,7 +40,7 @@ def mark_all_read():
     query = col(NOTIFICATIONS).where(
         filter=FieldFilter("user_id", "==", g.user_id)
     )
-    batch = col(NOTIFICATIONS)._client.batch()
+    batch = db().batch()
     count = 0
     for d in query.stream():
         if (d.to_dict() or {}).get("is_read"):
@@ -50,7 +50,7 @@ def mark_all_read():
         # Firestore batches cap at 500 ops.
         if count % 450 == 0:
             batch.commit()
-            batch = col(NOTIFICATIONS)._client.batch()
+            batch = db().batch()
     if count % 450:
         batch.commit()
     return jsonify({"ok": True, "updated": count})

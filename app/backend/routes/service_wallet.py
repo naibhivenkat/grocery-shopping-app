@@ -13,97 +13,190 @@ service_wallet_bp = Blueprint("service_wallet", __name__)
 COLL_BOOKINGS = "service_bookings"
 
 
+def _refund_paise(value):
+    from decimal import Decimal, InvalidOperation, ROUND_HALF_UP
+    try:
+        amount = Decimal(str(value))
+        if not amount.is_finite() or not 0 < amount <= 10_000_000:
+            raise ValueError("Invalid refund amount")
+        paise = int((amount * 100).quantize(Decimal("1"), rounding=ROUND_HALF_UP))
+        if paise <= 0:
+            raise ValueError("Invalid refund amount")
+        return paise
+    except InvalidOperation:
+        raise ValueError("Invalid refund amount")
+
+
 def process_refund(booking_id: str):
-    """
-    Idempotent refund handler executing asynchronously from the booking state machine.
-    Safely orchestrates external API calls and subsequent internal Firestore ledger balancing.
-    """
+    """Refund only cancelled/rejected paid bookings, with durable retry identity.
 
-    # 1. Start transaction to verify refund eligibility and lock processing state
+    X-Refund-Idempotency is reused after ambiguous network failures. A five-minute
+    lease prevents simultaneous workers; no external call occurs in a Firestore
+    transaction. Historical wallet refunds retain an atomic, once-only credit.
+    Razorpay 'pending' refunds remain submitted until the provider confirms them.
+    """
+    import hashlib
+    import uuid
+    from datetime import datetime, timedelta, timezone
+    from routes.razorpay_api import captured_payment_matches
+
+    b_ref = doc(COLL_BOOKINGS, booking_id)
+    lease_token = uuid.uuid4().hex
+
     @firestore.transactional
-    def check_and_lock(txn):
-        b_ref = doc(COLL_BOOKINGS, booking_id)
-        b_snap = b_ref.get(transaction=txn)
-        if not b_snap.exists:
-            return None
-        b_data = b_snap.to_dict() or {}
-
-        if b_data.get("payment_status") != "paid" or b_data.get("refund_status") in ["completed", "processing"]:
-            return None
-
-        txn.update(b_ref, {"refund_status": "processing", "updated_at": now_iso()})
-        return b_data
-
-    booking = check_and_lock(db().transaction())
-    if not booking:
-        return
-
-    payment_method = booking.get("payment_method", "wallet")
-    customer_id = booking.get("requester_id")
-    customer_refund_amount = float(booking.get("final_total") or booking.get("amount_paid") or 0)
-
-    refund_id = None
-    # 2. External API Processing (Non-transactional to prevent duplicate HTTP calls on retry)
-    if payment_method == "razorpay":
-        payment_id = booking.get("razorpay_payment_id")
-        if not payment_id:
-            doc(COLL_BOOKINGS, booking_id).set({
-                "refund_status": "failed",
-                "refund_error": "Missing Razorpay payment ID",
-            }, merge=True)
-            return
-        try:
-            refund = get_razorpay_client().payment.refund(payment_id, {
-                "amount": int(customer_refund_amount * 100),
-                "notes": {"booking_id": booking_id, "reason": "cancelled_booking"}
+    def acquire(transaction):
+        snapshot = b_ref.get(transaction=transaction)
+        if not snapshot.exists:
+            return {"skip": True, "status": "missing"}
+        booking = snapshot.to_dict() or {}
+        status = booking.get("refund_status")
+        if status == "completed":
+            return {"skip": True, "status": "completed"}
+        if booking.get("status") not in ("cancelled", "rejected") or booking.get("payment_status") != "paid":
+            return {"skip": True, "status": "ineligible"}
+        refund_request = booking.get("refund_request")
+        if status in ("processing", "submitted") and not refund_request:
+            transaction.update(b_ref, {
+                "refund_status": "requires_review", "refund_error": "Legacy refund must be reconciled before retry",
             })
-            refund_id = refund.get("id")
-        except Exception as e:
-            doc(COLL_BOOKINGS, booking_id).set({"refund_status": "failed", "refund_error": str(e)}, merge=True)
-            return
-    elif payment_method != "wallet":
-        doc(COLL_BOOKINGS, booking_id).set({
-            "refund_status": "failed",
-            "refund_error": "Unsupported refund payment method",
-        }, merge=True)
-        return
-
-    # 3. Final Internal Settlement
-    @firestore.transactional
-    def finalize_refund(txn):
-        # NOTE: In V2, we strictly DO NOT debit the provider wallet on refund/cancellation
-        # because the provider is only credited AFTER 'completed'. Since cancellation
-        # happens prior to completion, the provider has not received funds yet.
-        # This fixes a major legacy logic flaw.
-
-        # Credit Customer Shopping Wallet (if they paid using Shopping Wallet)
-        if payment_method == "wallet" and customer_refund_amount > 0:
-            c_wallet_ref = doc("wallets", customer_id)
-            c_snap = c_wallet_ref.get(transaction=txn)
-            c_bal = float((c_snap.to_dict() or {}).get("balance", 0)) if c_snap.exists else 0.0
-            txn.set(c_wallet_ref, {"balance": c_bal + customer_refund_amount, "last_updated": now_iso()}, merge=True)
-
-            # Idempotent Transaction Record
-            c_tx_ref = doc("wallet_transactions", f"refund_{booking_id}")
-            if not c_tx_ref.get(transaction=txn).exists:
-                txn.set(c_tx_ref, {
-                    "wallet_id": customer_id,
-                    "user_id": customer_id,
-                    "type": "refund",
-                    "amount": customer_refund_amount,
-                    "description": f"Refund for cancelled service booking {booking_id}",
-                    "order_id": booking_id,
-                    "created_at": now_iso()
-                })
-
-        # Mark Booking Fully Refunded
-        txn.update(doc(COLL_BOOKINGS, booking_id), {
-            "refund_status": "completed",
-            "refund_id": refund_id,
-            "refunded_at": now_iso()
+            return {"skip": True, "status": "requires_review"}
+        if status == "requires_review":
+            return {"skip": True, "status": "requires_review"}
+        if status == "processing":
+            try:
+                started = datetime.fromisoformat(booking.get("refund_started_at", ""))
+                if started > datetime.now(timezone.utc) - timedelta(minutes=5):
+                    return {"skip": True, "status": "processing"}
+            except (ValueError, TypeError):
+                return {"skip": True, "status": "requires_review"}
+        if not refund_request:
+            try:
+                amount_paise = _refund_paise(booking.get("final_total") or booking.get("amount_paid"))
+            except ValueError:
+                transaction.update(b_ref, {"refund_status": "requires_review", "refund_error": "Invalid refund amount"})
+                return {"skip": True, "status": "requires_review"}
+            method = booking.get("payment_method", "wallet")
+            customer_id = booking.get("requester_id")
+            payment_id = booking.get("razorpay_payment_id")
+            if (method not in ("wallet", "razorpay") or not isinstance(customer_id, str)
+                or not customer_id or "/" in customer_id or (method == "razorpay" and not payment_id)):
+                transaction.update(b_ref, {"refund_status": "requires_review", "refund_error": "Invalid original payment metadata"})
+                return {"skip": True, "status": "requires_review"}
+            refund_request = {
+                "amount_paise": amount_paise, "payment_method": method, "customer_id": customer_id,
+                "payment_id": payment_id,
+                "idempotency_key": "booking-refund-" + hashlib.sha256(booking_id.encode()).hexdigest()[:40],
+            }
+        if refund_request.get("payment_method") == "razorpay":
+            intent_id = refund_request.get("payment_intent_id") or booking.get("payment_intent_id")
+            if not isinstance(intent_id, str) or not intent_id or "/" in intent_id:
+                transaction.update(b_ref, {"refund_status": "requires_review", "refund_error": "Original payment intent is required"})
+                return {"skip": True, "status": "requires_review"}
+            intent_snapshot = doc("payment_orders", intent_id).get(transaction=transaction)
+            intent = intent_snapshot.to_dict() or {} if intent_snapshot.exists else {}
+            if (not intent_snapshot.exists or intent.get("status") != "paid" or intent.get("purpose") != "service"
+                or intent.get("user_id") != refund_request.get("customer_id") or intent.get("reference_id") != booking_id
+                or intent.get("payment_id") != refund_request.get("payment_id") or intent.get("currency") != "INR"
+                or type(intent.get("amount_paise")) is not int or intent.get("amount_paise") != refund_request.get("amount_paise")
+                or not isinstance(intent.get("razorpay_order_id"), str) or not intent["razorpay_order_id"]):
+                transaction.update(b_ref, {"refund_status": "requires_review", "refund_error": "Original capture does not match booking refund"})
+                return {"skip": True, "status": "requires_review"}
+            refund_request.update({"payment_intent_id": intent_id, "razorpay_order_id": intent["razorpay_order_id"], "currency": "INR"})
+        transaction.update(b_ref, {
+            "refund_status": "processing", "refund_request": refund_request,
+            "refund_started_at": now_iso(), "refund_lease_token": lease_token, "updated_at": now_iso(),
         })
+        return {"request": refund_request, "refund_id": booking.get("refund_id")}
 
-    finalize_refund(db().transaction())
+    acquired = acquire(db().transaction())
+    if acquired.get("skip"):
+        return {"status": acquired["status"]}
+    original = acquired["request"]
+    method = original["payment_method"]
+    refund_id = acquired.get("refund_id")
+    provider_status = "processed"
+    if method == "razorpay":
+        try:
+            client = get_razorpay_client()
+            if refund_id:
+                refund = client.refund.fetch(refund_id, timeout=30)
+            else:
+                payment = client.payment.fetch(original["payment_id"], timeout=30)
+                expected = {"razorpay_order_id": original["razorpay_order_id"], "amount_paise": original["amount_paise"], "currency": "INR"}
+                if not captured_payment_matches(expected, payment) or payment.get("id") != original["payment_id"]:
+                    raise ValueError("Captured payment does not match original refund intent")
+                refund = client.payment.refund(original["payment_id"], {
+                    "amount": original["amount_paise"], "speed": "normal",
+                    "notes": {"booking_id": booking_id, "reason": "cancelled_booking"},
+                }, headers={"X-Refund-Idempotency": original["idempotency_key"]}, timeout=30)
+            refund_id = refund.get("id")
+            provider_status = refund.get("status")
+            if (not isinstance(refund_id, str) or not refund_id.startswith("rfnd_") or refund.get("payment_id") != original["payment_id"]
+                or type(refund.get("amount")) is not int or refund.get("amount") != original["amount_paise"]
+                or refund.get("currency") != "INR" or provider_status not in ("pending", "processed", "failed")):
+                raise ValueError("Refund response does not match the original payment")
+        except Exception as error:
+            # Response loss may mean Razorpay accepted the refund. Retrying uses
+            # the exact same durable key/body and cannot issue a second refund.
+            @firestore.transactional
+            def record_failure(transaction):
+                snapshot = b_ref.get(transaction=transaction)
+                current = snapshot.to_dict() or {} if snapshot.exists else {}
+                if (current.get("refund_status") == "processing" and current.get("refund_request") == original
+                    and current.get("refund_lease_token") == lease_token):
+                    failure_status = "requires_review" if isinstance(error, ValueError) else "failed"
+                    transaction.update(b_ref, {
+                        "refund_status": failure_status,
+                        "refund_error": "Refund could not be confirmed; retry with the same refund request",
+                    })
+                    return {"status": failure_status}
+                return {"status": current.get("refund_status", "requires_review"), "refund_id": current.get("refund_id")}
+            return record_failure(db().transaction())
+
+    @firestore.transactional
+    def finalize(transaction):
+        snapshot = b_ref.get(transaction=transaction)
+        current = snapshot.to_dict() or {} if snapshot.exists else {}
+        if current.get("refund_status") == "completed":
+            return {"status": "completed", "refund_id": current.get("refund_id")}
+        if current.get("refund_request") != original or current.get("refund_lease_token") != lease_token:
+            return {"status": current.get("refund_status", "requires_review"), "refund_id": current.get("refund_id")}
+        marker_ref = wallet_ref = None
+        wallet = {}
+        marker_exists = False
+        if method == "wallet":
+            marker_ref = doc("wallet_transactions", f"refund_{booking_id}")
+            marker_exists = marker_ref.get(transaction=transaction).exists
+            wallet_ref = doc("wallets", original["customer_id"])
+            wallet_snapshot = wallet_ref.get(transaction=transaction)
+            wallet = wallet_snapshot.to_dict() or {} if wallet_snapshot.exists else {}
+        # All reads precede every write, including the idempotency marker.
+        timestamp = now_iso()
+        if method == "wallet" and not marker_exists:
+            amount = original["amount_paise"] / 100
+            transaction.set(wallet_ref, {
+                "balance": round(float(wallet.get("balance") or 0) + amount, 2),
+                "total_credit": round(float(wallet.get("total_credit") or 0) + amount, 2),
+                "last_updated": timestamp,
+            }, merge=True)
+            transaction.set(marker_ref, {
+                "wallet_id": original["customer_id"], "user_id": original["customer_id"],
+                "type": "refund", "amount": amount,
+                "description": f"Refund for cancelled service booking {booking_id}",
+                "order_id": booking_id, "created_at": timestamp,
+            })
+        status = {"processed": "completed", "pending": "submitted", "failed": "requires_review"}[provider_status]
+        updates = {
+            "refund_status": status, "refund_id": refund_id,
+            "refund_error": None if status != "requires_review" else "Provider reports refund failed",
+            "updated_at": timestamp,
+        }
+        if status == "completed":
+            updates.update({"payment_status": "refunded", "refunded_at": timestamp})
+        transaction.update(b_ref, updates)
+        return {"status": status, "refund_id": refund_id}
+
+    return finalize(db().transaction())
 
 
 # =====================================================================

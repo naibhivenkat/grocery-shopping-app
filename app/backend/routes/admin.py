@@ -19,21 +19,123 @@ from db import (
     APP_SETTINGS
 )
 from flask import Blueprint, jsonify, request, g
+from firebase_admin import firestore
+from db import db
+from routes.khata import KhataError, _khata_error, _payload, _identifier, _text, _money_paise
+from routes.vendors import _item_patch, _stock
 from google.cloud.firestore_v1.base_query import FieldFilter
 
 admin_bp = Blueprint("admin", __name__)
+admin_bp.register_error_handler(KhataError, _khata_error)
+_ROLES = {"customer", "vendor", "admin", "super_admin"}
+
+
+def _user_changes(body, vendor_only=False):
+    allowed = {"full_name", "email", "phone", "is_suspended"} | (set() if vendor_only else {"role"})
+    if set(body) - allowed or not body:
+        raise KhataError("Unsupported or missing user fields")
+    changes = {}
+    for field, maximum in (("full_name", 200), ("email", 254), ("phone", 40)):
+        if field in body:
+            changes[field] = _text(body[field], field, maximum)
+            if not changes[field]:
+                raise KhataError(f"{field} must not be empty")
+            if field == "email":
+                if "@" not in changes[field] or " " in changes[field]:
+                    raise KhataError("A valid email is required")
+                changes[field] = changes[field].lower()
+    if "role" in body:
+        if not isinstance(body["role"], str) or body["role"] not in _ROLES:
+            raise KhataError("Invalid role")
+        changes["role"] = body["role"]
+    if "is_suspended" in body:
+        if not isinstance(body["is_suspended"], bool):
+            raise KhataError("is_suspended must be boolean")
+        changes["is_suspended"] = body["is_suspended"]
+    return changes
+
+
+def _mutate_user(user_id, changes=None, *, delete=False, vendor_only=False, action="Update User"):
+    ref = doc(USERS, _identifier(user_id, "user_id"))
+    audit_ref = col(AUDIT_LOGS).document()
+    changes = dict(changes or {})
+
+    @firestore.transactional
+    def mutate(tx):
+        actor_snap = doc(USERS, g.user_id).get(transaction=tx)
+        snapshot = ref.get(transaction=tx)
+        actor = actor_snap.to_dict() or {}
+        if not actor_snap.exists or actor.get("role") not in {"admin", "super_admin"} or actor.get("is_suspended"):
+            raise KhataError("Administrative account is unavailable", 403)
+        if not snapshot.exists:
+            raise KhataError("User not found", 404)
+        target = snapshot.to_dict() or {}
+        current_role = target.get("role") or target.get("suspended_role")
+        if vendor_only and current_role != "vendor":
+            raise KhataError("Vendor not found", 404)
+        if (current_role in {"admin", "super_admin"} or "role" in changes and changes["role"] != current_role) and actor.get("role") != "super_admin":
+            raise KhataError("Only a super admin can manage administrative accounts or change roles", 403)
+        dangerous = delete or changes.get("is_suspended") is True or "role" in changes and changes["role"] != current_role
+        if user_id == g.user_id and dangerous:
+            raise KhataError("You cannot remove, suspend or demote your own administrative account", 409)
+        if current_role == "super_admin" and dangerous and not target.get("is_suspended"):
+            supers = list(tx.get(col(USERS).where(filter=FieldFilter("role", "==", "super_admin"))))
+            if sum(1 for snap in supers if not (snap.to_dict() or {}).get("is_suspended")) <= 1:
+                raise KhataError("At least one active super admin must remain", 409)
+        if "email" in changes:
+            duplicate = list(tx.get(col(USERS).where(filter=FieldFilter("email", "==", changes["email"]))))
+            if any(snap.id != user_id for snap in duplicate):
+                raise KhataError("Email already belongs to another account", 409)
+        updates = {**changes, "updated_at": now_iso()}
+        if "is_suspended" in changes:
+            updates.update({"suspended_role": current_role if changes["is_suspended"] else None,
+                            "suspended_at": now_iso() if changes["is_suspended"] else None})
+            if not changes["is_suspended"] and not target.get("role") and current_role in _ROLES:
+                updates["role"] = current_role
+        if delete:
+            tx.delete(ref)
+        else:
+            tx.update(ref, updates)
+        tx.set(audit_ref, {"admin_id": g.user_id, "admin_email": actor.get("email", ""), "action": action,
+                           "target_id": user_id, "target_type": "vendor" if vendor_only else "user", "created_at": now_iso()})
+    mutate(db().transaction())
+
+
+def _safe_user(snapshot):
+    return {key: value for key, value in to_dict(snapshot).items()
+            if not any(secret in key.lower() for secret in ("password", "token", "secret", "otp"))}
+
+
+def _paid_revenue(order):
+    if order.get("payment_status") != "paid" or order.get("refund_status") in {"refunded", "completed"}:
+        return 0
+    try:
+        return _money_paise(order.get("total_price", 0), allow_zero=True)
+    except KhataError:
+        return 0
+
+
+def _existing_update(collection, identifier, changes):
+    ref = doc(collection, _identifier(identifier, "id"))
+    @firestore.transactional
+    def update(tx):
+        if not ref.get(transaction=tx).exists:
+            raise KhataError("Record not found", 404)
+        tx.update(ref, {**changes, "updated_at": now_iso()})
+    update(db().transaction())
+
 
 
 def _users_by_role(role: str, include_suspended: bool = False):
     query = col(USERS).where(filter=FieldFilter("role", "==", role))
-    users = [to_dict(d) for d in query.stream()]
+    users = [_safe_user(d) for d in query.stream()]
     if include_suspended and role == "vendor":
         suspended_query = col(USERS).where(
             filter=FieldFilter("suspended_role", "==", "vendor")
         )
         existing = {u.get("uid") for u in users}
         users.extend(
-            to_dict(d)
+            _safe_user(d)
             for d in suspended_query.stream()
             if d.id not in existing
         )
@@ -67,68 +169,15 @@ def get_customers(user_id):
 @admin_bp.put("/admin/customers/<user_id>")
 @require_role("admin", "super_admin")
 def update_customer(user_id):
-    snapshot = doc(USERS, user_id).get()
-
-    if not snapshot.exists:
-        return jsonify({
-            "detail": "User not found",
-        }), 404
-
-    body = request.get_json(force=True)
-
-    updates = {
-        "full_name": body.get("full_name"),
-        "email": body.get("email"),
-        "phone": body.get("phone"),
-        "role": body.get("role"),
-        "is_suspended": body.get("is_suspended"),
-        "updated_at": now_iso(),
-    }
-
-    updates = {
-        k: v
-        for k, v in updates.items()
-        if v is not None
-    }
-
-    doc(USERS, user_id).update(updates)
-
-    log_admin_action(
-        admin_id=g.user_id,
-        admin_email=getattr(g, "user_email", ""),
-        action="Update User",
-        target_id=user_id,
-        target_type="user",
-    )
-
-    return jsonify({
-        "success": True,
-    })
+    _mutate_user(user_id, _user_changes(_payload()))
+    return jsonify({"success": True})
 
 
 @admin_bp.delete("/admin/customers/<user_id>")
 @require_role("admin", "super_admin")
 def delete_customer(user_id):
-    snapshot = doc(USERS, user_id).get()
-
-    if not snapshot.exists:
-        return jsonify({
-            "detail": "User not found",
-        }), 404
-
-    doc(USERS, user_id).delete()
-
-    log_admin_action(
-        admin_id=g.user_id,
-        admin_email=getattr(g, "user_email", ""),
-        action="Delete User",
-        target_id=user_id,
-        target_type="user",
-    )
-
-    return jsonify({
-        "success": True,
-    })
+    _mutate_user(user_id, delete=True, action="Delete User")
+    return jsonify({"success": True})
 
 
 @admin_bp.get("/admin/stats")
@@ -173,27 +222,16 @@ def get_stats():
         if status == "pending":
             pending_orders += 1
 
-        elif status == "confirmed":
+        elif status in {"confirmed", "accepted", "packed"}:
             confirmed_orders += 1
 
-        elif status == "delivered":
+        elif status in {"delivered", "completed"}:
             delivered_orders += 1
 
         elif status == "cancelled":
             cancelled_orders += 1
 
-        if status in [
-            "confirmed",
-            "delivered",
-            "completed",
-            "paid",
-        ]:
-            try:
-                total_revenue += float(
-                    data.get("total_price") or 0
-                )
-            except:
-                pass
+        total_revenue += _paid_revenue(data) / 100
 
     return jsonify({
         "vendor_count": len(vendors),
@@ -257,174 +295,29 @@ def get_vendor(vendor_id):
 @admin_bp.put("/admin/vendors/<vendor_id>")
 @require_role("admin", "super_admin")
 def update_vendor(vendor_id):
-    snapshot = doc(USERS, vendor_id).get()
+    _mutate_user(vendor_id, _user_changes(_payload(), vendor_only=True), vendor_only=True, action="Update Vendor")
+    return jsonify({"success": True})
 
-    if not snapshot.exists:
-        return jsonify({
-            "detail": "Vendor not found",
-        }), 404
-
-    vendor = to_dict(snapshot)
-
-    if (
-        vendor.get("role") != "vendor"
-        and vendor.get("suspended_role") != "vendor"
-    ):
-        return jsonify({
-            "detail": "Vendor not found",
-        }), 404
-
-    body = request.get_json(force=True)
-
-    updates = {
-        "full_name": body.get("full_name"),
-        "email": body.get("email"),
-        "phone": body.get("phone"),
-        "is_suspended": body.get("is_suspended"),
-        "updated_at": now_iso(),
-    }
-
-    updates = {
-        k: v
-        for k, v in updates.items()
-        if v is not None
-    }
-
-    doc(USERS, vendor_id).update(updates)
-
-    log_admin_action(
-        admin_id=g.user_id,
-        admin_email=getattr(g, "user_email", ""),
-        action="Update Vendor",
-        target_id=vendor_id,
-        target_type="vendor",
-    )
-
-    return jsonify({
-        "success": True,
-    })
 
 @admin_bp.delete("/admin/vendors/<vendor_id>")
 @require_role("admin", "super_admin")
 def delete_vendor(vendor_id):
-    snapshot = doc(USERS, vendor_id).get()
+    _mutate_user(vendor_id, delete=True, vendor_only=True, action="Delete Vendor")
+    return jsonify({"success": True})
 
-    if not snapshot.exists:
-        return jsonify({
-            "detail": "Vendor not found",
-        }), 404
-
-    vendor = to_dict(snapshot)
-
-    if (
-        vendor.get("role") != "vendor"
-        and vendor.get("suspended_role") != "vendor"
-    ):
-        return jsonify({
-            "detail": "Vendor not found",
-        }), 404
-
-    doc(USERS, vendor_id).delete()
-
-    log_admin_action(
-        admin_id=g.user_id,
-        admin_email=getattr(g, "user_email", ""),
-        action="Delete Vendor",
-        target_id=vendor_id,
-        target_type="vendor",
-    )
-
-    return jsonify({
-        "success": True,
-    })
 
 @admin_bp.post("/admin/vendors/<vendor_id>/suspend")
 @require_role("admin", "super_admin")
 def suspend_vendor(vendor_id):
-    snapshot = doc(USERS, vendor_id).get()
+    _mutate_user(vendor_id, {"is_suspended": True}, vendor_only=True, action="Suspend Vendor")
+    return jsonify({"success": True, "ok": True})
 
-    if not snapshot.exists:
-        return jsonify({
-            "detail": "Vendor not found",
-        }), 404
-
-    vendor = to_dict(snapshot)
-
-    if (
-        vendor.get("role") != "vendor"
-        and vendor.get("suspended_role") != "vendor"
-    ):
-        return jsonify({
-            "detail": "Vendor not found",
-        }), 404
-
-    current_role = vendor.get("role") or "vendor"
-
-    doc(USERS, vendor_id).set(
-        {
-            "is_suspended": True,
-            "suspended_role": current_role,
-            "suspended_at": now_iso(),
-            "updated_at": now_iso(),
-        },
-        merge=True,
-    )
-
-    log_admin_action(
-        admin_id=g.user_id,
-        admin_email=getattr(g, "user_email", ""),
-        action="Suspend Vendor",
-        target_id=vendor_id,
-        target_type="vendor",
-    )
-
-    return jsonify({
-        "success": True,
-        "message": "Vendor suspended successfully",
-    })
 
 @admin_bp.post("/admin/vendors/<vendor_id>/unsuspend")
 @require_role("admin", "super_admin")
 def unsuspend_vendor(vendor_id):
-    snapshot = doc(USERS, vendor_id).get()
-
-    if not snapshot.exists:
-        return jsonify({
-            "detail": "Vendor not found",
-        }), 404
-
-    vendor = to_dict(snapshot)
-
-    if (
-        vendor.get("role") != "vendor"
-        and vendor.get("suspended_role") != "vendor"
-    ):
-        return jsonify({
-            "detail": "Vendor not found",
-        }), 404
-
-    doc(USERS, vendor_id).set(
-        {
-            "is_suspended": False,
-            "suspended_role": None,
-            "suspended_at": None,
-            "updated_at": now_iso(),
-        },
-        merge=True,
-    )
-
-    log_admin_action(
-        admin_id=g.user_id,
-        admin_email=getattr(g, "user_email", ""),
-        action="Unsuspend Vendor",
-        target_id=vendor_id,
-        target_type="vendor",
-    )
-
-    return jsonify({
-        "success": True,
-        "message": "Vendor unsuspended successfully",
-    })
+    _mutate_user(vendor_id, {"is_suspended": False}, vendor_only=True, action="Unsuspend Vendor")
+    return jsonify({"success": True, "ok": True})
 
 
 @admin_bp.get("/admin/customers")
@@ -445,39 +338,15 @@ def list_customers():
 @admin_bp.post("/admin/customers/<user_id>/suspend")
 @require_role("admin", "super_admin")
 def suspend_customers(user_id):
-    snap = doc(USERS, user_id).get()
-    current_role = (snap.to_dict() or {}).get("role") if snap.exists else None
-    doc(USERS, user_id).set({
-        "is_suspended": True,
-        "suspended_role": current_role,
-        "suspended_at": now_iso(),
-    }, merge=True)
-
-    log_admin_action(
-        g.user_id,
-        "admin@gmail.com",
-        "Suspend User",
-        user_id,
-        "user",
-    )
-    return jsonify({"ok": True})
+    _mutate_user(user_id, {"is_suspended": True}, vendor_only=False, action="Suspend User")
+    return jsonify({"success": True, "ok": True})
 
 
 @admin_bp.post("/admin/customers/<user_id>/unsuspend")
 @require_role("admin", "super_admin")
 def unsuspend_customers(user_id):
-    doc(USERS, user_id).set(
-        {"is_suspended": False, "suspended_at": None, "suspended_role": None},
-        merge=True,
-    )
-    log_admin_action(
-        g.user_id,
-        "admin@gmail.com",
-        "Suspend User",
-        user_id,
-        "user",
-    )
-    return jsonify({"ok": True})
+    _mutate_user(user_id, {"is_suspended": False}, vendor_only=False, action="Unsuspend User")
+    return jsonify({"success": True, "ok": True})
 
 
 @admin_bp.get("/admin/orders")
@@ -522,8 +391,13 @@ def admin_products():
         product = to_dict(doc_snap)
 
         image_urls = product.get("image_urls") or []
+        if not isinstance(image_urls, list):
+            image_urls = []
 
-        stock = product.get("stock_quantity", 0)
+        try:
+            stock = _stock(product.get("stock_quantity", 0))
+        except KhataError:
+            stock = 0
 
         product["total_images"] = len(image_urls)
 
@@ -552,7 +426,7 @@ def admin_products():
         products.append(product)
 
     products.sort(
-        key=lambda x: x.get("updated_at", ""),
+        key=lambda x: x.get("updated_at") or "",
         reverse=True,
     )
 
@@ -574,8 +448,13 @@ def get_product(product_id):
     product = to_dict(snapshot)
 
     images = product.get("image_urls") or []
+    if not isinstance(images, list):
+        images = []
 
-    stock = product.get("stock_quantity", 0)
+    try:
+        stock = _stock(product.get("stock_quantity", 0))
+    except KhataError:
+        stock = 0
 
     product["total_images"] = len(images)
 
@@ -600,114 +479,44 @@ import uuid
 @admin_bp.post("/admin/products")
 @require_role("admin", "super_admin")
 def create_product():
-    body = request.json or {}
-
-    product_id = uuid.uuid4().hex
-
-    product = {
-
-        "name": body.get("name", "").strip(),
-
-        "description": body.get("description", ""),
-
-        "price": float(body.get("price", 0)),
-
-        "stock_quantity": int(body.get("stock_quantity", 0)),
-
-        "category": body.get("category", ""),
-
-        "image_urls": body.get("image_urls", []),
-
-        "vendor_id": body.get("vendor_id"),
-
-        "vendor_name": body.get("vendor_name"),
-
-        "vendor_email": body.get("vendor_email"),
-
-        "vendor_phone": body.get("vendor_phone"),
-
-        "vendor_shop_description":
-            body.get("vendor_shop_description"),
-
-        "is_available": True,
-
-        "created_at": now_iso(),
-
-        "updated_at": now_iso(),
-    }
-
-    doc(SHOP_ITEMS, product_id).set(product)
-
-    log_admin_action(
-        g.user_id,
-        getattr(g, "user_email", ""),
-        "Create Product",
-        product_id,
-        "product",
-    )
-
-    return jsonify(
-        {
-            "success": True,
-            "uid": product_id,
-        }
-    )
+    body = _payload()
+    vendor_id = _identifier(body.get("vendor_id"), "vendor_id")
+    editable = {key: value for key, value in body.items() if key not in {"vendor_id", "vendor_name", "vendor_email", "vendor_phone", "vendor_shop_description"}}
+    product = _item_patch(editable, creating=True)
+    if product.get("is_available") and product["stock_quantity"] == 0:
+        raise KhataError("An item with no stock cannot be available")
+    ref = col(SHOP_ITEMS).document()
+    @firestore.transactional
+    def create(tx):
+        snap = doc(USERS, vendor_id).get(transaction=tx)
+        vendor = snap.to_dict() or {}
+        if not snap.exists or vendor.get("role") != "vendor" or vendor.get("is_suspended"):
+            raise KhataError("Vendor is unavailable", 404)
+        tx.set(ref, {**product, "vendor_id": vendor_id, "vendor_name": vendor.get("shop_name") or vendor.get("full_name"),
+                     "vendor_phone": vendor.get("phone"), "vendor_email": vendor.get("email"), "city_id": vendor.get("city_id"),
+                     "vendor_shop_description": vendor.get("shop_address"), "created_at": now_iso(), "updated_at": now_iso()})
+    create(db().transaction())
+    log_admin_action(g.user_id, getattr(g, "user_email", ""), "Create Product", ref.id, "product")
+    return jsonify({"success": True, "uid": ref.id})
 
 
 @admin_bp.put("/admin/products/<product_id>")
 @require_role("admin", "super_admin")
 def update_product(product_id):
-    snapshot = doc(SHOP_ITEMS, product_id).get()
-
-    if not snapshot.exists:
-        return jsonify(
-            {
-                "detail": "Product not found"
-            }
-        ), 404
-
-    body = request.json or {}
-
-    updates = {
-
-        "name": body.get("name"),
-
-        "description": body.get("description"),
-
-        "price": body.get("price"),
-
-        "stock_quantity": body.get("stock_quantity"),
-
-        "category": body.get("category"),
-
-        "image_urls": body.get("image_urls"),
-
-        "is_available": body.get("is_available"),
-
-        "updated_at": now_iso(),
-    }
-
-    updates = {
-        k: v
-        for k, v in updates.items()
-        if v is not None
-    }
-
-    doc(SHOP_ITEMS, product_id).update(updates)
-
-    log_admin_action(
-        g.user_id,
-        getattr(g, "user_email", ""),
-        "Update Product",
-        product_id,
-        "product",
-    )
-
-    return jsonify(
-        {
-            "success": True
-        }
-    )
+    changes = _item_patch(_payload())
+    ref = doc(SHOP_ITEMS, _identifier(product_id, "product_id"))
+    @firestore.transactional
+    def update(tx):
+        snap = ref.get(transaction=tx)
+        if not snap.exists:
+            raise KhataError("Product not found", 404)
+        current = snap.to_dict() or {}
+        if changes.get("is_available") is True and _stock(changes.get("stock_quantity", current.get("stock_quantity", 0))) == 0:
+            raise KhataError("An item with no stock cannot be available")
+        tx.update(ref, {**changes, "updated_at": now_iso()})
+    update(db().transaction())
+    log_admin_action(g.user_id, getattr(g, "user_email", ""), "Update Product", product_id, "product")
+    return jsonify({"success": True})
 
 
 @admin_bp.get("/admin/analytics")
@@ -732,12 +541,7 @@ def analytics():
     for d in orders:
         data = d.to_dict() or {}
 
-        try:
-            revenue += float(
-                data.get("total_price") or 0
-            )
-        except Exception:
-            pass
+        revenue += _paid_revenue(data) / 100
 
     return jsonify({
         "vendors": len(vendors),
@@ -752,11 +556,11 @@ def analytics():
 @admin_bp.post("/admin/notifications/send")
 @require_role("admin", "super_admin")
 def send_notification():
-    data = request.get_json(force=True)
+    data = _payload()
 
-    title = data.get("title", "").strip()
-    message = data.get("message", "").strip()
-    target = data.get("target", "all").strip().lower()
+    title = _text(data.get("title"), "title", 200)
+    message = _text(data.get("message"), "message", 4000)
+    target = _text(data.get("target", "all"), "target", 20).lower()
 
 
 
@@ -812,6 +616,8 @@ def send_notification():
                 "user_id": user.id,
                 "title": title,
                 "message": message,
+                "body": message,
+                "type": "announcement",
                 "target": target,
                 "is_read": False,
                 "created_at": now_iso(),
@@ -852,112 +658,58 @@ def list_notifications():
 @admin_bp.get("/admin/support")
 @require_role("admin", "super_admin")
 def list_support_tickets():
-    docs = col(SUPPORT_TICKETS).stream()
-
-    tickets = []
-
-    for d in docs:
-        tickets.append(to_dict(d))
-
-    return jsonify(tickets)
+    from routes.support import list_support_tickets as canonical_list
+    return canonical_list.__wrapped__()
 
 
 @admin_bp.post("/admin/support/reply")
 @require_role("admin", "super_admin")
 def reply_support_ticket():
-    data = request.get_json(force=True)
-
-    ticket_id = data.get("ticket_id")
-
-    if not ticket_id:
-        return jsonify({
-            "error": "ticket_id required"
-        }), 400
-
-    update_data = {
-        "admin_reply": data.get("reply", ""),
-        "status": "resolved",
-        "resolved_at": now_iso(),
-    }
-
-    doc(SUPPORT_TICKETS, ticket_id).set(
-        update_data,
-        merge=True,
-    )
-
-    return jsonify({
-        "success": True,
-    })
+    from routes.support import send_ticket_reply
+    data = _payload()
+    ticket_id = _identifier(data.get("ticket_id"), "ticket_id")
+    reply = _text(data.get("reply"), "reply", 4000)
+    if not reply:
+        raise KhataError("reply is required")
+    result, status = send_ticket_reply(ticket_id, reply, g.user_id,
+        getattr(g, "user_email", ""), getattr(g, "user_name", ""), request.headers.get("Idempotency-Key"))
+    return jsonify(result), status
 
 
 @admin_bp.post("/admin/support/create")
 @require_role("admin", "super_admin")
 def create_support_ticket():
-    data = request.get_json(force=True)
-
+    data = _payload()
+    message = _text(data.get("message"), "message", 4000)
+    if not message:
+        raise KhataError("message is required")
     ref = col(SUPPORT_TICKETS).document()
-
-    ticket = {
-        "uid": ref.id,
-        "user_name": data.get("user_name"),
-        "message": data.get("message"),
-        "status": "open",
-        "created_at": now_iso(),
-    }
-
+    ticket = {"uid": ref.id, "user_name": _text(data.get("user_name"), "user_name", 200),
+              "message": message, "status": "open", "created_at": now_iso()}
     ref.set(ticket)
-
     return jsonify(ticket)
 
 
 @admin_bp.post("/admin/change-password")
 @require_role("admin", "super_admin")
 def change_password():
-    data = request.get_json(force=True)
-
+    data = _payload()
     current_password = data.get("current_password")
     new_password = data.get("new_password")
-
-    if not current_password:
-        return jsonify({
-            "detail": "Current password required"
-        }), 400
-
-    if not new_password:
-        return jsonify({
-            "detail": "New password required"
-        }), 400
-
-    user_snapshot = doc(USERS, g.user_id).get()
-
-    if not user_snapshot.exists:
-        return jsonify({
-            "detail": "User not found"
-        }), 404
-
-    user = user_snapshot.to_dict() or {}
-
-    stored_hash = user.get("password_hash", "")
-
-    if not verify_password(
-            current_password,
-            stored_hash,
-    ):
-        return jsonify({
-            "detail": "Current password incorrect"
-        }), 400
-
-    doc(USERS, g.user_id).set(
-        {
-            "password_hash":
-                hash_password(new_password)
-        },
-        merge=True,
-    )
-
-    return jsonify({
-        "success": True
-    })
+    if not isinstance(current_password, str) or not 1 <= len(current_password) <= 128 or not isinstance(new_password, str) or not 8 <= len(new_password) <= 128:
+        raise KhataError("Current password and a new password of at least 8 characters are required")
+    ref = doc(USERS, g.user_id)
+    @firestore.transactional
+    def change(tx):
+        snapshot = ref.get(transaction=tx)
+        if not snapshot.exists:
+            raise KhataError("User not found", 404)
+        user = snapshot.to_dict() or {}
+        if not verify_password(current_password, user.get("password_hash", "")):
+            raise KhataError("Current password incorrect", 403)
+        tx.update(ref, {"password_hash": hash_password(new_password), "password_reset_at": now_iso(), "updated_at": now_iso()})
+    change(db().transaction())
+    return jsonify({"success": True})
 
 
 @admin_bp.post("/admin/products/<product_id>/disable")
@@ -994,61 +746,35 @@ def disable_product(product_id):
 @admin_bp.post("/admin/products/<product_id>/enable")
 @require_role("admin", "super_admin")
 def enable_product(product_id):
-    product_ref = doc(SHOP_ITEMS, product_id)
-    snapshot = product_ref.get()
-
-    if not snapshot.exists:
-        return jsonify({
-            "detail": "Product not found"
-        }), 404
-
-    product_ref.update({
-        "is_available": True,
-        "disabled_by_admin": False,
-        "updated_at": now_iso(),
-    })
-
-    log_admin_action(
-        admin_id=g.user_id,
-        admin_email=getattr(g, "user_email", ""),
-        action="Enable Product",
-        target_id=product_id,
-        target_type="product",
-    )
-
-    return jsonify({
-        "success": True,
-        "message": "Product enabled successfully",
-    }), 200
+    ref = doc(SHOP_ITEMS, _identifier(product_id, "product_id"))
+    @firestore.transactional
+    def enable(tx):
+        snap = ref.get(transaction=tx)
+        if not snap.exists:
+            raise KhataError("Product not found", 404)
+        if _stock((snap.to_dict() or {}).get("stock_quantity", 0)) == 0:
+            raise KhataError("An item with no stock cannot be enabled", 409)
+        tx.update(ref, {"is_available": True, "disabled_by_admin": False, "updated_at": now_iso()})
+    enable(db().transaction())
+    log_admin_action(g.user_id, getattr(g, "user_email", ""), "Enable Product", product_id, "product")
+    return jsonify({"success": True})
 
 
 @admin_bp.delete("/admin/products/<product_id>")
 @require_role("admin", "super_admin")
 def delete_product(product_id):
-    snapshot = doc(SHOP_ITEMS, product_id).get()
-
-    if not snapshot.exists:
-        return jsonify(
-            {
-                "detail": "Product not found"
-            }
-        ), 404
-
-    doc(SHOP_ITEMS, product_id).delete()
-
-    log_admin_action(
-        admin_id=g.user_id,
-        admin_email=g.user_email,
-        action="Delete Product",
-        target_id=product_id,
-        target_type="product",
-    )
-
-    return jsonify(
-        {
-            "success": True
-        }
-    )
+    ref = doc(SHOP_ITEMS, _identifier(product_id, "product_id"))
+    @firestore.transactional
+    def remove(tx):
+        if not ref.get(transaction=tx).exists:
+            raise KhataError("Product not found", 404)
+        orders = tx.get(col(CUSTOMER_ORDERS).where(filter=FieldFilter("item_id", "==", product_id)))
+        if any((snap.to_dict() or {}).get("status") in {"pending", "confirmed", "accepted", "packed"} for snap in orders):
+            raise KhataError("Fulfill or cancel active orders before deleting this item", 409)
+        tx.delete(ref)
+    remove(db().transaction())
+    log_admin_action(g.user_id, getattr(g, "user_email", ""), "Delete Product", product_id, "product")
+    return jsonify({"success": True})
 
 
 @admin_bp.get("/admin/orders/<order_id>")
@@ -1067,34 +793,31 @@ def get_order_detail(order_id):
 @admin_bp.post("/admin/orders/<order_id>/cancel")
 @require_role("admin", "super_admin")
 def admin_cancel_order(order_id):
-    doc(CUSTOMER_ORDERS, order_id).set(
-        {
-            "status": "cancelled",
-            "cancelled_by": "admin",
-            "updated_at": now_iso(),
-        },
-        merge=True,
-    )
-
-    return jsonify({
-        "success": True
-    })
+    snapshot = doc(CUSTOMER_ORDERS, _identifier(order_id, "order_id")).get()
+    if not snapshot.exists:
+        raise KhataError("Order not found", 404)
+    from routes.shops import cancel_order_atomic
+    try:
+        cancel_order_atomic(order_id, (snapshot.to_dict() or {}).get("vendor_id"), vendor=True)
+    except PermissionError as exc:
+        raise KhataError(str(exc), 403) from None
+    except ValueError as exc:
+        raise KhataError(str(exc), 409) from None
+    return jsonify({"success": True})
 
 
 @admin_bp.post("/admin/orders/<order_id>/refund")
 @require_role("admin", "super_admin")
 def refund_order(order_id):
-    doc(CUSTOMER_ORDERS, order_id).set(
-        {
-            "refund_status": "refunded",
-            "refunded_at": now_iso(),
-        },
-        merge=True,
-    )
-
-    return jsonify({
-        "success": True
-    })
+    from routes.order_refunds import refund_order as process_refund
+    try:
+        result = process_refund(_identifier(order_id, "order_id"), g.user_id, allow_admin=True)
+    except PermissionError as exc:
+        raise KhataError(str(exc), 403) from None
+    except ValueError as exc:
+        raise KhataError(str(exc), 409) from None
+    status = {"completed": 200, "submitted": 202, "processing": 202, "retryable": 503, "requires_review": 409}[result["status"]]
+    return jsonify({"success": result["status"] in {"submitted", "completed"}, "refund": result}), status
 
 
 @admin_bp.get("/admin/subscriptions")
@@ -1109,28 +832,14 @@ def list_subscriptions():
 @admin_bp.post("/admin/subscriptions/<sub_id>/activate")
 @require_role("admin", "super_admin")
 def activate_subscription(sub_id):
-    doc(VENDOR_SUBSCRIPTIONS, sub_id).set(
-        {
-            "status": "active",
-            "updated_at": now_iso(),
-        },
-        merge=True,
-    )
-
+    _existing_update(VENDOR_SUBSCRIPTIONS, sub_id, {"status": "active"})
     return jsonify({"success": True})
 
 
 @admin_bp.post("/admin/subscriptions/<sub_id>/suspend")
 @require_role("admin", "super_admin")
 def suspend_subscription(sub_id):
-    doc(VENDOR_SUBSCRIPTIONS, sub_id).set(
-        {
-            "status": "suspended",
-            "updated_at": now_iso(),
-        },
-        merge=True,
-    )
-
+    _existing_update(VENDOR_SUBSCRIPTIONS, sub_id, {"status": "suspended"})
     return jsonify({"success": True})
 
 
@@ -1190,29 +899,12 @@ def maintenance_status():
 @admin_bp.post("/admin/maintenance")
 @require_role("admin", "super_admin")
 def update_maintenance_status():
-    data = request.get_json(force=True)
-
-    maintenance_mode = bool(
-        data.get("maintenance_mode", False)
-    )
-
-    doc(
-        APP_SETTINGS,
-        "config",
-    ).set(
-        {
-            "maintenance_mode":
-                maintenance_mode,
-            "updated_at": now_iso(),
-        },
-        merge=True,
-    )
-
-    return jsonify({
-        "success": True,
-        "maintenance_mode":
-            maintenance_mode,
-    })
+    data = _payload()
+    maintenance = data.get("maintenance_mode")
+    if not isinstance(maintenance, bool):
+        raise KhataError("maintenance_mode must be boolean")
+    doc(APP_SETTINGS, "config").set({"maintenance_mode": maintenance, "updated_at": now_iso()}, merge=True)
+    return jsonify({"success": True, "maintenance_mode": maintenance})
 
 
 @admin_bp.get("/admin/maintenance")

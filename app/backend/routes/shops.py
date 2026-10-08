@@ -1,11 +1,16 @@
 """`/shops/*` and `/orders/*` endpoints consumed by `ShopRemoteDataSource`."""
 
+from decimal import Decimal, InvalidOperation, ROUND_HALF_UP
+import hashlib
+from google.cloud import firestore
 from flask import Blueprint, g, jsonify, request
 from google.cloud.firestore_v1.base_query import FieldFilter
 
 from auth_utils import require_auth, require_role
 from db import (
     CATEGORIES,
+    KHATA_TRANSACTIONS,
+    db,
     CUSTOMER_ORDERS,
     SHOP_ITEMS,
     USERS,
@@ -92,7 +97,7 @@ def list_shops():
     items = []
     for d in query.stream():
         item = to_dict(d)
-        if item.get("is_available") is False:
+        if item.get("is_available") is False or item.get("disabled_by_admin") is True:
             continue
         stock = item.get("stock_quantity")
         if stock is not None:
@@ -196,187 +201,241 @@ def get_shop(shop_id):
     snapshot = doc(SHOP_ITEMS, shop_id).get()
     if not snapshot.exists:
         return jsonify({"detail": "Shop item not found"}), 404
-    return jsonify(_with_vendor_profile(to_dict(snapshot)))
+    item = to_dict(snapshot)
+    if item.get("disabled_by_admin") is True:
+        return jsonify({"detail": "Shop item not found"}), 404
+    return jsonify(_with_vendor_profile(item))
 
 
 # ── Customer orders ────────────────────────────────────────────────────────
 
-def _create_single_order(payload: dict):
-    """Create one customer order. Returns (response_dict, status) or (error_json, code)."""
-    item_id = payload.get("item_id")
+def _paise(value):
     try:
-        quantity = int(payload.get("quantity") or 0)
-        total_price = float(payload.get("total_price") or 0)
-    except (TypeError, ValueError):
-        return {"detail": "quantity and total_price must be numeric"}, 422
+        number = Decimal(str(value))
+        if not number.is_finite() or number < 0:
+            raise ValueError("Invalid amount")
+        return int((number * 100).quantize(Decimal("1"), rounding=ROUND_HALF_UP))
+    except (InvalidOperation, TypeError, ValueError, OverflowError):
+        raise ValueError("Amounts must be finite positive numbers")
 
-    if not item_id or quantity <= 0 or total_price <= 0:
-        return {
-            "detail": "item_id, positive quantity, positive total_price required"
-        }, 422
 
-    item_snap = doc(SHOP_ITEMS, item_id).get()
-    if not item_snap.exists:
-        return {"detail": "Item not found"}, 404
+def _whole_quantity(value, *, allow_zero=False):
+    if isinstance(value, bool) or not isinstance(value, (int, str)) or not str(value).isdigit():
+        raise ValueError("Stock and quantity must be whole numbers")
+    quantity = int(value)
+    if quantity < (0 if allow_zero else 1):
+        raise ValueError("Stock and quantity cannot be negative or empty")
+    return quantity
 
-    item = item_snap.to_dict() or {}
 
-    if item.get("is_available") is False:
-        return {"detail": "Item is not available"}, 409
-
-    stock = item.get("stock_quantity")
-    stock_i = None
-
-    if stock is not None:
-        try:
-            stock_i = int(stock)
-        except (TypeError, ValueError):
-            stock_i = None
-
-        if stock_i is not None and stock_i < quantity:
-            return {"detail": "Insufficient stock"}, 409
-
-    partial = payload.get("partial_amount_paid")
-    partial_f = float(partial) if partial is not None else None
-
-    due_amount = None
-    if partial_f is not None:
-        due_amount = max(0.0, total_price - partial_f)
-
-    # Keep BOTH values from the merged branches
-    batch_id = payload.get("batch_id")
+def _create_orders(payload, lines):
+    from routes.khata import lookup_ledger_txn, _money_paise, KhataError
+    if not isinstance(payload, dict) or not isinstance(lines, list) or not 1 <= len(lines) <= 50:
+        return {"detail": "Between 1 and 50 cart lines are required"}, 422
+    method = payload.get("payment_method", "cash")
+    if method is None or method == "":
+        method = "cash"
+    if method == "wallet":
+        return {"detail": "Wallet is temporarily disabled", "code": "WALLET_DISABLED"}, 410
+    if not isinstance(method, str) or method not in {"cash", "khata", "razorpay", "upi"}:
+        return {"detail": "Unsupported payment method"}, 422
+    if method == "upi":
+        method = "razorpay"
+    key = request.headers.get("Idempotency-Key") or payload.get("idempotency_key")
+    if key is not None and (not isinstance(key, str) or not 8 <= len(key) <= 128):
+        return {"detail": "idempotency_key must contain 8 to 128 characters"}, 422
+    prepared = []
+    seen = set()
+    try:
+        for line in lines:
+            if not isinstance(line, dict):
+                raise ValueError("Each cart line must be an object")
+            item_id = line.get("item_id")
+            qty = line.get("quantity")
+            if not isinstance(item_id, str) or not item_id or "/" in item_id or item_id in seen:
+                raise ValueError("Each item must have a unique valid item_id")
+            if isinstance(qty, bool) or not str(qty).isdigit() or not 1 <= int(qty) <= 10000:
+                raise ValueError("quantity must be a positive integer up to 10000")
+            seen.add(item_id)
+            if method == "khata" and _paise(line.get("partial_amount_paid", 0)) != 0:
+                raise ValueError("Khata payments must be confirmed by the shop owner")
+            prepared.append((item_id, int(qty), line))
+    except ValueError as exc:
+        return {"detail": str(exc)}, 422
+    batch_ref = col("order_batches").document(
+        hashlib.sha256(f"{g.user_id}:{key}".encode()).hexdigest() if key else None)
+    order_refs = [col(CUSTOMER_ORDERS).document() for _ in prepared]
+    fingerprint = hashlib.sha256(repr((method, [(i, q) for i, q, _ in prepared])).encode()).hexdigest()
     customer_name = _customer_name(g.user_id)
 
-    order_ref = col(CUSTOMER_ORDERS).document()
+    @firestore.transactional
+    def commit(tx):
+        existing = batch_ref.get(transaction=tx)
+        if existing.exists:
+            saved = existing.to_dict() or {}
+            if saved.get("fingerprint") != fingerprint:
+                raise ValueError("idempotency_key already belongs to a different order")
+            return saved["response"]
+        snapshots = [doc(SHOP_ITEMS, i).get(transaction=tx) for i, _, _ in prepared]
+        vendor_ids = {(d.to_dict() or {}).get("vendor_id") for d in snapshots if d.exists}
+        if len(vendor_ids) != 1 or None in vendor_ids:
+            raise ValueError("All items must belong to the same valid shop")
+        vendor_id = next(iter(vendor_ids))
+        vendor = doc(USERS, vendor_id).get(transaction=tx)
+        if not vendor.exists or (vendor.to_dict() or {}).get("role") != "vendor" or (vendor.to_dict() or {}).get("is_suspended"):
+            raise ValueError("Shop is unavailable")
+        ledger_ref = ledger = None
+        if method == "khata":
+            ledger_ref, ledger, exists = lookup_ledger_txn(tx, vendor_id, g.user_id)
+            if not exists or ledger.get("status") != "active":
+                raise ValueError("Ask the shop owner to open an active Khata ledger first")
+        documents = []
+        debt = 0
+        for (item_id, quantity, line), snap, ref in zip(prepared, snapshots, order_refs):
+            if not snap.exists:
+                raise ValueError("Item not found")
+            item = snap.to_dict() or {}
+            if item.get("is_available") is False or item.get("disabled_by_admin") is True:
+                raise ValueError("Item is unavailable")
+            price = _paise(item.get("price"))
+            if price <= 0:
+                raise ValueError("Item price is invalid")
+            total = price * quantity
+            if "total_price" in line and _paise(line["total_price"]) != total:
+                raise ValueError("Item price changed; refresh your cart")
+            stock = item.get("stock_quantity")
+            if stock is not None:
+                stock = _whole_quantity(stock, allow_zero=True)
+                if stock < quantity:
+                    raise ValueError("Insufficient stock")
+            debt += total
+            documents.append((ref, snap.reference, stock, quantity, {
+                "customer_id": g.user_id, "vendor_id": vendor_id, "item_id": item_id,
+                "quantity": quantity, "total_price": total / 100, "total_paise": total,
+                "status": "pending", "payment_status": "pending", "payment_method": method,
+                "partial_amount_paid": 0.0, "due_amount": total / 100,
+                "item_name": item.get("name"), "item_description": item.get("description"),
+                "item_image_urls": item.get("image_urls") or ([item["image_url"]] if item.get("image_url") else []),
+                "item_unit_price": price / 100, "vendor_name": item.get("vendor_name"),
+                "batch_id": batch_ref.id, "customer_name": customer_name,
+                "khata_ledger_id": ledger_ref.id if ledger_ref else None,
+                "created_at": now_iso(), "updated_at": now_iso(),
+            }))
+        if debt > 1_000_000_000:
+            raise ValueError("Order total exceeds the supported limit")
+        new_balance = None
+        if ledger_ref:
+            new_balance = _money_paise(ledger.get("balance", 0), allow_zero=True) + debt
+            if new_balance > 1_000_000_000:
+                raise ValueError("Khata balance exceeds the supported limit")
+        # All related documents were read before the first transaction write.
+        for ref, item_ref, stock, quantity, data in documents:
+            tx.create(ref, data)
+            if stock is not None:
+                remaining = int(stock) - quantity
+                tx.update(item_ref, {"stock_quantity": remaining, "is_available": remaining > 0, "updated_at": now_iso()})
+            if ledger_ref:
+                tx.create(doc(KHATA_TRANSACTIONS, f"order_{ref.id}"), {
+                    "ledger_id": ledger_ref.id, "vendor_id": vendor_id,
+                    "customer_id": g.user_id, "type": "credit", "amount": data["total_price"],
+                    "order_id": ref.id, "description": "Khata order", "created_at": now_iso(),
+                })
+        if ledger_ref:
+            tx.update(ledger_ref, {"balance": new_balance / 100, "updated_at": now_iso()})
+        response = {"batch_id": batch_ref.id, "order_ids": [r.id for r in order_refs],
+                    "order_id": order_refs[-1].id, "uid": order_refs[-1].id,
+                    "vendor_id": vendor_id, "count": len(order_refs), "total_price": debt / 100}
+        tx.create(batch_ref, {"customer_id": g.user_id, "fingerprint": fingerprint,
+                              "response": response, "created_at": now_iso()})
+        return response
+    try:
+        return commit(db().transaction()), 201
+    except KhataError as exc:
+        return {"detail": exc.detail}, exc.status
+    except (ValueError, TypeError, OverflowError) as exc:
+        return {"detail": str(exc)}, 422
 
-    order_ref.set({
-        "customer_id": g.user_id,
-        "vendor_id": item.get("vendor_id"),
-        "item_id": item_id,
-        "quantity": quantity,
-        "total_price": total_price,
-        "status": "pending",
-        "payment_method": payload.get("payment_method"),
-        "partial_amount_paid": partial_f,
-        "due_amount": due_amount,
-        "item_name": item.get("name"),
-        "item_description": item.get("description"),
-        "item_image_urls": item.get("image_urls")
-            or ([item["image_url"]] if item.get("image_url") else []),
-        "item_unit_price": item.get("price"),
-        "vendor_name": item.get("vendor_name"),
-        "batch_id": batch_id,
-        "created_at": now_iso(),
-        "updated_at": now_iso(),
-        "customer_name": customer_name,
-    })
-
-    if stock_i is not None:
-        new_stock = max(0, stock_i - quantity)
-
-        doc(SHOP_ITEMS, item_id).set({
-            "stock_quantity": new_stock,
-            "is_available": new_stock > 0,
-            "updated_at": now_iso(),
-        }, merge=True)
-
-    return {
-        "order_id": order_ref.id,
-        "uid": order_ref.id,
-        "vendor_id": item.get("vendor_id"),
-        "item_id": item_id,
-        "total_price": total_price,
-    }, 201
 
 @shops_bp.post("/orders")
-@require_auth
+@require_role("customer")
 def create_order():
     payload = request.get_json(silent=True) or {}
-    body, code = _create_single_order(payload)
+    body, code = _create_orders(payload, [payload])
     return jsonify(body), code
 
 
 @shops_bp.post("/orders/batch")
-@require_auth
+@require_role("customer")
 def create_orders_batch():
-    """Place multiple cart lines as separate orders under one batch_id.
-
-    Enforces single-vendor cart. On partial failure, cancels already-created
-    orders in this batch (best-effort) so the client can retry cleanly.
-    Wallet deduct/credit remains client-driven (see Flutter placeOrder).
-    """
     payload = request.get_json(silent=True) or {}
-    items = payload.get("items")
-    if not isinstance(items, list) or not items:
-        return jsonify({"detail": "items array required"}), 422
-
-    payment_method = payload.get("payment_method")
-    batch_id = col(CUSTOMER_ORDERS).document().id
-    created = []
-    vendor_ids = set()
-
-    for raw in items:
-        if not isinstance(raw, dict):
-            # rollback
-            for oid in created:
-                doc(CUSTOMER_ORDERS, oid).set(
-                    {"status": "cancelled", "updated_at": now_iso()}, merge=True
-                )
-            return jsonify({"detail": "each item must be an object"}), 422
-        line = dict(raw)
-        line["payment_method"] = payment_method or line.get("payment_method")
-        line["batch_id"] = batch_id
-        body, code = _create_single_order(line)
-        if code != 201:
-            for oid in created:
-                doc(CUSTOMER_ORDERS, oid).set(
-                    {"status": "cancelled", "updated_at": now_iso()}, merge=True
-                )
-            return jsonify({
-                "detail": body.get("detail") if isinstance(body, dict) else "Order failed",
-                "batch_id": batch_id,
-                "cancelled_order_ids": created,
-            }), code
-        created.append(body["order_id"])
-        if body.get("vendor_id"):
-            vendor_ids.add(body["vendor_id"])
-        if len(vendor_ids) > 1:
-            for oid in created:
-                doc(CUSTOMER_ORDERS, oid).set(
-                    {"status": "cancelled", "updated_at": now_iso()}, merge=True
-                )
-            return jsonify({
-                "detail": "All cart items must be from the same shop",
-                "batch_id": batch_id,
-                "cancelled_order_ids": created,
-            }), 422
-
-    return jsonify({
-        "batch_id": batch_id,
-        "order_ids": created,
-        "order_id": created[-1] if created else None,
-        "count": len(created),
-    }), 201
+    body, code = _create_orders(payload, payload.get("items") if isinstance(payload, dict) else None)
+    return jsonify(body), code
 
 
 @shops_bp.get("/orders")
 @require_auth
 def list_customer_orders():
-    query = col(CUSTOMER_ORDERS).where(
-        filter=FieldFilter("customer_id", "==", g.user_id)
-    )
+    query = col(CUSTOMER_ORDERS).where(filter=FieldFilter("customer_id", "==", g.user_id))
     return jsonify([to_dict(d) for d in query.stream()])
+
+
+def cancel_order_atomic(order_id, actor_id, vendor=False):
+    @firestore.transactional
+    def commit(tx):
+        ref = doc(CUSTOMER_ORDERS, order_id)
+        snap = ref.get(transaction=tx)
+        if not snap.exists:
+            raise ValueError("Order not found")
+        order = snap.to_dict() or {}
+        if order.get("vendor_id" if vendor else "customer_id") != actor_id:
+            raise PermissionError("Not your order")
+        if order.get("status") == "cancelled":
+            return
+        if order.get("status") not in {"pending", "confirmed"}:
+            raise ValueError("Order cannot be cancelled at this stage")
+        if order.get("payment_status") == "paid" and order.get("payment_method") == "razorpay":
+            raise ValueError("Paid orders require an original-method refund before cancellation")
+        item_ref = doc(SHOP_ITEMS, order["item_id"])
+        item = item_ref.get(transaction=tx)
+        ledger_ref = ledger = None
+        if order.get("khata_ledger_id"):
+            from db import KHATA_LEDGERS
+            ledger_ref = doc(KHATA_LEDGERS, order["khata_ledger_id"])
+            ledger = ledger_ref.get(transaction=tx)
+        item_data = item.to_dict() or {}
+        restored_stock = None
+        if item.exists and item_data.get("stock_quantity") is not None:
+            restored_stock = _whole_quantity(item_data["stock_quantity"], allow_zero=True) + _whole_quantity(order["quantity"])
+        balance = amount = None
+        if ledger_ref:
+            if not ledger.exists:
+                raise ValueError("Khata ledger is missing; shop owner reconciliation required")
+            ledger_data = ledger.to_dict() or {}
+            if ledger_data.get("vendor_id") != order.get("vendor_id") or ledger_data.get("customer_id") != order.get("customer_id"):
+                raise ValueError("Khata ledger parties do not match the order")
+            balance = _paise(ledger_data.get("balance", 0))
+            amount = _paise(order["total_price"])
+            if balance < amount:
+                raise ValueError("Khata payments require shop owner reconciliation before cancellation")
+        tx.update(ref, {"status": "cancelled", "due_amount": 0.0, "updated_at": now_iso()})
+        if restored_stock is not None:
+            tx.update(item_ref, {"stock_quantity": restored_stock, "is_available": item_data.get("disabled_by_admin") is not True, "updated_at": now_iso()})
+        if ledger_ref:
+            tx.update(ledger_ref, {"balance": (balance - amount) / 100, "updated_at": now_iso()})
+            tx.create(doc(KHATA_TRANSACTIONS, f"cancel_{order_id}"), {
+                "ledger_id": ledger_ref.id, "vendor_id": order["vendor_id"],
+                "customer_id": order["customer_id"], "type": "debit", "amount": amount / 100,
+                "order_id": order_id, "description": "Cancelled Khata order", "created_at": now_iso()})
+    commit(db().transaction())
 
 
 @shops_bp.post("/orders/<order_id>/cancel")
 @require_auth
 def cancel_order(order_id):
-    ref = doc(CUSTOMER_ORDERS, order_id)
-    snapshot = ref.get()
-    if not snapshot.exists:
-        return jsonify({"detail": "Order not found"}), 404
-    data = snapshot.to_dict() or {}
-    if data.get("customer_id") != g.user_id and g.user_role not in {"admin", "super_admin"}:
-        return jsonify({"detail": "Not your order"}), 403
-    ref.update({"status": "cancelled", "updated_at": now_iso()})
-    return jsonify({"ok": True})
+    try:
+        cancel_order_atomic(order_id, g.user_id)
+        return jsonify({"ok": True})
+    except PermissionError as exc:
+        return jsonify({"detail": str(exc)}), 403
+    except ValueError as exc:
+        return jsonify({"detail": str(exc)}), 409

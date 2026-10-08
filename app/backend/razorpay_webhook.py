@@ -6,8 +6,8 @@ import os
 from flask import Blueprint, jsonify, request
 
 from db import db as get_db
-from razorpay_config import verify_webhook_signature
-from routes.razorpay_api import fail_payment_order, settle_payment_order
+from razorpay_config import verify_webhook_signature, get_razorpay_client
+from routes.razorpay_api import fail_payment_order, settle_payment_order, captured_payment_matches
 
 
 razorpay_webhook_bp = Blueprint("razorpay_webhook", __name__)
@@ -51,7 +51,11 @@ def _find_payment_order(razorpay_order_id):
 @razorpay_webhook_bp.route("/webhooks/razorpay", methods=["POST"])
 def razorpay_webhook():
     signature = request.headers.get("X-Razorpay-Signature", "")
-    if not verify_webhook_signature(request.get_data(), signature):
+    try:
+        valid_signature = verify_webhook_signature(request.get_data(), signature)
+    except RuntimeError:
+        return jsonify({"error": "Webhook configuration unavailable"}), 503
+    if not valid_signature:
         return jsonify({"error": "Invalid webhook signature"}), 401
 
     payload = request.get_json(silent=True) or {}
@@ -71,6 +75,14 @@ def razorpay_webhook():
     current = snapshot.to_dict() or {}
     if collection == "payment_orders":
         if event in ("payment.captured", "order.paid"):
+            if not payment.get("id") and event == "order.paid":
+                try:
+                    candidates = get_razorpay_client().order.payments(order_id).get("items", [])
+                except Exception:
+                    return jsonify({"error": "Provider verification unavailable"}), 503
+                payment = next((p for p in candidates if captured_payment_matches(current, p)), {})
+            if not captured_payment_matches(current, payment):
+                return jsonify({"error": "Captured payment does not match intent"}), 400
             settle_payment_order(
                 snapshot.id,
                 payment.get("id"),

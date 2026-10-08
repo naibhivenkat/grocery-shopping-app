@@ -14,3 +14,12 @@ __pycache__/
 .git/
 .gitignore
 .gcloudignore
+# Never upload local credentials in the Cloud Build source archive.
+secrets.txt
+*.json
+*.pem
+*.key
+*.p12
+*.keystore
+*.jks
+.env*

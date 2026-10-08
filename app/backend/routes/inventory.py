@@ -4,14 +4,18 @@ Inventory shares the `shop_items` collection; these endpoints project the
 vendor-scoped subset in the shape expected by `InventoryItemModel`.
 """
 
+from firebase_admin import firestore
 from flask import Blueprint, g, jsonify, request
 from google.cloud.firestore_v1.base_query import FieldFilter
 
 from auth_utils import require_role
-from db import SHOP_ITEMS, col, doc, now_iso, to_dict
+from db import SHOP_ITEMS, col, db, doc, now_iso, to_dict
+from routes.khata import KhataError, _khata_error, _payload, _identifier
+from routes.vendors import _stock
 
 
 inventory_bp = Blueprint("inventory", __name__)
+inventory_bp.register_error_handler(KhataError, _khata_error)
 
 
 def _inventory_shape(d) -> dict:
@@ -34,62 +38,47 @@ def list_inventory():
 @inventory_bp.put("/inventory/<item_id>/stock")
 @require_role("vendor")
 def update_stock(item_id):
-    payload = request.get_json(silent=True) or {}
-    try:
-        quantity = int(payload.get("quantity"))
-    except (TypeError, ValueError):
-        return jsonify({"detail": "quantity (int) is required"}), 422
-
-    ref = doc(SHOP_ITEMS, item_id)
-    snap = ref.get()
-    if not snap.exists:
-        return jsonify({"detail": "Item not found"}), 404
-    if (snap.to_dict() or {}).get("vendor_id") != g.user_id:
-        return jsonify({"detail": "Not your item"}), 403
-
-    ref.update({
-        "stock_quantity": quantity,
-        "is_available": quantity > 0,
-        "last_restocked": now_iso(),
-        "updated_at": now_iso(),
-    })
+    payload = _payload()
+    quantity = _stock(payload.get("quantity"))
+    _update_atomic([(_identifier(item_id, "item_id"), quantity)])
     return jsonify({"ok": True})
+
+
+def _update_atomic(items):
+    @firestore.transactional
+    def update(tx):
+        refs = [doc(SHOP_ITEMS, identifier) for identifier, _ in items]
+        snapshots = [ref.get(transaction=tx) for ref in refs]
+        for snap in snapshots:
+            if not snap.exists:
+                raise KhataError("Item not found", 404)
+            if (snap.to_dict() or {}).get("vendor_id") != g.user_id:
+                raise KhataError("Not your item", 403)
+        timestamp = now_iso()
+        for ref, snap, (_, quantity) in zip(refs, snapshots, items):
+            available = quantity > 0 and (snap.to_dict() or {}).get("disabled_by_admin") is not True
+            tx.update(ref, {"stock_quantity": quantity, "is_available": available,
+                "last_restocked": timestamp, "updated_at": timestamp})
+    update(db().transaction())
 
 
 @inventory_bp.post("/inventory/bulk-update")
 @require_role("vendor")
 def bulk_update():
-    payload = request.get_json(silent=True) or {}
-    items = payload.get("items") or []
-    if not isinstance(items, list):
-        return jsonify({"detail": "items must be a list"}), 422
-
-    batch = col(SHOP_ITEMS)._client.batch()
-    updated = 0
+    items = _payload().get("items")
+    if not isinstance(items, list) or not 1 <= len(items) <= 100:
+        raise KhataError("items must contain 1 to 100 entries")
+    prepared, seen = [], set()
     for entry in items:
-        item_id = entry.get("item_id")
-        try:
-            quantity = int(entry.get("quantity"))
-        except (TypeError, ValueError):
-            continue
-        if not item_id:
-            continue
-        ref = doc(SHOP_ITEMS, item_id)
-        snap = ref.get()
-        if not snap.exists:
-            continue
-        if (snap.to_dict() or {}).get("vendor_id") != g.user_id:
-            continue
-        batch.update(ref, {
-            "stock_quantity": quantity,
-            "is_available": quantity > 0,
-            "last_restocked": now_iso(),
-            "updated_at": now_iso(),
-        })
-        updated += 1
-    if updated:
-        batch.commit()
-    return jsonify({"ok": True, "updated": updated})
+        if not isinstance(entry, dict):
+            raise KhataError("Each item must be an object")
+        identifier = _identifier(entry.get("item_id"), "item_id")
+        if identifier in seen:
+            raise KhataError("Duplicate item_id in stock update")
+        seen.add(identifier)
+        prepared.append((identifier, _stock(entry.get("quantity"))))
+    _update_atomic(prepared)
+    return jsonify({"ok": True, "updated": len(prepared)})
 
 
 @inventory_bp.get("/inventory/low-stock")
@@ -101,8 +90,13 @@ def low_stock():
     low = []
     for d in query.stream():
         data = d.to_dict() or {}
-        threshold = int(data.get("low_stock_threshold") or 5)
-        stock = int(data.get("stock_quantity") or 0)
+        try:
+            threshold = _stock(data.get("low_stock_threshold", 5))
+            stock = _stock(data.get("stock_quantity", 0))
+        except KhataError:
+            # Legacy corrupt stock is conservatively shown as needing attention.
+            low.append(_inventory_shape(d))
+            continue
         if stock <= threshold:
             low.append(_inventory_shape(d))
     return jsonify(low)

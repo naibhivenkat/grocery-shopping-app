@@ -11,6 +11,8 @@ import jwt
 from flask import g, jsonify, request
 
 from db import col, now_iso
+from firebase_admin import auth as firebase_auth
+from google.cloud.firestore_v1.base_query import FieldFilter
 
 _configured_jwt_secret = os.getenv("JWT_SECRET")
 if os.getenv("FLASK_ENV", "").lower() == "production":
@@ -92,42 +94,52 @@ def require_auth(fn):
                 "detail": "Missing authentication token"
             }), 401
 
+        firebase_identity = False
         try:
             payload = decode_token(token)
-
         except jwt.ExpiredSignatureError:
-            return jsonify({
-                "detail": "Token expired"
-            }), 401
-
+            return jsonify({"detail": "Token expired"}), 401
         except jwt.InvalidTokenError:
-            return jsonify({
-                "detail": "Invalid token"
-            }), 401
+            # Some installed checkout clients send a Firebase ID token. Verify
+            # it with Firebase; never trust decoded claims or client roles.
+            try:
+                payload = firebase_auth.verify_id_token(token, check_revoked=True)
+                firebase_identity = True
+            except Exception:
+                return jsonify({"detail": "Invalid token"}), 401
 
-        g.user_id = payload["sub"]
-
+        subject = payload.get("uid") if firebase_identity else payload.get("sub")
+        if not isinstance(subject, str) or not subject or "/" in subject:
+            return jsonify({"detail": "Invalid token subject"}), 401
         try:
             from db import USERS, doc
-
-            user_snapshot = doc(USERS, g.user_id).get()
-
+            if firebase_identity:
+                user_snapshot = next(iter(col(USERS).where(
+                    filter=FieldFilter("firebase_id", "==", subject)
+                ).limit(1).stream()), None)
+                if user_snapshot is None:
+                    user_snapshot = doc(USERS, subject).get()
+            else:
+                user_snapshot = doc(USERS, subject).get()
         except Exception:
-            user_snapshot = None
+            return jsonify({"detail": "Authentication service temporarily unavailable"}), 503
 
-        if user_snapshot is not None and user_snapshot.exists:
-
-            user_data = user_snapshot.to_dict() or {}
-
-            if user_data.get("is_suspended"):
-                return jsonify({"detail": "Account is suspended"}), 403
-            g.user_role = user_data.get("role") or payload.get("role", "customer")
-            g.user_email = user_data.get("email", "")
-            g.user_name = user_data.get("full_name") or user_data.get("username", "")
-        else:
-            g.user_role = payload.get("role", "customer")
-            g.user_email = ""
-            g.user_name = ""
+        if user_snapshot is None or not user_snapshot.exists:
+            return jsonify({"detail": "Account no longer exists"}), 401
+        user_data = user_snapshot.to_dict() or {}
+        if user_data.get("is_suspended"):
+            return jsonify({"detail": "Account is suspended"}), 403
+        if not firebase_identity and user_data.get("password_reset_at"):
+            try:
+                reset_at = datetime.fromisoformat(user_data["password_reset_at"]).timestamp()
+                if float(payload.get("iat") or 0) < int(reset_at):
+                    return jsonify({"detail": "Session expired; sign in again"}), 401
+            except (ValueError, TypeError):
+                return jsonify({"detail": "Session expired; sign in again"}), 401
+        g.user_id = user_snapshot.id
+        g.user_role = user_data.get("role") or "customer"
+        g.user_email = user_data.get("email", "")
+        g.user_name = user_data.get("full_name") or user_data.get("username", "")
         return fn(*args, **kwargs)
 
     return wrapper
