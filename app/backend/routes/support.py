@@ -7,11 +7,11 @@ import os
 from datetime import datetime,timedelta,timezone
 from email.utils import parseaddr
 import re
-from flask import Blueprint,g,jsonify,request
+from flask import Blueprint,Response,g,jsonify,request
 from google.cloud import firestore
 from google.cloud.firestore_v1.base_query import FieldFilter
-from auth_utils import require_role,require_webhook_secret
-from db import SUPPORT_INTERNAL_NOTES,SUPPORT_MESSAGES,SUPPORT_SYNC,SUPPORT_TICKETS,AUDIT_LOGS,col,doc,db,now_iso,to_dict
+from auth_utils import require_auth,require_role,require_webhook_secret
+from db import SUPPORT_INTERNAL_NOTES,SUPPORT_MESSAGES,SUPPORT_SYNC,SUPPORT_TICKETS,AUDIT_LOGS,NOTIFICATIONS,USERS,col,doc,db,now_iso,to_dict
 from gmail_service import gmail_service
 from routes.gmail_auth import GmailAuthError
 
@@ -35,6 +35,181 @@ def _text(value,name,limit=4000):
         raise ValueError(f'{name} must be nonempty text up to {limit} characters')
     return value.strip()
 
+
+
+
+@support_bp.get('/account-deletion')
+def account_deletion_instructions():
+    # Public Play Console deletion-request URL; no authentication or provider call.
+    page = """<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Account and data deletion | ALL LOCAL</title>
+<style>body{font:17px/1.6 system-ui,sans-serif;max-width:760px;margin:40px auto;padding:0 22px;color:#182a21;background:#fafcfb}h1{line-height:1.2}a{color:#166534}section{margin:28px 0;padding:20px;background:#fff;border:1px solid #dce7df;border-radius:12px}</style></head>
+<body><header><strong>ALL LOCAL</strong><p>Operated by Swasthik Enterprises</p></header>
+<main><h1>Request account and data deletion</h1>
+<p>You can request deletion of your ALL LOCAL account and associated personal data through either option below.</p>
+<section><h2>Send a deletion request by email</h2>
+<p>Email <a href="mailto:support@alllocal.in?subject=Account%20deletion%20request">support@alllocal.in</a> from your registered email address with the subject <strong>Account deletion request</strong>.</p>
+<p>Include your account identifier, such as your registered email address or your ALL LOCAL account ID, so we can find the account.</p>
+<p><strong>Do not send your password, OTP, or payment details.</strong></p></section>
+<section><h2>Request deletion in the app</h2>
+<p>Sign in to ALL LOCAL, open <strong>Help &amp; Support</strong>, then select <strong>Request account &amp; data deletion</strong>. Submit the request and follow its replies in the app.</p></section>
+<h2>What happens next</h2><p>Requests are manually verified and processed by our support team. We may ask you to verify ownership before deleting the account and associated personal data.</p>
+<h2>Data deletion and retention</h2>
+<p>Your request can cover your account profile and contact details, uploaded avatar, and associated personal data. During manual processing of a verified request, support will confirm which data is erased and which data must be retained. This is a request process, not an automatic erasure of all chats, media, or order history.</p>
+<p>Legal, financial, order, transaction, and security records may require retention for applicable legal or business obligations. The relevant retention period and the deletion timeline depend on those obligations; support will confirm them for your request.</p>
+<p>Read the <a href="https://alllocal.in/pages/privacy-policy.html">ALL LOCAL Privacy Policy</a> for information about personal data.</p>
+</main></body></html>"""
+    response = Response(page, content_type='text/html; charset=utf-8')
+    response.headers['Content-Security-Policy'] = "default-src 'none'; style-src 'unsafe-inline'; base-uri 'none'; frame-ancestors 'none'; form-action 'none'"
+    response.headers['X-Content-Type-Options'] = 'nosniff'
+    return response
+
+class SupportRequestError(ValueError):
+    def __init__(self, message, status=422):
+        super().__init__(message)
+        self.status = status
+
+
+def _app_payload(allowed):
+    payload = request.get_json(silent=True)
+    if not isinstance(payload, dict) or set(payload) - set(allowed):
+        raise SupportRequestError('Only the documented JSON fields are allowed')
+    return payload
+
+
+def _app_text(value, name, limit, single_line=False):
+    value = _text(value, name, limit)
+    if re.search(r'[\x00-\x08\x0b\x0c\x0e-\x1f\x7f]', value) or (single_line and ('\n' in value or '\r' in value)):
+        raise SupportRequestError(f'{name} contains invalid control characters')
+    return value
+
+
+def _request_key():
+    key = request.headers.get('Idempotency-Key')
+    if not isinstance(key, str) or not re.fullmatch(r'[A-Za-z0-9_.:-]{8,128}', key):
+        raise SupportRequestError('Idempotency-Key must contain 8 to 128 identifier characters')
+    return key
+
+
+def _public_app_ticket(snapshot):
+    data = snapshot.to_dict() or {}
+    fields = ('subject', 'category', 'status', 'delivery_channel', 'created_at', 'updated_at', 'resolved_at')
+    return {'uid': snapshot.id, **{name: data[name] for name in fields if name in data}}
+
+
+def _own_internal(snapshot, user_id):
+    data = snapshot.to_dict() or {}
+    return snapshot.exists and data.get('customer_id') == user_id and data.get('delivery_channel') == 'internal'
+
+
+@support_bp.post('/support/tickets')
+@require_auth
+def create_app_support_ticket():
+    try:
+        payload = _app_payload({'subject', 'message', 'category'})
+        subject = _app_text(payload.get('subject'), 'subject', 160, True)
+        message = _app_text(payload.get('message'), 'message', 4000)
+        category = payload.get('category', 'general')
+        if not isinstance(category, str) or category not in {'general', 'order', 'account_deletion'}:
+            raise SupportRequestError('Invalid support category')
+        key = _request_key()
+        fingerprint = hashlib.sha256(json.dumps([subject, message, category], ensure_ascii=False).encode()).hexdigest()
+        ticket_id = 'app_' + hashlib.sha256(f'{g.user_id}:{key}'.encode()).hexdigest()
+        ticket_ref = doc(SUPPORT_TICKETS, ticket_id)
+        message_ref = doc(SUPPORT_MESSAGES, ticket_id + '_initial')
+        @firestore.transactional
+        def create(tx):
+            existing = ticket_ref.get(transaction=tx)
+            initial = message_ref.get(transaction=tx)
+            if existing.exists:
+                ticket = existing.to_dict() or {}
+                if not _own_internal(existing, g.user_id) or ticket.get('request_fingerprint') != fingerprint or not initial.exists:
+                    raise SupportRequestError('Idempotency-Key belongs to another support request', 409)
+                return {'success': True, 'ticket_id': ticket_id, 'status': ticket.get('status'), 'delivery_channel': 'internal'}, 200
+            if initial.exists:
+                raise SupportRequestError('Support request needs review', 409)
+            timestamp = now_iso()
+            tx.create(ticket_ref, {'uid': ticket_id, 'customer_id': g.user_id,
+                'customer_name': getattr(g, 'user_name', ''), 'subject': subject, 'category': category,
+                'delivery_channel': 'internal', 'status': 'open', 'request_fingerprint': fingerprint,
+                'last_inbound_message_id': message_ref.id, 'created_at': timestamp, 'updated_at': timestamp})
+            tx.create(message_ref, {'uid': message_ref.id, 'ticket_id': ticket_id, 'sender_id': g.user_id,
+                'direction': 'inbound', 'bodyText': message, 'internal_date': timestamp,
+                'delivery_channel': 'internal', 'status': 'recorded'})
+            return {'success': True, 'ticket_id': ticket_id, 'status': 'open', 'delivery_channel': 'internal'}, 201
+        data, status = create(db().transaction())
+        return jsonify(data), status
+    except ValueError as exc:
+        return jsonify({'detail': str(exc)}), getattr(exc, 'status', 422)
+
+
+@support_bp.get('/support/tickets')
+@require_auth
+def list_app_support_tickets():
+    tickets = [_public_app_ticket(snap) for snap in col(SUPPORT_TICKETS).where(
+        filter=FieldFilter('customer_id', '==', g.user_id)).stream() if _own_internal(snap, g.user_id)]
+    tickets.sort(key=lambda ticket: (str(ticket.get('updated_at') or ''), ticket['uid']), reverse=True)
+    return jsonify(tickets), 200
+
+
+@support_bp.get('/support/tickets/<ticket_id>')
+@require_auth
+def get_app_support_ticket(ticket_id):
+    try:
+        ticket_id = _id(ticket_id)
+    except ValueError as exc:
+        return jsonify({'detail': str(exc)}), 422
+    snapshot = doc(SUPPORT_TICKETS, ticket_id).get()
+    if not _own_internal(snapshot, g.user_id):
+        return jsonify({'detail': 'Ticket not found'}), 404
+    ticket = _public_app_ticket(snapshot)
+    messages = []
+    for snap in col(SUPPORT_MESSAGES).where(filter=FieldFilter('ticket_id', '==', ticket_id)).stream():
+        data = snap.to_dict() or {}
+        if data.get('delivery_channel') != 'internal':
+            continue
+        messages.append({'uid': snap.id, **{key: data[key] for key in
+            ('direction', 'bodyText', 'internal_date', 'status', 'delivery_channel') if key in data}})
+    messages.sort(key=lambda item: (str(item.get('internal_date') or ''), item['uid']))
+    ticket['messages'] = messages
+    return jsonify(ticket), 200
+
+
+@support_bp.post('/support/tickets/<ticket_id>/messages')
+@require_auth
+def reply_app_support_ticket(ticket_id):
+    try:
+        ticket_id = _id(ticket_id)
+        payload = _app_payload({'message'})
+        message = _app_text(payload.get('message'), 'message', 4000)
+        key = _request_key()
+        ticket_ref = doc(SUPPORT_TICKETS, ticket_id)
+        message_id = 'appmsg_' + hashlib.sha256(f'{g.user_id}:{ticket_id}:{key}'.encode()).hexdigest()
+        message_ref = doc(SUPPORT_MESSAGES, message_id)
+        @firestore.transactional
+        def add(tx):
+            snapshot = ticket_ref.get(transaction=tx)
+            previous = message_ref.get(transaction=tx)
+            if not _own_internal(snapshot, g.user_id):
+                return {'detail': 'Ticket not found'}, 404
+            if previous.exists:
+                data = previous.to_dict() or {}
+                if data.get('bodyText') != message or data.get('sender_id') != g.user_id or data.get('ticket_id') != ticket_id:
+                    raise SupportRequestError('Idempotency-Key belongs to another message', 409)
+                # A replay must not reopen a ticket subsequently resolved by admin.
+                return {'success': True, 'message_id': message_id, 'status': (snapshot.to_dict() or {}).get('status'), 'delivery_channel': 'internal'}, 200
+            timestamp = now_iso()
+            tx.create(message_ref, {'uid': message_id, 'ticket_id': ticket_id, 'sender_id': g.user_id,
+                'direction': 'inbound', 'bodyText': message, 'internal_date': timestamp,
+                'delivery_channel': 'internal', 'status': 'recorded'})
+            tx.update(ticket_ref, {'status': 'open', 'updated_at': timestamp, 'resolved_at': None,
+                'last_inbound_message_id': message_id})
+            return {'success': True, 'message_id': message_id, 'status': 'open', 'delivery_channel': 'internal'}, 201
+        data, status = add(db().transaction())
+        return jsonify(data), status
+    except ValueError as exc:
+        return jsonify({'detail': str(exc)}), getattr(exc, 'status', 422)
 
 @support_bp.post('/admin/support/webhook')
 @require_webhook_secret
@@ -114,7 +289,7 @@ def send_ticket_reply(ticket_id,reply_body,actor_id,actor_email='',actor_name=''
         if existing and (existing.get('bodyText')!=reply_body or existing.get('admin_id')!=actor_id):
             raise ValueError('Idempotency-Key belongs to another reply')
         if existing.get('status')=='sent' or existing.get('status')=='recorded':
-            return {'skip':True,'status':existing['status'],'message_id':message_id,'gmail_message_id':existing.get('gmail_message_id')}
+            return {'skip':True,'status':existing['status'],'message_id':message_id,'gmail_message_id':existing.get('gmail_message_id'),'channel':existing.get('delivery_channel')}
         if existing.get('status') in {'sending','requires_review'}:
             if existing.get('status')=='sending':
                 try:
@@ -123,7 +298,7 @@ def send_ticket_reply(ticket_id,reply_body,actor_id,actor_email='',actor_name=''
                         return {'skip':True,'status':'sending','message_id':message_id}
                 except (ValueError,TypeError):pass
             return {'reconcile':True,'message_id':message_id,'request':existing.get('send_request') or {},'inbound_id':existing.get('inbound_id')}
-        recipient=ticket.get('customer_email')
+        recipient=None if ticket.get('delivery_channel')=='internal' else ticket.get('customer_email')
         channel='gmail' if recipient else 'internal'
         if channel=='gmail':
             _,address=parseaddr(str(recipient))
@@ -134,6 +309,14 @@ def send_ticket_reply(ticket_id,reply_body,actor_id,actor_email='',actor_name=''
                 'in_reply_to':ticket.get('last_message_id_header'),
                 'message_id_header':f'<{message_id}@localshopfinder.com>'}
         else:original={}
+        notification_ref=None
+        notification_exists=False
+        customer_id=ticket.get('customer_id')
+        if channel=='internal' and isinstance(customer_id,str) and customer_id and '/' not in customer_id and len(customer_id)<=128:
+            customer=doc(USERS,customer_id).get(transaction=tx)
+            notification_ref=doc(NOTIFICATIONS,'support_'+message_id)
+            notification_exists=notification_ref.get(transaction=tx).exists
+            if not customer.exists:notification_ref=None
         timestamp=now_iso()
         tx.set(message_ref,{'uid':message_id,'ticket_id':ticket_id,'direction':'outbound','bodyText':reply_body,
             'internal_date':timestamp,'admin_id':actor_id,'admin_name':actor_name,'delivery_channel':channel,
@@ -142,6 +325,10 @@ def send_ticket_reply(ticket_id,reply_body,actor_id,actor_email='',actor_name=''
         tx.update(ticket_ref,{'status':'pending_reply' if channel=='gmail' else 'resolved','updated_at':timestamp,
             'last_reply_status':'sending' if channel=='gmail' else 'recorded',
             **({'admin_reply':reply_body,'resolved_at':timestamp} if channel=='internal' else {})})
+        if notification_ref is not None and not notification_exists:
+            tx.create(notification_ref,{'user_id':customer_id,'type':'support_reply','title':'Support replied',
+                'body':'You have a new reply to your support request','reference_id':ticket_id,
+                'is_read':False,'created_at':timestamp})
         if not message_snap.exists:
             tx.create(doc(AUDIT_LOGS,message_id),{'admin_id':actor_id,'admin_email':actor_email,'action':'Reply to Ticket',
                 'target_id':ticket_id,'target_type':'support_ticket','created_at':timestamp})
@@ -150,7 +337,7 @@ def send_ticket_reply(ticket_id,reply_body,actor_id,actor_email='',actor_name=''
     if acquired.get('missing'):return {'detail':'Ticket not found'},404
     if acquired.get('skip'):
         status=acquired['status']
-        return {'success':status in {'sent','recorded'},'status':status,'message_id':acquired['message_id']},202 if status=='sending' else 200
+        return {'success':status in {'sent','recorded'},'status':status,'message_id':acquired['message_id'],**({'delivery_channel':acquired['channel']} if acquired.get('channel') else {})},202 if status=='sending' else 200
     if acquired.get('channel')=='internal':return {'success':True,'status':'recorded','delivery_channel':'internal','message_id':acquired['message_id']},200
     message_ref=doc(SUPPORT_MESSAGES,acquired['message_id']);original=acquired['request']
     sent=None;error_status=None
