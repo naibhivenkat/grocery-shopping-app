@@ -4,3 +4,4 @@ libffi-dev
 libcairo2
 libpangocairo-1.0-0
 fonts-dejavu-core
+fonts-noto-core

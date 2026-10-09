@@ -148,7 +148,9 @@ class OrdersTests(unittest.TestCase):
         self.store.data[(storage.USERS, "vendor")]["role"] = "vendor"
         self.store.data[(storage.USERS, "vendor")]["is_suspended"] = True
         self.assertEqual(self.order().status_code, 422)
-        self.assertEqual(self.post("/orders", {"item_id": "rice", "quantity": 1}, user="other_vendor").status_code, 403)
+        self.assertEqual(self.post("/orders", {"item_id": "rice", "quantity": 1}, user="other_vendor").status_code, 422)
+        self.store.data[(storage.USERS, "vendor")]["is_suspended"] = False
+        self.assertEqual(self.post("/orders", {"item_id": "rice", "quantity": 1}, user="other_vendor").status_code, 201)
 
     def test_khata_requires_active_vendor_opened_ledger(self):
         self.assertEqual(self.order(method="khata").status_code, 422)

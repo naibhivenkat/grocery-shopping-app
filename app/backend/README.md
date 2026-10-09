@@ -5,6 +5,37 @@ data lives in Firestore
 under `localshop/v1/<collection>` (same path the Flutter `FirebaseConstants`
 reads from).
 
+## October 9, 2026 client restoration contracts
+
+- `POST /khata/transactions` allows ledger customers to submit `type=debit`,
+  `payment_method=cash|upi` with an idempotency key. The request is `pending`.
+  `POST /khata/transactions/<id>/approve` or `/reject` requires the ledger's
+  owning vendor. Only approval changes the balance. Vendor/service accounts
+  can also act as customers of another shop.
+- `POST /vendors/orders/<id>/payment/confirm` records receipt of cash using
+  the authoritative discounted order total. Online settlement still requires
+  Razorpay capture verification. Paid cash cancellation requires refund
+  reconciliation.
+- `GET /orders/<id>/invoice` and `/invoice.pdf` return the same batch bill
+  to its customer/vendor. `PUT /vendors/orders/<id>/discount` takes `amount`
+  in rupees and permits only uncollected cash orders.
+- `POST /vendors/items/import?preview=true` accepts multipart `file` (`.xlsx`
+  or UTF-8 `.csv`); omit `preview=true` to save validated rows atomically.
+  Uploads have a 2 MB/200-row limit and content-based retry protection.
+- `POST|DELETE /notifications/device-token` takes JSON `token`. Global hashed
+  device ownership prevents stale per-user token lists from receiving new
+  cross-account notifications. Push is best effort after durable inbox writes;
+  provider failures do not roll back successful business actions. There is no
+  background push retry worker.
+- Chat buyer quota is three messages across all rooms per Asia/Kolkata day;
+  retries with the same key do not consume an additional allowance.
+
+Install the updated requirements. Indian-script PDF output additionally needs
+Pango and Noto fonts (`fonts-noto-core` in the server image/apt list). Local
+tests mock Firestore transactions and FCM; they do not prove live retry behavior
+or device delivery. Run `.venv/bin/python -m unittest discover -s tests` from
+this directory, then perform device/provider acceptance checks before release.
+
 ## Endpoints
 
 Every path called by the Flutter client is implemented. See `routes/` for

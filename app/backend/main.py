@@ -80,6 +80,8 @@ from routes.auth import auth_bp
 from routes.chat import chat_bp
 from routes.cities import cities_bp
 from routes.inventory import inventory_bp
+from routes.billing import billing_bp
+from routes.product_import import product_import_bp
 from routes.khata import khata_bp
 from routes.notifications import notifications_bp
 from routes.payments import payments_bp
@@ -164,6 +166,8 @@ def create_app() -> Flask:
         ai_bp,
         referrals_bp,
         inventory_bp,
+        billing_bp,
+        product_import_bp,
         reviews_bp,
         payments_bp,
         razorpay_api_bp,

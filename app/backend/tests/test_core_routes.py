@@ -208,7 +208,7 @@ class CoreRoutesTests(unittest.TestCase):
 
     def test_chat_room_valid_participants_and_no_profile_leak(self):
         self.assertEqual(self.call("/chat/rooms", {"vendor_id": "missing"}, user="customer").status_code, 403)
-        self.assertEqual(self.call("/chat/rooms", {"vendor_id": "vendor"}, user="vendor").status_code, 403)
+        self.assertEqual(self.call("/chat/rooms", {"vendor_id": "vendor"}, user="vendor").status_code, 422)
         room = self.room()
         self.assertEqual(self.room(), room)
         self.assertEqual(len(self.values(storage.CHAT_ROOMS)), 1)

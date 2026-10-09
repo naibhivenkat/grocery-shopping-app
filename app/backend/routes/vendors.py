@@ -5,8 +5,9 @@ from flask import Blueprint, g, jsonify, request
 from google.cloud.firestore_v1.base_query import FieldFilter
 
 from auth_utils import require_role
-from db import CUSTOMER_ORDERS, SHOP_ITEMS, USERS, col, db, doc, now_iso, to_dict
+from db import CUSTOMER_ORDERS, SHOP_ITEMS, USERS, NOTIFICATIONS, col, db, doc, now_iso, to_dict
 from routes.khata import KhataError, _khata_error, _payload, _identifier, _text, _money_paise
+from notification_delivery import notification_data, deliver_push
 
 
 vendors_bp = Blueprint("vendors", __name__)
@@ -183,7 +184,7 @@ def update_order_status(order_id):
             raise KhataError("Refund is in progress or already processed", 409)
         current = aliases.get(order.get("status"), order.get("status"))
         if current == status:
-            return
+            return None
         if {"pending": "confirmed", "confirmed": "packed", "packed": "delivered"}.get(current) != status:
             raise KhataError("Order status transition is not allowed", 409)
         if order.get("payment_method") in {"razorpay", "upi"} and order.get("payment_status") != "paid":
@@ -192,5 +193,42 @@ def update_order_status(order_id):
         if status == "delivered" and order.get("payment_method") == "cash":
             changes.update({"payment_status": "paid", "partial_amount_paid": order.get("total_price", 0), "due_amount": 0.0})
         tx.update(ref, changes)
-    update(db().transaction())
+        event = notification_data(order["customer_id"], "order_status", "Order status updated",
+            f"Your order is {status}.", order_id)
+        tx.set(col(NOTIFICATIONS).document(), event)
+        return event
+    deliver_push(update(db().transaction()), lookup=doc)
+    return jsonify({"ok": True})
+
+
+@vendors_bp.post("/vendors/orders/<order_id>/payment/confirm")
+@require_role("vendor")
+def confirm_cash_payment(order_id):
+    """Only the recipient shop can confirm money actually collected in cash."""
+    ref = doc(CUSTOMER_ORDERS, _identifier(order_id, "order_id"))
+
+    @firestore.transactional
+    def confirm(tx):
+        snap = ref.get(transaction=tx)
+        order = snap.to_dict() or {}
+        if not snap.exists:
+            raise KhataError("Order not found", 404)
+        if order.get("vendor_id") != g.user_id:
+            raise KhataError("Not your order", 403)
+        if order.get("payment_method") != "cash":
+            raise KhataError("Online payments require provider verification", 409)
+        if order.get("status") in {"cancelled", "rejected"} or order.get("refund_status"):
+            raise KhataError("Order is no longer payable", 409)
+        if order.get("payment_status") == "paid":
+            return None
+        amount = _money_paise(order.get("total_price"), allow_zero=True)
+        timestamp = now_iso()
+        tx.update(ref, {"payment_status": "paid", "partial_amount_paid": amount / 100,
+            "due_amount": 0, "paid_at": timestamp, "payment_confirmed_by": g.user_id, "updated_at": timestamp})
+        event = notification_data(order["customer_id"], "order_payment", "Cash payment confirmed",
+            f"The shop confirmed INR {amount / 100:.2f} received.", ref.id)
+        tx.set(col(NOTIFICATIONS).document(), event)
+        return event
+
+    deliver_push(confirm(db().transaction()), lookup=doc)
     return jsonify({"ok": True})

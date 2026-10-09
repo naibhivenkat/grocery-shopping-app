@@ -1,13 +1,51 @@
 """`/notifications/*` endpoints consumed by `NotificationRemoteDataSource`."""
 
-from flask import Blueprint, g, jsonify
+from flask import Blueprint, g, jsonify, request
+from firebase_admin import firestore
 from google.cloud.firestore_v1.base_query import FieldFilter
 
 from auth_utils import require_auth
-from db import NOTIFICATIONS, col, doc, db, to_dict
+from db import NOTIFICATIONS, USERS, col, doc, db, to_dict, now_iso
+from notification_delivery import device_token_id
 
 
 notifications_bp = Blueprint("notifications", __name__)
+
+
+@notifications_bp.route("/notifications/device-token", methods=["POST", "DELETE"])
+@require_auth
+def device_token():
+    payload = request.get_json(silent=True)
+    token = payload.get("token") if isinstance(payload, dict) else None
+    if not isinstance(token, str) or not 10 <= len(token.strip()) <= 4096:
+        return jsonify({"detail": "Valid device token required"}), 422
+    token = token.strip()
+    ref = doc(USERS, g.user_id)
+    ownership_ref = doc("device_tokens", device_token_id(token))
+    remove = request.method == "DELETE"
+
+    @firestore.transactional
+    def save(tx):
+        snap = ref.get(transaction=tx)
+        user = snap.to_dict() or {}
+        if not snap.exists or user.get("is_suspended"):
+            return False
+        ownership = ownership_ref.get(transaction=tx)
+        previous = user.get("fcm_tokens") or []
+        previous = [item for item in previous if isinstance(item, str) and item != token] if isinstance(previous, list) else []
+        # Bound obsolete devices while allowing several signed-in devices.
+        tokens = previous[-9:] if remove else (previous + [token])[-10:]
+        tx.set(ref, {"fcm_tokens": tokens, "notification_token_updated_at": now_iso()}, merge=True)
+        if not remove:
+            # Transfer ownership even when logout on the old account failed.
+            tx.set(ownership_ref, {"user_id": g.user_id, "updated_at": now_iso()})
+        elif ownership.exists and (ownership.to_dict() or {}).get("user_id") == g.user_id:
+            tx.set(ownership_ref, {"user_id": None, "updated_at": now_iso()})
+        return True
+
+    if not save(db().transaction()):
+        return jsonify({"detail": "Account unavailable"}), 403
+    return jsonify({"ok": True})
 
 
 @notifications_bp.get("/notifications")

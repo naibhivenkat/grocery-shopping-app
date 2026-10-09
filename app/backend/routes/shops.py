@@ -10,6 +10,7 @@ from auth_utils import require_auth, require_role
 from db import (
     CATEGORIES,
     KHATA_TRANSACTIONS,
+    NOTIFICATIONS,
     db,
     CUSTOMER_ORDERS,
     SHOP_ITEMS,
@@ -20,6 +21,7 @@ from db import (
     now_iso,
     to_dict,
 )
+from notification_delivery import notification_data, deliver_push
 
 
 shops_bp = Blueprint("shops", __name__)
@@ -275,7 +277,7 @@ def _create_orders(payload, lines):
             saved = existing.to_dict() or {}
             if saved.get("fingerprint") != fingerprint:
                 raise ValueError("idempotency_key already belongs to a different order")
-            return saved["response"]
+            return saved["response"], None
         snapshots = [doc(SHOP_ITEMS, i).get(transaction=tx) for i, _, _ in prepared]
         vendor_ids = {(d.to_dict() or {}).get("vendor_id") for d in snapshots if d.exists}
         if len(vendor_ids) != 1 or None in vendor_ids:
@@ -347,9 +349,14 @@ def _create_orders(payload, lines):
                     "vendor_id": vendor_id, "count": len(order_refs), "total_price": debt / 100}
         tx.create(batch_ref, {"customer_id": g.user_id, "fingerprint": fingerprint,
                               "response": response, "created_at": now_iso()})
-        return response
+        event = notification_data(vendor_id, "new_order", "New order",
+            f"{customer_name or 'A customer'} placed an order for INR {debt / 100:.2f}.", response["order_id"])
+        tx.set(col(NOTIFICATIONS).document(), event)
+        return response, event
     try:
-        return commit(db().transaction()), 201
+        response, event = commit(db().transaction())
+        deliver_push(event, lookup=doc)
+        return response, 201
     except KhataError as exc:
         return {"detail": exc.detail}, exc.status
     except (ValueError, TypeError, OverflowError) as exc:
@@ -357,7 +364,7 @@ def _create_orders(payload, lines):
 
 
 @shops_bp.post("/orders")
-@require_role("customer")
+@require_role("customer", "vendor", "service")
 def create_order():
     payload = request.get_json(silent=True) or {}
     body, code = _create_orders(payload, [payload])
@@ -365,7 +372,7 @@ def create_order():
 
 
 @shops_bp.post("/orders/batch")
-@require_role("customer")
+@require_role("customer", "vendor", "service")
 def create_orders_batch():
     payload = request.get_json(silent=True) or {}
     body, code = _create_orders(payload, payload.get("items") if isinstance(payload, dict) else None)
@@ -390,10 +397,10 @@ def cancel_order_atomic(order_id, actor_id, vendor=False):
         if order.get("vendor_id" if vendor else "customer_id") != actor_id:
             raise PermissionError("Not your order")
         if order.get("status") == "cancelled":
-            return
+            return None
         if order.get("status") not in {"pending", "confirmed"}:
             raise ValueError("Order cannot be cancelled at this stage")
-        if order.get("payment_status") == "paid" and order.get("payment_method") == "razorpay":
+        if order.get("payment_status") == "paid" and order.get("payment_method") in {"razorpay", "upi", "cash"}:
             raise ValueError("Paid orders require an original-method refund before cancellation")
         item_ref = doc(SHOP_ITEMS, order["item_id"])
         item = item_ref.get(transaction=tx)
@@ -426,7 +433,11 @@ def cancel_order_atomic(order_id, actor_id, vendor=False):
                 "ledger_id": ledger_ref.id, "vendor_id": order["vendor_id"],
                 "customer_id": order["customer_id"], "type": "debit", "amount": amount / 100,
                 "order_id": order_id, "description": "Cancelled Khata order", "created_at": now_iso()})
-    commit(db().transaction())
+        event = notification_data(order["customer_id"] if vendor else order["vendor_id"], "order_status",
+            "Order cancelled", "The order was cancelled.", order_id)
+        tx.set(col(NOTIFICATIONS).document(), event)
+        return event
+    deliver_push(commit(db().transaction()), lookup=doc)
 
 
 @shops_bp.post("/orders/<order_id>/cancel")

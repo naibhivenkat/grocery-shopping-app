@@ -52,6 +52,15 @@ class AdminReferralTests(unittest.TestCase):
     def values(self, name):
         return [value for (collection, _), value in self.store.data.items() if collection == name]
 
+    def test_users_aliases_retain_admin_authorization_and_service_role_rules(self):
+        self.assertEqual(self.call("/admin/users", method="GET", user="customer").status_code, 403)
+        self.assertEqual(self.call("/admin/users/customer", method="GET").json["uid"], "customer")
+        self.assertEqual(self.call("/admin/users/customer", {"role": "service"}, "PUT").status_code, 403)
+        self.assertEqual(self.call("/admin/users/customer", {"role": "service"}, "PUT", "super").status_code, 200)
+        self.assertEqual(self.store.data[(storage.USERS, "customer")]["role"], "service")
+        self.assertEqual(self.call("/admin/users/customer/suspend").status_code, 200)
+        self.assertEqual(self.call("/admin/users/customer/unsuspend").status_code, 200)
+
     def test_admin_cannot_grant_roles_or_manage_privileged_target(self):
         for role in ("vendor", "admin", "super_admin"):
             before = copy.deepcopy(self.store.data)

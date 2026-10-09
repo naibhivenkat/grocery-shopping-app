@@ -27,7 +27,7 @@ from google.cloud.firestore_v1.base_query import FieldFilter
 
 admin_bp = Blueprint("admin", __name__)
 admin_bp.register_error_handler(KhataError, _khata_error)
-_ROLES = {"customer", "vendor", "admin", "super_admin"}
+_ROLES = {"customer", "vendor", "service", "admin", "super_admin"}
 
 
 def _user_changes(body, vendor_only=False):
@@ -143,6 +143,7 @@ def _users_by_role(role: str, include_suspended: bool = False):
 
 
 @admin_bp.get("/admin/customers/<user_id>")
+@admin_bp.get("/admin/users/<user_id>")
 @require_role("admin", "super_admin")
 def get_customers(user_id):
     snapshot = doc(USERS, user_id).get()
@@ -167,6 +168,7 @@ def get_customers(user_id):
 
 
 @admin_bp.put("/admin/customers/<user_id>")
+@admin_bp.put("/admin/users/<user_id>")
 @require_role("admin", "super_admin")
 def update_customer(user_id):
     _mutate_user(user_id, _user_changes(_payload()))
@@ -174,6 +176,7 @@ def update_customer(user_id):
 
 
 @admin_bp.delete("/admin/customers/<user_id>")
+@admin_bp.delete("/admin/users/<user_id>")
 @require_role("admin", "super_admin")
 def delete_customer(user_id):
     _mutate_user(user_id, delete=True, action="Delete User")
@@ -321,6 +324,7 @@ def unsuspend_vendor(vendor_id):
 
 
 @admin_bp.get("/admin/customers")
+@admin_bp.get("/admin/users")
 @require_role("admin", "super_admin")
 def list_customers():
     customers = _users_by_role("customer")
@@ -336,6 +340,7 @@ def list_customers():
 
 
 @admin_bp.post("/admin/customers/<user_id>/suspend")
+@admin_bp.post("/admin/users/<user_id>/suspend")
 @require_role("admin", "super_admin")
 def suspend_customers(user_id):
     _mutate_user(user_id, {"is_suspended": True}, vendor_only=False, action="Suspend User")
@@ -343,6 +348,7 @@ def suspend_customers(user_id):
 
 
 @admin_bp.post("/admin/customers/<user_id>/unsuspend")
+@admin_bp.post("/admin/users/<user_id>/unsuspend")
 @require_role("admin", "super_admin")
 def unsuspend_customers(user_id):
     _mutate_user(user_id, {"is_suspended": False}, vendor_only=False, action="Unsuspend User")
@@ -952,6 +958,7 @@ def get_recent_orders():
 
             orders.append({
                 "id": d.id,
+                "uid": d.id,
                 "customer_id": data.get("customer_id"),
                 "vendor_id": data.get("vendor_id"),
                 "vendor_name": data.get("vendor_name", ""),

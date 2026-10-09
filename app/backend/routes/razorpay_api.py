@@ -6,9 +6,10 @@ from flask import Blueprint, g, jsonify, request
 from google.cloud import firestore
 from google.cloud.firestore_v1.base_query import FieldFilter
 from auth_utils import require_auth
-from db import (CUSTOMER_ORDERS, SUBSCRIPTION_PLANS, VENDOR_SUBSCRIPTIONS,
+from db import (CUSTOMER_ORDERS, SUBSCRIPTION_PLANS, VENDOR_SUBSCRIPTIONS, NOTIFICATIONS,
                 WALLET_TRANSACTIONS, WALLETS, col, db, doc, now_iso)
 from razorpay_config import get_razorpay_client, get_razorpay_key_id
+from notification_delivery import notification_data, deliver_push
 
 razorpay_api_bp = Blueprint("razorpay_api", __name__)
 PAYMENT_ORDERS = "payment_orders"
@@ -98,6 +99,7 @@ def settle_payment_order(intent_id, payment_id, event_id=None):
             return {"status": "already_paid", "settlement_status": intent.get("settlement_status", "settled")}
         purpose = intent.get("purpose")
         writes = []
+        events = []
         settlement_status = "settled"
         if purpose == "wallet":
             # Preserve money captured for historical wallet intents even while
@@ -142,6 +144,12 @@ def settle_payment_order(intent_id, payment_id, event_id=None):
                         "payment_id": payment_id, "paid_at": now_iso(), "updated_at": now_iso()}
                     if purpose == "order":
                         updates.update({"partial_amount_paid": data.get("total_price"), "due_amount": 0})
+                        for recipient in (data.get("customer_id"), data.get("vendor_id")):
+                            if recipient:
+                                event = notification_data(recipient, "order_payment", "Payment confirmed",
+                                    "Online payment was confirmed.", ref.id)
+                                events.append(event)
+                                writes.append(("set", doc(NOTIFICATIONS, f"payment_{intent_id}_{ref.id}_{recipient}"), event))
                     elif purpose == "subscription":
                         now = datetime.now(timezone.utc)
                         updates.update({"status": "active", "activated_at": now.isoformat(),
@@ -158,8 +166,11 @@ def settle_payment_order(intent_id, payment_id, event_id=None):
         transaction.update(intent_ref, {"status": "paid", "payment_id": payment_id,
             "settlement_status": settlement_status, "settled_at": now_iso(),
             **({"last_webhook_event_id": event_id} if event_id else {})})
-        return {"status": "paid", "purpose": purpose, "settlement_status": settlement_status}
-    return _settle(db().transaction())
+        return {"status": "paid", "purpose": purpose, "settlement_status": settlement_status, "_events": events}
+    result = _settle(db().transaction())
+    for event in result.pop("_events", []):
+        deliver_push(event, lookup=doc)
+    return result
 
 
 def fail_payment_order(intent_id, payment_id=None, event_id=None, reason=None):
