@@ -14,9 +14,12 @@ from auth_utils import require_role
 from db import SHOP_ITEMS, doc, col, db, now_iso
 from routes.khata import KhataError, _khata_error
 from routes.vendors import _item_patch, _vendor_profile_fields
+import subscription_service as subscriptions
+from routes.subscriptions import subscription_error
 
 product_import_bp = Blueprint("product_import", __name__)
 product_import_bp.register_error_handler(KhataError, _khata_error)
+product_import_bp.register_error_handler(subscriptions.SubscriptionError, subscription_error)
 MAX_BYTES = 2 * 1024 * 1024
 MAX_ROWS = 200
 FIELDS = ("name", "category", "description", "price", "stock_quantity", "selling_unit", "pricing_quantity", "stock_unit")
@@ -120,10 +123,12 @@ def import_products():
         prior = import_ref.get(transaction=tx)
         if prior.exists:
             return prior.to_dict()["response"]
+        apply_usage = subscriptions.catalog_change_plan(tx, g.user_id, delta=len(products), capability="product_import", lookup=doc)
         timestamp = now_iso()
         for ref, product in zip(refs, products):
             tx.create(ref, {**profile, **product, "created_at": timestamp, "import_id": fingerprint})
         response = {"count": len(products), "item_ids": [ref.id for ref in refs], "import_id": fingerprint}
         tx.create(import_ref, {"vendor_id": g.user_id, "created_at": timestamp, "response": response})
+        apply_usage()
         return response
     return jsonify(commit(db().transaction())), 201

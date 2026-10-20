@@ -172,9 +172,12 @@ def _create_account_atomic(data, *, requires_otp=False):
             if (not otp_snapshot.exists or otp_data.get("verified") is not True or expires is None or expires <= _utcnow()
                 or otp_data.get("purpose") not in (None, "registration") or otp_data.get("email") != data["email"]):
                 raise RegistrationError("Please verify OTP before registering", 400)
+        from subscription_service import vendor_activation_plan
+        activate_subscription = vendor_activation_plan(tx, ref.id, ref.id, lookup=doc) if data.get("role") == "vendor" else (lambda: None)
         timestamp = now_iso()
         created = {**data, "created_at": timestamp, "updated_at": timestamp}
         tx.set(ref, created)
+        activate_subscription()
         for field, value, reservation in reservations:
             tx.set(reservation, {"kind": field, "value": value, "user_id": ref.id, "created_at": timestamp})
         if otp_ref:

@@ -7,8 +7,14 @@ from auth_utils import require_auth, require_role
 from db import NOTIFICATIONS, SUBSCRIPTION_PAYMENTS, VENDOR_SUBSCRIPTIONS, SUBSCRIPTION_PLANS, col, doc, db, now_iso, to_dict
 from routes.razorpay_api import _amount_paise
 from routes.subscriptions import plan_terms
+from subscription_service import SubscriptionError
 
 payments_bp = Blueprint('payments', __name__)
+
+
+@payments_bp.errorhandler(SubscriptionError)
+def _subscription_policy_error(error):
+    return jsonify({'detail': error.detail, 'code': error.code}), error.status
 
 
 def _expected_terms(subscription, tx=None):
@@ -63,13 +69,12 @@ def submit_payment():
         expected, duration = _expected_terms(sub, tx)
         if amount != expected:
             raise ValueError('Payment amount does not match subscription price')
-        tx.create(ref, {'vendor_id':g.user_id, 'subscription_id':sid,
-            'amount':expected / 100, 'amount_paise':expected, 'duration_days':duration,
-            'currency':'INR', 'method':method, 'transaction_id':tid.strip(),
-            'upi_screenshot_url':payload.get('upi_screenshot_url'), 'status':'pending', 'created_at':now_iso()})
+        raise SubscriptionError('Digital subscriptions require approved requests and verified store billing; manual receipts cannot unlock access', 403, 'STORE_BILLING_REQUIRED')
     try:
         submit(db().transaction())
         return jsonify(to_dict(ref.get())), 201
+    except SubscriptionError:
+        raise
     except PermissionError as exc:
         return jsonify({'detail':str(exc)}), 403
     except ValueError as exc:
@@ -103,7 +108,7 @@ def _moderate(payment_id, approve):
             raise ValueError('Payment not found')
         wanted = 'verified' if approve else 'rejected'
         if payment.get('status') == wanted:
-            return
+            raise SubscriptionError('Historical payment claims do not grant canonical access', 409, 'SUBSCRIPTION_REVIEW_REQUIRED')
         if payment.get('status') != 'pending':
             raise ValueError('Payment has already been moderated')
         sid = payment.get('subscription_id')
@@ -121,20 +126,12 @@ def _moderate(payment_id, approve):
             or (payment.get('amount_paise') is not None and payment.get('amount_paise') != expected)
             or payment.get('currency', 'INR') != 'INR'):
             raise ValueError('Payment amount does not match subscription price')
-        tx.update(ref, {'status':wanted, 'moderated_by':g.user_id,
-            'verified_at' if approve else 'rejected_at':now_iso()})
-        if approve:
-            now = datetime.now(timezone.utc)
-            tx.update(sub_ref, {'status':'active','payment_status':'paid', 'activated_at':now.isoformat(),
-                'start_date':now.isoformat(), 'end_date':(now+timedelta(days=duration)).isoformat(),
-                'payment_id':payment_id})
-        tx.create(notification, {'user_id':payment['vendor_id'], 'type':'payment_approved' if approve else 'payment_rejected',
-            'title':'Payment verified' if approve else 'Payment rejected',
-            'body':'Your subscription is now active.' if approve else 'Please retry with a valid transaction.',
-            'is_read':False, 'reference_id':payment_id, 'created_at':now_iso()})
+        raise SubscriptionError('Historical payment claims cannot authorize access; use canonical subscription requests or an explicit complimentary override', 409, 'SUBSCRIPTION_REVIEW_REQUIRED')
     try:
         moderate(db().transaction())
         return jsonify({'ok':True})
+    except SubscriptionError:
+        raise
     except ValueError as exc:
         return jsonify({'detail':str(exc)}), 409
 

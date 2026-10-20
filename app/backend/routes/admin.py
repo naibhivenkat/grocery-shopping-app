@@ -24,11 +24,14 @@ from firebase_admin import firestore
 from db import db
 from routes.khata import KhataError, _khata_error, _payload, _identifier, _text, _money_paise
 from routes.vendors import _item_patch, _stock
+import subscription_service as subscriptions
+from routes.subscriptions import subscription_error
 from routes.measurement import metadata, acknowledge
 from google.cloud.firestore_v1.base_query import FieldFilter
 
 admin_bp = Blueprint("admin", __name__)
 admin_bp.register_error_handler(KhataError, _khata_error)
+admin_bp.register_error_handler(subscriptions.SubscriptionError, subscription_error)
 _ROLES = {"customer", "vendor", "service", "admin", "super_admin"}
 
 
@@ -88,6 +91,7 @@ def _mutate_user(user_id, changes=None, *, delete=False, vendor_only=False, acti
             duplicate = list(tx.get(col(USERS).where(filter=FieldFilter("email", "==", changes["email"]))))
             if any(snap.id != user_id for snap in duplicate):
                 raise KhataError("Email already belongs to another account", 409)
+        activate_subscription = subscriptions.vendor_activation_plan(tx, user_id, g.user_id, lookup=doc) if not delete and changes.get("role") == "vendor" and current_role != "vendor" else (lambda: None)
         updates = {**changes, "updated_at": now_iso()}
         if "is_suspended" in changes:
             updates.update({"suspended_role": current_role if changes["is_suspended"] else None,
@@ -98,6 +102,7 @@ def _mutate_user(user_id, changes=None, *, delete=False, vendor_only=False, acti
             tx.delete(ref)
         else:
             tx.update(ref, updates)
+        activate_subscription()
         tx.set(audit_ref, {"admin_id": g.user_id, "admin_email": actor.get("email", ""), "action": action,
                            "target_id": user_id, "target_type": "vendor" if vendor_only else "user", "created_at": now_iso()})
     mutate(db().transaction())
@@ -500,9 +505,11 @@ def create_product():
         vendor = snap.to_dict() or {}
         if not snap.exists or vendor.get("role") != "vendor" or vendor.get("is_suspended"):
             raise KhataError("Vendor is unavailable", 404)
+        apply_usage = subscriptions.catalog_change_plan(tx, vendor_id, delta=1, lookup=doc)
         tx.set(ref, {**product, "vendor_id": vendor_id, "vendor_name": vendor.get("shop_name") or vendor.get("full_name"),
                      "vendor_phone": vendor.get("phone"), "vendor_email": vendor.get("email"), "city_id": vendor.get("city_id"),
                      "vendor_shop_description": vendor.get("shop_address"), "created_at": now_iso(), "updated_at": now_iso()})
+        apply_usage()
     create(db().transaction())
     log_admin_action(g.user_id, getattr(g, "user_email", ""), "Create Product", ref.id, "product")
     return jsonify({"success": True, "uid": ref.id})
@@ -801,7 +808,9 @@ def delete_product(product_id):
                and any(line.get("item_id") == product_id for line in (proposal.to_dict() or {}).get("lines", []))
                for proposal in proposals):
             raise KhataError("Resolve the pending order amendment before deleting this reserved product", 409)
+        apply_usage = subscriptions.catalog_change_plan(tx, (snapshot.to_dict() or {}).get("vendor_id"), delta=-1, lookup=doc)
         tx.delete(ref)
+        apply_usage()
     remove(db().transaction())
     log_admin_action(g.user_id, getattr(g, "user_email", ""), "Delete Product", product_id, "product")
     return jsonify({"success": True})
@@ -848,29 +857,6 @@ def refund_order(order_id):
         raise KhataError(str(exc), 409) from None
     status = {"completed": 200, "submitted": 202, "processing": 202, "retryable": 503, "requires_review": 409}[result["status"]]
     return jsonify({"success": result["status"] in {"submitted", "completed"}, "refund": result}), status
-
-
-@admin_bp.get("/admin/subscriptions")
-@require_role("admin", "super_admin")
-def list_subscriptions():
-    return jsonify([
-        to_dict(d)
-        for d in col(VENDOR_SUBSCRIPTIONS).stream()
-    ])
-
-
-@admin_bp.post("/admin/subscriptions/<sub_id>/activate")
-@require_role("admin", "super_admin")
-def activate_subscription(sub_id):
-    _existing_update(VENDOR_SUBSCRIPTIONS, sub_id, {"status": "active"})
-    return jsonify({"success": True})
-
-
-@admin_bp.post("/admin/subscriptions/<sub_id>/suspend")
-@require_role("admin", "super_admin")
-def suspend_subscription(sub_id):
-    _existing_update(VENDOR_SUBSCRIPTIONS, sub_id, {"status": "suspended"})
-    return jsonify({"success": True})
 
 
 @admin_bp.get("/admin/audit-logs")

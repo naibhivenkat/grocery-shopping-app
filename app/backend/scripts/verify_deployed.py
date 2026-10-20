@@ -15,7 +15,9 @@ from urllib.error import HTTPError, URLError
 from urllib.request import Request, urlopen
 
 EXPECTED_FEATURES={'wallet_enabled':False,'promotions_enabled':True,'promotion_billing':'free',
-                   'khata_vendor_confirmed':True,'backend_contract_version':2}
+                   'khata_vendor_confirmed':True,'backend_contract_version':2,
+                   'subscription_contract_version':1,'vendor_subscriptions_admin_managed':True,
+                   'subscription_enforcement_capabilities':['catalog_growth','product_import','promotions']}
 
 
 def check(base, method, path, expected):
@@ -40,6 +42,10 @@ def check(base, method, path, expected):
         result['features'] = parsed
         result['ok'] = result['ok'] and isinstance(parsed,dict) and all(
             parsed.get(field)==value and type(parsed.get(field)) is type(value) for field,value in EXPECTED_FEATURES.items())
+    if path == '/webhooks/google-play/rtdn' and status in {401,503}:
+        required_code = 'BILLING_NOT_CONFIGURED' if expected == 503 else 'BILLING_PUSH_UNAUTHORIZED'
+        result['ok'] = result['ok'] and isinstance(parsed,dict) and parsed.get('code') == required_code
+        result['code'] = parsed.get('code') if isinstance(parsed,dict) else None
     if isinstance(parsed, list):
         result['count'] = len(parsed)
     return result
@@ -68,13 +74,14 @@ def protected_routes(text):
                 yield selected.upper(),path.value
 
 
-def cases(release):
+def cases(release, play_rtdn_state="disabled"):
     result=[('GET','/health',200), ('GET','/',200), ('GET','/cities',200),
             ('GET','/shops',200), ('GET','/shops/categories',200),
             ('GET','/subscriptions/plans',200), ('GET','/ai/summary',200),
             ('GET','/services/available',200)]
     if release:
-        result += [('GET','/features',200), ('GET','/promotions',200)]
+        result += [('GET','/features',200), ('GET','/promotions',200),
+                   ('POST','/webhooks/google-play/rtdn',503 if play_rtdn_state == 'disabled' else 401)]
     # Scan only functions carrying an authentication/role decorator. No tokens
     # are supplied, so each handler must stop before reading or writing data.
     for source in (Path(__file__).resolve().parents[1] / 'routes').glob('*.py'):
@@ -95,6 +102,8 @@ if __name__=='__main__':
     parser.add_argument('--base-url',default='https://grocery-backend-956424262985.asia-south1.run.app')
     parser.add_argument('--phase',choices=['baseline','release'],default='release')
     parser.add_argument('--output',type=Path)
+    parser.add_argument('--play-rtdn-state', choices=['disabled','configured'], default='disabled',
+                        help='Require disabled503 or configured unauthenticated401; neither calls Google or creates an event')
     parser.add_argument('--expected-release',help='Require an exact deployed BACKEND_RELEASE value')
     args=parser.parse_args()
     release=args.phase=='release'
@@ -104,9 +113,9 @@ if __name__=='__main__':
             print(json.dumps({'ok':False,'blocked':'Backend contract v2 is not deployed','features_check':feature},indent=2))
             sys.exit(1)
     with ThreadPoolExecutor(max_workers=4) as pool:
-        results=list(pool.map(lambda c:check(args.base_url.rstrip('/'),*c),cases(release)))
+        results=list(pool.map(lambda c:check(args.base_url.rstrip('/'),*c),cases(release,args.play_rtdn_state)))
     report={'checked_at':datetime.now(timezone.utc).isoformat(),'base_url':args.base_url,
-            'phase':args.phase,'ok':all(r['ok'] for r in results),
+            'phase':args.phase,'play_rtdn_state':args.play_rtdn_state,'ok':all(r['ok'] for r in results),
             'passed':sum(r['ok'] for r in results),'total':len(results),'results':results,
             'boundary':'Public availability and unauthenticated access only; authenticated business/provider journeys are separate.'}
     output=json.dumps(report,indent=2)

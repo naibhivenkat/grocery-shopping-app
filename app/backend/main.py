@@ -101,6 +101,7 @@ from routes.smoke import smoke_bp
 from routes.support import support_bp
 from routes.gmail_admin import gmail_admin_bp
 from routes.subscriptions import subscriptions_bp
+from routes.google_play import google_play_bp
 from routes.vendors import vendors_bp
 from routes.wallet import wallet_bp
 from routes.provider_profiles import provider_profiles_bp
@@ -171,6 +172,7 @@ def create_app() -> Flask:
         chat_bp,
         notifications_bp,
         subscriptions_bp,
+        google_play_bp,
         ai_bp,
         referrals_bp,
         inventory_bp,
@@ -212,6 +214,8 @@ def create_app() -> Flask:
         return jsonify({"wallet_enabled": False, "promotions_enabled": True,
                         "promotion_billing": "free", "khata_vendor_confirmed": True,
                         "backend_contract_version": 2,
+                        "subscription_contract_version": 1, "vendor_subscriptions_admin_managed": True,
+                        "subscription_enforcement_capabilities": ["catalog_growth", "product_import", "promotions"],
                         "release": os.getenv("BACKEND_RELEASE", "local")})
 
     @app.before_request

@@ -10,10 +10,13 @@ from routes.khata import KhataError, _khata_error, _payload, _identifier, _text,
 from notification_delivery import notification_data, deliver_push
 from routes.measurement import FIELDS as UNIT_FIELDS, metadata, explicit, acknowledge
 from routes.order_amendments import guard_order_mutation, cash_collection_plan
+import subscription_service as subscriptions
+from routes.subscriptions import subscription_error
 
 
 vendors_bp = Blueprint("vendors", __name__)
 vendors_bp.register_error_handler(KhataError, _khata_error)
+vendors_bp.register_error_handler(subscriptions.SubscriptionError, subscription_error)
 
 
 def _stock(value):
@@ -95,7 +98,12 @@ def add_item():
         raise KhataError("An item with no stock cannot be available")
     ref = col(SHOP_ITEMS).document()
     data = {**_vendor_profile_fields(), **data, "created_at": now_iso()}
-    ref.set(data)
+    @firestore.transactional
+    def create(tx):
+        apply_usage = subscriptions.catalog_change_plan(tx, g.user_id, delta=1, lookup=doc)
+        tx.create(ref, data)
+        apply_usage()
+    create(db().transaction())
     return jsonify({**data, "uid": ref.id}), 201
 
 
@@ -153,7 +161,9 @@ def delete_item(item_id):
                and any(line.get("item_id") == item_id for line in (proposal.to_dict() or {}).get("lines", []))
                for proposal in proposals):
             raise KhataError("Resolve the pending order amendment before deleting this reserved product", 409)
+        apply_usage = subscriptions.catalog_change_plan(tx, g.user_id, delta=-1, lookup=doc)
         tx.delete(ref)
+        apply_usage()
     remove(db().transaction())
     return jsonify({"ok": True})
 

@@ -92,9 +92,33 @@ def public(): pass
             ('POST','/khata/transactions/__verification__/approve',401),
             ('POST','/khata/transactions/__verification__/reject',401),
             ('POST','/vendors/orders/__verification__/payment/confirm',401),
-            ('POST','/notifications/device-token',401),('DELETE','/notifications/device-token',401)}
+            ('POST','/notifications/device-token',401),('DELETE','/notifications/device-token',401),
+            ('GET','/subscriptions/entitlements',401),('GET','/subscriptions/requests',401),
+            ('POST','/subscriptions/requests',401),('GET','/admin/subscription-plans',401),
+            ('GET','/admin/subscriptions',401),('GET','/admin/subscription-requests',401),
+            ('GET','/admin/subscriptions/rollout',401),('POST','/admin/subscriptions/rollout',401),
+            ('POST','/admin/vendors/__verification__/subscription/reconciliation',401),
+            ('POST','/subscriptions/google-play/checkout-context',401),('POST','/subscriptions/google-play/verify',401),
+            ('POST','/admin/subscriptions/google-play/reconcile',401),
+            ('POST','/webhooks/google-play/rtdn',503)}
         self.assertTrue(expected.issubset(cases),expected-cases)
         self.assertEqual(len(deployed.cases(True)),len(cases))
+
+    def test_rtdn_configuration_boundary_is_explicit_and_never_authenticated(self):
+        self.assertIn(('POST','/webhooks/google-play/rtdn',503),deployed.cases(True))
+        self.assertIn(('POST','/webhooks/google-play/rtdn',401),deployed.cases(True,'configured'))
+        class Response:
+            def __init__(self,status,code):self.status,self.code=status,code
+            def __enter__(self):return self
+            def __exit__(self,*args):pass
+            def read(self):return json.dumps({'code':self.code}).encode()
+        for status,code,expected,okay in ((503,'BILLING_NOT_CONFIGURED',503,True),
+                (401,'BILLING_PUSH_UNAUTHORIZED',401,True),(503,'INTERNAL_ERROR',503,False),
+                (401,'BILLING_NOT_CONFIGURED',401,False)):
+            with self.subTest(status=status,code=code),patch.object(deployed,'urlopen',return_value=Response(status,code)) as send:
+                result=deployed.check('https://example.invalid','POST','/webhooks/google-play/rtdn',expected)
+                self.assertEqual(result['ok'],okay)
+                self.assertIsNone(send.call_args.args[0].get_header('Authorization'))
 
     def test_feature_contract_rejects_invalid_shapes_and_changed_payment_policy(self):
         class Response:

@@ -20,9 +20,12 @@ from db import SHOP_ITEMS, USERS, NOTIFICATIONS, col, db, doc, now_iso, to_dict
 from notification_delivery import notification_data, deliver_push
 from routes.discounts import RULE_FIELDS, rules
 from routes.khata import KhataError
+import subscription_service as subscriptions
+from routes.subscriptions import subscription_error
 
 
 promotions_bp = Blueprint("promotions", __name__)
+promotions_bp.register_error_handler(subscriptions.SubscriptionError, subscription_error)
 PROMOTIONS = "promotions"
 CONTENT_FIELDS = {
     "target_type", "shop_id", "product_id", "title", "body", "image_url",
@@ -277,12 +280,17 @@ def create_promotion():
     content = _content(_payload(CONTENT_FIELDS), g.user_id, account)
     ref = col(PROMOTIONS).document()
     timestamp = now_iso()
-    ref.set({
+    @firestore.transactional
+    def create(transaction):
+        apply_capability = subscriptions.catalog_change_plan(transaction, g.user_id, capability="promotions", lookup=doc)
+        transaction.set(ref, {
         **content, "vendor_id": g.user_id, "status": "pending", "is_paused": False,
         "revision": 1, "price_paise": 0, "moderation_reason": None,
         "moderated_at": None, "moderated_by": None, "approved_revision": None,
         "created_at": timestamp, "updated_at": timestamp,
-    })
+        })
+        apply_capability()
+    create(db().transaction())
     return jsonify(to_dict(ref.get())), 201
 
 
@@ -303,11 +311,13 @@ def update_promotion(promotion_id):
         if payload.get("target_type") == "shop":
             merged["product_id"] = payload.get("product_id")
         content = _content(merged, g.user_id, account)
+        apply_capability = subscriptions.catalog_change_plan(transaction, g.user_id, capability="promotions", lookup=doc)
         transaction.update(ref, {
             **content, "status": "pending", "revision": data.get("revision", 0) + 1,
             "moderation_reason": None, "moderated_at": None, "moderated_by": None, "approved_revision": None,
             "updated_at": now_iso(),
         })
+        apply_capability()
 
     update(db().transaction())
     return jsonify(to_dict(ref.get()))
@@ -325,7 +335,9 @@ def pause_promotion(promotion_id):
     @firestore.transactional
     def pause(transaction):
         _owner(ref.get(transaction=transaction))
+        apply_capability = subscriptions.catalog_change_plan(transaction, g.user_id, capability="promotions", lookup=doc) if not payload["is_paused"] else (lambda: None)
         transaction.update(ref, {"is_paused": payload["is_paused"], "updated_at": now_iso()})
+        apply_capability()
 
     pause(db().transaction())
     return jsonify(to_dict(ref.get()))
@@ -373,12 +385,14 @@ def moderate_promotion(promotion_id):
                 raise PromotionError("Cannot approve an expired promotion", 409)
             if not _visible_target(data):
                 raise PromotionError("The promoted shop or product is unavailable", 409)
+        apply_capability = subscriptions.catalog_change_plan(transaction, data["vendor_id"], capability="promotions", lookup=doc) if decision == "approved" else (lambda: None)
         timestamp = now_iso()
         transaction.update(ref, {
             "status": decision, "moderation_reason": reason or None,
             "moderated_by": g.user_id, "moderated_at": timestamp, "updated_at": timestamp,
             "approved_revision": revision if decision == "approved" else None,
         })
+        apply_capability()
         event = notification_data(data['vendor_id'], 'promotion_review', 'Promotion ' + decision,
                                   reason or 'Your shop promotion is approved.', promotion_id)
         transaction.set(doc(NOTIFICATIONS, f'promotion_{promotion_id}_{revision}_{decision}'), event)

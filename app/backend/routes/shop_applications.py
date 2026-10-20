@@ -6,9 +6,12 @@ from auth_utils import require_auth, require_role
 from db import AUDIT_LOGS, CITIES, NOTIFICATIONS, USERS, col, db, doc, now_iso, to_dict
 from notification_delivery import deliver_push, notification_data
 from routes.khata import KhataError, _identifier, _khata_error, _payload, _text
+import subscription_service as subscriptions
+from routes.subscriptions import subscription_error
 
 shop_applications_bp = Blueprint('shop_applications', __name__)
 shop_applications_bp.register_error_handler(KhataError, _khata_error)
+shop_applications_bp.register_error_handler(subscriptions.SubscriptionError, subscription_error)
 APPLICATIONS = 'shop_applications'
 FIELDS = {'shop_name', 'address', 'phone', 'city_id'}
 
@@ -129,6 +132,7 @@ def decide(application_id):
         city = doc(CITIES, _identifier(application.get('city_id'), 'city_id')).get(transaction=tx)
         if decision == 'approved' and (not city.exists or (city.to_dict() or {}).get('is_active') is False):
             raise KhataError('Application city is unavailable', 409)
+        activate_subscription = subscriptions.vendor_activation_plan(tx, applicant_id, g.user_id, lookup=doc) if decision == 'approved' else (lambda: None)
         timestamp = now_iso()
         changes = {'status': decision, 'reason': reason or None, 'reviewed_by': g.user_id,
                    'reviewed_at': timestamp, 'updated_at': timestamp}
@@ -138,6 +142,7 @@ def decide(application_id):
                              'shop_address': application['address'], 'phone': application['phone'],
                              'city_id': application['city_id'], 'shop_approval_status': 'approved',
                              'updated_at': timestamp}, merge=True)
+        activate_subscription()
         tx.set(audit_ref, {'action': 'shop_application_' + decision, 'actor_id': g.user_id,
                           'application_id': ref.id, 'revision': revision, 'reason': reason or None,
                           'created_at': timestamp})

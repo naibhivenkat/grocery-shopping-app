@@ -22,11 +22,17 @@ class SubscriptionPaymentTests(unittest.TestCase):
     def submit(self,payload,uid='vendor'):
         with self.app.test_request_context('/payments',json=payload):
             g.user_id=uid
-            return payments.submit_payment.__wrapped__()
+            try:
+                return payments.submit_payment.__wrapped__()
+            except payments.SubscriptionError as error:
+                return payments._subscription_policy_error(error)
     def moderate(self,approve=True):
         with self.app.test_request_context('/payments/pay/verify'):
             g.user_id='admin'
-            result = payments._moderate('pay',approve)
+            try:
+                result = payments._moderate('pay',approve)
+            except payments.SubscriptionError as error:
+                result = payments._subscription_policy_error(error)
             return result if isinstance(result,tuple) else (result,result.status_code)
     def test_submit_rejects_foreign_subscription_and_underpayment(self):
         payload={'subscription_id':'sub','transaction_id':'bank-123','amount':99}
@@ -35,45 +41,40 @@ class SubscriptionPaymentTests(unittest.TestCase):
         self.assertNotIn(('subscription_payments','new'),self.store.data)
     def test_submit_valid_server_amount_without_activating(self):
         response,status=self.submit({'subscription_id':'sub','transaction_id':'bank-123','amount':99})
-        self.assertEqual(status,201)
-        self.assertEqual(response.json['amount_paise'],9900)
+        self.assertEqual(status,403)
+        self.assertEqual(response.json['code'],'STORE_BILLING_REQUIRED')
+        self.assertNotIn(('subscription_payments','new'),self.store.data)
         self.assertEqual(self.store.data[('vendor_subscriptions','sub')]['status'],'pending')
     def test_invalid_amount_and_json_types(self):
         for amount in ('NaN','Infinity',-1,0,True):
             self.assertEqual(self.submit({'subscription_id':'sub','transaction_id':'bank-123','amount':amount})[1],422)
         self.assertEqual(self.submit(['invalid'])[1],422)
-    def test_atomic_approval_activates_paid_period_and_duplicate_is_noop(self):
-        self.assertEqual(self.moderate()[1],200)
-        sub=self.store.data[('vendor_subscriptions','sub')]
-        self.assertEqual(sub['status'],'active')
-        self.assertEqual((datetime.fromisoformat(sub['end_date'])-datetime.fromisoformat(sub['start_date'])).days,90)
-        self.assertEqual(self.moderate()[1],200)
-        self.assertEqual(len([key for key in self.store.data if key[0]=='notifications']),1)
-        self.assertEqual(self.moderate(False)[1],409)
+    def test_legacy_manual_approval_cannot_unlock_or_attest_payment(self):
+        before=dict(self.store.data[('vendor_subscriptions','sub')])
+        self.assertEqual(self.moderate()[1],409)
+        self.assertEqual(self.store.data[('vendor_subscriptions','sub')],before)
+        self.assertEqual(self.store.data[('subscription_payments','pay')]['status'],'pending')
+        self.assertEqual(self.moderate()[1],409)
+        self.assertEqual(len([key for key in self.store.data if key[0]=='notifications']),0)
     def test_moderation_rejects_owner_or_amount_mismatch_before_writes(self):
         for field,value in [('vendor_id','attacker'),('amount',1),('currency','USD')]:
             self.store.data[('subscription_payments','pay')][field]=value
             self.assertEqual(self.moderate()[1],409)
             self.assertEqual(self.store.data[('vendor_subscriptions','sub')]['status'],'pending')
             self.assertEqual(self.store.data[('subscription_payments','pay')]['status'],'pending')
-    def test_reject_is_terminal_and_never_activates(self):
-        self.assertEqual(self.moderate(False)[1],200)
+    def test_legacy_rejection_requires_canonical_review_without_history_rewrite(self):
+        self.assertEqual(self.moderate(False)[1],409)
         self.assertEqual(self.moderate()[1],409)
         self.assertEqual(self.store.data[('vendor_subscriptions','sub')]['status'],'pending')
-    def test_subscription_query_uses_one_filter_and_selects_newest_valid_period(self):
-        now=datetime.now(timezone.utc)
-        docs=[]
-        for sid,age,status in [('old',10,'active'),('new',1,'active'),('pending',0,'pending')]:
-            self.store.data[('vendor_subscriptions',sid)]={'vendor_id':'vendor','status':status,
-                'start_date':(now-timedelta(days=age)).isoformat(),'end_date':(now+timedelta(days=1)).isoformat()}
-            docs.append(self.store.doc('vendor_subscriptions',sid).get())
-        from unittest.mock import MagicMock
-        query=MagicMock(); query.where.return_value.stream.return_value=docs
-        with patch.object(subscriptions,'col',return_value=query), self.app.test_request_context('/subscriptions/me'):
+    def test_legacy_me_projects_only_canonical_grant(self):
+        aggregate={'status':'active','current_grant_id':'canonical','plan_name':'Reviewed','usage':{'max_items':5},
+                   'starts_at':'2026-10-20T10:00:00+00:00','ends_at':'2026-11-20T10:00:00+00:00'}
+        with patch.object(subscriptions.service,'entitlements',return_value=aggregate) as canonical, self.app.test_request_context('/subscriptions/me'):
             g.user_id='vendor'
             response=subscriptions.my_subscription.__wrapped__()
-            self.assertEqual(response.json['uid'],'new')
-            query.where.assert_called_once()
+            self.assertEqual(response.json['uid'],'canonical')
+            self.assertEqual(response.json['max_items'],5)
+            canonical.assert_called_once_with('vendor')
 
     def test_plan_validation_rejects_nonfinite_and_invalid_duration(self):
         for plan in ({}, {'price':'NaN'}, {'price':-1}, {'price':1,'duration_days':-30},

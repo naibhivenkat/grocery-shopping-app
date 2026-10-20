@@ -21,6 +21,8 @@ env:
   REPOSITORY: backend-images
   IMAGE_NAME: backend
   SERVICE_NAME: grocery-backend
+  # Change this repository variable after authenticated Play push is configured.
+  PLAY_RTDN_EXPECTED_STATE: ${{ vars.PLAY_RTDN_EXPECTED_STATE || 'disabled' }}
 
 jobs:
   deploy:
@@ -137,7 +139,7 @@ jobs:
           curl --fail --show-error --silent \
             --retry 5 --retry-delay 5 --retry-all-errors \
             "$SERVICE_URL/health"
-          python app/backend/scripts/verify_deployed.py --base-url "$SERVICE_URL" --phase release --expected-release "$GITHUB_SHA"
+          python app/backend/scripts/verify_deployed.py --base-url "$SERVICE_URL" --phase release --expected-release "$GITHUB_SHA" --play-rtdn-state "$PLAY_RTDN_EXPECTED_STATE"
 
         # 🔟 Get currently deployed digest (IMPORTANT)
       - name: Get deployed digest
