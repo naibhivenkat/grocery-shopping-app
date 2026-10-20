@@ -74,27 +74,168 @@ def get_invoice(order_id):
 
 
 def invoice_html(invoice):
-    rows = ''.join('<tr>' + ''.join(f'<td>{escape(str(cell))}</td>' for cell in (
-        f"{line['name']} ({line['price_basis']})", line['quantity_label'], f"{line['subtotal']:.2f}", f"{line['discount']:.2f}",
-        f"{line['total']:.2f}", f"{line['status']} / {line['payment_status']}")) + '</tr>' for line in invoice['lines'])
-    details = ''.join(f'<p>{label}: {escape(str(invoice.get(key) or "-"))}</p>' for label, key in (
-        ('Bill', 'invoice_number'), ('Date', 'created_at'), ('Shop', 'shop_name'), ('Customer', 'customer_name'), ('Payment', 'payment_method')))
-    totals = ''.join(f'<p>{field.title()} (INR): {invoice[field]:.2f}</p>' for field in ('subtotal', 'discount', 'total', 'due'))
-    return f'''<!doctype html><html lang="en"><head><meta charset="utf-8">
-        <meta name="viewport" content="width=device-width, initial-scale=1"><title>LocalShop Order Bill</title><style>
-        @page {{ size:A4; margin:18mm; }}
-        body {{ font-family:"Noto Sans", "Noto Sans Kannada", "Noto Sans Devanagari", sans-serif; color:#183c28; font-size:10pt; max-width:1000px; margin:24px auto; padding:12px; }}
-        h1 {{ font-size:22pt; color:#25733c; border-bottom:3px solid #25733c; padding-bottom:12pt; }}
-        table {{ border-collapse:collapse; width:100%; margin:16pt 0; }}
-        th,td {{ border:1px solid #b9cbbd; padding:7pt; overflow-wrap:anywhere; text-align:left; }}
-        th {{ background:#e8f5e9; white-space:nowrap; font-size:8pt; }} td:nth-child(2) {{ white-space:nowrap; }} thead {{ display:table-header-group; }}
-        tr {{ break-inside:avoid; }} .note {{ color:#46564b; }}
-        @media print {{ body {{ margin:0; padding:0; }} button {{ display:none; }} }}
-        </style></head><body><h1>LocalShop Order Bill</h1>{details}
-        <p>{"Selected items only" if invoice.get("selection") else "Shop order items"}</p>
-        <table><thead><tr><th>Product</th><th>Qty</th><th>Subtotal</th><th>Discount</th><th>Payable</th><th>Status</th></tr></thead><tbody>{rows}</tbody></table>
-        {totals}<p class="note">An order bill is not proof of payment. Payment status and amount due are shown above.</p>
-        <button onclick="window.print()">Print bill</button></body></html>'''
+    """Restore the first mobile invoice's green/white card around trusted bill data.
+
+    The caller owns selection, prices, allocations and authorization. Rendering
+    never adds tax or treats a payment method as evidence of collected money.
+    """
+    def text(value):
+        return escape(str(value if value is not None else "-"))
+
+    def label(value):
+        return text(str(value or "Not available").replace("_", " ").title())
+
+    def money(value):
+        return f"₹{value:,.2f}"
+
+    lines = invoice['lines']
+    payment_states = {str(line.get('payment_status') or 'unknown').strip().lower() for line in lines}
+    if lines and all(line.get('payment_exempt') is True and line['total'] == 0 for line in lines):
+        payment_label, badge_kind = 'No payment required', 'settled'
+    elif payment_states == {'paid'} and invoice['due'] == 0:
+        payment_label, badge_kind = 'Paid', 'settled'
+    elif payment_states == {'paid'}:
+        payment_label, badge_kind = 'Payment review required', 'pending'
+    elif payment_states in ({'pending'}, {'unpaid'}):
+        payment_label, badge_kind = 'Payment pending', 'pending'
+    elif len(payment_states) == 1:
+        payment_label, badge_kind = label(next(iter(payment_states))), 'pending'
+    else:
+        payment_label, badge_kind = 'Mixed payment status' if lines else 'Payment status unavailable', 'pending'
+
+    rows = ''.join(f"""<tr>
+        <td class="product"><strong>{text(line['name'])}</strong><span class="price-basis">{text(line['price_basis'])}</span></td>
+        <td class="quantity numeric">{text(line['quantity_label'])}</td>
+        <td class="numeric">{money(line['subtotal'])}</td>
+        <td class="numeric">{money(line['discount'])}</td>
+        <td class="numeric payable">{money(line['total'])}</td>
+        <td class="line-status"><span>Order: {label(line['status'])}</span><span>Payment: {label(line['payment_status'])}</span></td>
+        </tr>""" for line in lines)
+    details = ''.join(f'<div class="detail"><span class="detail-label">{caption}</span><span class="detail-value">{text(invoice.get(field) or "-")}</span></div>'
+        for caption, field in (('Customer', 'customer_name'), ('Invoice number', 'invoice_number'),
+                               ('Order date', 'created_at'), ('Payment method', 'payment_method')))
+    totals = ''.join(f'<tr class="{style}"><th scope="row">{caption}</th><td class="numeric">{money(invoice[field])}</td></tr>'
+        for caption, field, style in (('Subtotal', 'subtotal', ''), ('Discount', 'discount', ''),
+                                     ('Total payable', 'total', 'grand-total'), ('Amount due', 'due', 'amount-due')))
+    selection = 'Selected items only' if invoice.get('selection') else 'Shop order items'
+    amendment_note = '<p class="notice">An order change is awaiting confirmation. This invoice shows the current order amounts.</p>' if invoice.get('amendment_pending') else ''
+    # loadHtmlString does not retain HTTP response headers. Keep an equivalent
+    # document policy; frame-ancestors is enforced by the endpoint header only.
+    policy = "default-src 'none'; style-src 'unsafe-inline'; script-src 'unsafe-inline'; frame-ancestors 'none'"
+    return f'''<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta http-equiv="Content-Security-Policy" content="{policy}">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>ALL LOCAL Order Invoice</title>
+<style>
+@page {{ size: A4; margin: 14mm; }}
+* {{ box-sizing: border-box; }}
+body {{ margin: 0; background: #f3f6f4; color: #23382b; font-family: "Poppins", "Noto Sans", "Noto Sans Kannada", "Noto Sans Devanagari", Arial, sans-serif; font-size: 1rem; line-height: 1.5; }}
+.container {{ max-width: 800px; margin: 0 auto; padding: 24px 16px; }}
+.invoice-card {{ background: #fff; border: 1px solid #dce7df; border-radius: 16px; box-shadow: 0 2px 12px rgba(24, 60, 40, .10); overflow: hidden; }}
+.invoice-header {{ position: relative; padding: 28px 24px; background: linear-gradient(135deg, #4caf50, #2e7d32); color: #fff; text-align: center; }}
+.invoice-header::before {{ content: ""; position: absolute; inset: 0; background: rgba(0, 0, 0, .25); }}
+.invoice-header > * {{ position: relative; }}
+.brand-name {{ display: block; font-size: .875rem; font-weight: 700; letter-spacing: .12em; }}
+h1 {{ margin: 5px 0 14px; font-size: 1.75rem; line-height: 1.25; }}
+.payment-badge {{ display: inline-block; max-width: 100%; padding: 5px 14px; border: 1px solid rgba(255,255,255,.65); border-radius: 24px; background: #fff; color: #184d25; font-size: .875rem; font-weight: 700; overflow-wrap: anywhere; }}
+.payment-badge.pending {{ background: #fff5d6; color: #714900; }}
+.section {{ padding: 22px 24px; }}
+.invoice-details {{ display: flex; flex-wrap: wrap; padding-bottom: 6px; }}
+.detail {{ flex: 1 1 44%; min-width: 0; margin: 0 16px 16px 0; }}
+.detail-label {{ display: block; margin-bottom: 3px; color: #526659; font-size: .8125rem; font-weight: 600; }}
+.detail-value {{ display: block; font-weight: 600; overflow-wrap: anywhere; word-break: break-word; }}
+.shop-band {{ margin: 0 24px; padding: 14px 18px; border-left: 4px solid #4caf50; border-radius: 8px; background: #f1f8e9; }}
+.shop-band .detail-value {{ color: #1b5e20; font-size: 1.0625rem; }}
+h2 {{ margin: 0 0 4px; font-size: 1rem; color: #1b5e20; }}
+.section-note {{ margin: 0 0 14px; color: #526659; font-size: .875rem; }}
+.table-scroll {{ overflow-x: auto; width: 100%; border: 1px solid #d4e3d7; border-radius: 8px; }}
+.table-scroll:focus-visible {{ outline: 3px solid #2e7d32; outline-offset: 3px; }}
+.items-table {{ width: 100%; min-width: 660px; border-collapse: collapse; font-size: .875rem; }}
+.items-table th {{ background: #c8e6c9; color: #183c28; padding: 11px 10px; font-weight: 700; text-align: left; white-space: nowrap; }}
+.items-table td {{ padding: 12px 10px; vertical-align: top; border-top: 1px solid #dce7df; }}
+.items-table tbody tr:nth-child(even) {{ background: #f8fbf8; }}
+.product {{ width: 28%; min-width: 170px; overflow-wrap: anywhere; word-break: break-word; }}
+.product strong {{ display: block; font-weight: 600; }}
+.price-basis {{ display: block; margin-top: 4px; color: #526659; font-size: .8125rem; }}
+.numeric {{ text-align: right !important; white-space: nowrap; font-variant-numeric: tabular-nums; word-break: normal; overflow-wrap: normal; }}
+.payable {{ font-weight: 700; color: #1b5e20; }}
+.line-status {{ min-width: 125px; font-size: .8125rem; overflow-wrap: anywhere; }}
+.line-status span {{ display: block; }}
+.line-status span + span {{ margin-top: 4px; color: #526659; }}
+.summary {{ max-width: 360px; margin: 20px 0 0 auto; }}
+.summary-table {{ width: 100%; border-collapse: collapse; }}
+.summary-table th, .summary-table td {{ padding: 8px 4px; text-align: left; font-weight: 400; }}
+.summary-table .grand-total {{ border-top: 1px solid #b7d5bd; color: #1b5e20; }}
+.summary-table .grand-total th, .summary-table .grand-total td {{ font-weight: 700; font-size: 1.0625rem; }}
+.summary-table .amount-due {{ background: #f1f8e9; }}
+.summary-table .amount-due th, .summary-table .amount-due td {{ padding: 10px 8px; font-weight: 700; }}
+.notice {{ padding: 12px 14px; border-left: 3px solid #a16a00; background: #fff7e2; color: #644500; font-size: .875rem; overflow-wrap: anywhere; }}
+.invoice-footer {{ padding: 18px 24px; border-top: 1px solid #dce7df; text-align: center; color: #526659; font-size: .8125rem; }}
+.invoice-footer p {{ margin: 4px 0; }}
+.thank-you {{ color: #1b5e20; font-size: .9375rem; }}
+.print-actions {{ padding: 20px 0 4px; text-align: center; }}
+.print-button {{ min-height: 44px; padding: 11px 24px; border: 0; border-radius: 8px; background: #2e7d32; color: #fff; font: inherit; font-weight: 600; cursor: pointer; }}
+.print-button:focus-visible {{ outline: 3px solid #1b5e20; outline-offset: 3px; }}
+thead {{ display: table-header-group; }}
+tr, .invoice-header, .shop-band, .summary, .invoice-footer {{ break-inside: avoid; page-break-inside: avoid; }}
+@media (max-width: 520px) {{
+    .container {{ padding: 14px 10px; }}
+    .invoice-header {{ padding: 24px 18px; }}
+    .section {{ padding: 18px; }}
+    .detail {{ flex-basis: 100%; margin-right: 0; }}
+    .shop-band {{ margin: 0 18px; padding: 12px 14px; }}
+    .invoice-footer {{ padding: 16px 18px; }}
+}}
+@media print {{
+    body {{ background: #fff; font-size: 10pt; }}
+    .container {{ max-width: none; margin: 0; padding: 0; }}
+    .invoice-card {{ border: 0; border-radius: 0; box-shadow: none; overflow: visible; }}
+    .invoice-header {{ padding: 12pt; background: #e8f5e9; color: #1b5e20; border-bottom: 2pt solid #2e7d32; }}
+    .invoice-header::before {{ display: none; }}
+    h1 {{ font-size: 20pt; margin-bottom: 8pt; }}
+    .brand-name, .payment-badge {{ font-size: 9pt; }}
+    .payment-badge {{ border: 1pt solid #60866a; background: #fff; color: #183c28; }}
+    .section {{ padding: 12pt 0; }}
+    .invoice-details {{ display: block; padding-bottom: 0; }}
+    .detail {{ display: inline-block; width: 48%; margin: 0 1% 8pt 0; vertical-align: top; }}
+    .shop-band {{ margin: 0; padding: 8pt 10pt; }}
+    .table-scroll {{ overflow: visible; border: 0; border-radius: 0; }}
+    .items-table {{ min-width: 0; table-layout: fixed; font-size: 8pt; }}
+    .items-table th, .items-table td {{ padding: 6pt 4pt; }}
+    .items-table th:first-child, .items-table td:first-child {{ width: 28%; min-width: 0; }}
+    .items-table th:nth-child(2), .items-table td:nth-child(2) {{ width: 10%; }}
+    .items-table th:nth-child(3), .items-table td:nth-child(3), .items-table th:nth-child(4), .items-table td:nth-child(4), .items-table th:nth-child(5), .items-table td:nth-child(5) {{ width: 12%; }}
+    .items-table th:last-child, .items-table td:last-child {{ width: 26%; min-width: 0; }}
+    .price-basis, .line-status {{ font-size: 8pt; }}
+    .summary {{ max-width: 260pt; margin-top: 12pt; }}
+    .invoice-footer {{ padding: 10pt 0; font-size: 8pt; }}
+    .print-actions {{ display: none; }}
+}}
+</style>
+</head>
+<body>
+<main class="container">
+<article class="invoice-card" aria-label="Order invoice">
+<header class="invoice-header"><span class="brand-name">ALL LOCAL</span><h1>Order Invoice</h1><span class="payment-badge {badge_kind}">{payment_label}</span></header>
+<section class="section invoice-details" aria-label="Invoice details">{details}</section>
+<section class="shop-band" aria-label="Shop"><span class="detail-label">Shop</span><span class="detail-value">{text(invoice.get('shop_name') or 'Shop')}</span></section>
+<section class="section" aria-label="Invoice items">
+<h2>{selection}</h2><p class="section-note">Amounts in INR (₹). Quantities and price basis are shown for each item.</p>
+{amendment_note}
+<div class="table-scroll" role="region" aria-label="Invoice items; scroll horizontally on a narrow screen" tabindex="0">
+<table class="items-table"><thead><tr><th scope="col">Product</th><th scope="col" class="numeric">Qty</th><th scope="col" class="numeric">Subtotal</th><th scope="col" class="numeric">Discount</th><th scope="col" class="numeric">Payable</th><th scope="col">Status</th></tr></thead><tbody>{rows}</tbody></table>
+</div>
+<div class="summary"><table class="summary-table" aria-label="Invoice totals"><tbody>{totals}</tbody></table></div>
+</section>
+<footer class="invoice-footer"><p class="thank-you">Thank you for shopping with <strong>ALL LOCAL</strong>!</p><p>An order bill is not proof of payment. Payment status and amount due are shown above.</p></footer>
+</article>
+<div class="print-actions"><button id="print-bill" class="print-button" type="button" onclick="window.print()">Print bill</button></div>
+</main>
+</body>
+</html>'''
 
 
 def render_invoice(invoice):
