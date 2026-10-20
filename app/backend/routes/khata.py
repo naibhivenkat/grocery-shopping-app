@@ -204,10 +204,81 @@ def search_customers():
 @khata_bp.get("/khata/ledgers/<ledger_id>/transactions")
 @require_role("vendor", "customer", "service")
 def list_ledger_transactions(ledger_id):
-    _owned_ledger(ledger_id)
+    ledger = _owned_ledger(ledger_id)
     items = [to_dict(d) for d in col(KHATA_TRANSACTIONS).where(filter=FieldFilter("ledger_id", "==", ledger_id)).stream()]
+    for item in items:
+        item["can_void"] = g.user_id == ledger.get("vendor_id") and _manual_confirmed_entry(item, ledger)
     items.sort(key=lambda item: item.get("created_at") or "")
     return jsonify(items)
+
+
+def _manual_confirmed_entry(entry, ledger):
+    return (entry.get("status") == "confirmed"
+            and entry.get("recorded_by") == ledger.get("vendor_id")
+            and entry.get("vendor_id") == ledger.get("vendor_id")
+            and entry.get("customer_id") == ledger.get("customer_id")
+            and entry.get("type") in {"credit", "debit", "settlement"}
+            and entry.get("payment_method") in {None, "", "cash", "upi"}
+            and not any(entry.get(field) for field in (
+                "order_id", "payment_id", "payment_reference", "payment_intent_id",
+                "razorpay_payment_id", "refund_id", "booking_id")))
+
+
+@khata_bp.post("/khata/transactions/<transaction_id>/void")
+@require_role("vendor")
+def void_transaction(transaction_id):
+    """Reverse a mistaken manual entry while retaining its original audit record."""
+    payload = _payload()
+    if set(payload) - {"reason"}:
+        raise KhataError("Only reason may be supplied")
+    reason = _text(payload.get("reason"), "reason", 500)
+    if not reason:
+        raise KhataError("A reason is required")
+    txn_ref = doc(KHATA_TRANSACTIONS, _identifier(transaction_id, "transaction_id"))
+    notification_ref = col(NOTIFICATIONS).document()
+
+    @firestore.transactional
+    def void(tx):
+        snapshot = txn_ref.get(transaction=tx)
+        if not snapshot.exists:
+            raise KhataError("Transaction not found", 404)
+        entry = snapshot.to_dict() or {}
+        ledger_id = _identifier(entry.get("ledger_id"), "ledger_id")
+        ledger_ref = doc(KHATA_LEDGERS, ledger_id)
+        ledger_snap = ledger_ref.get(transaction=tx)
+        if not ledger_snap.exists:
+            raise KhataError("Ledger not found", 404)
+        ledger = ledger_snap.to_dict() or {}
+        if ledger.get("vendor_id") != g.user_id:
+            raise KhataError("Only this shop owner can correct entries", 403)
+        _parties_txn(tx, ledger.get("vendor_id"), ledger.get("customer_id"))
+        if entry.get("status") == "voided" and entry.get("voided_by") == g.user_id:
+            return {**entry, "uid": txn_ref.id, "can_void": False}, None
+        if not _manual_confirmed_entry(entry, ledger):
+            raise KhataError("Only confirmed manual shop entries can be corrected; reconcile linked payments or reject pending requests instead", 409)
+        amount = _money_paise(entry.get("amount"))
+        balance = _money_paise(ledger.get("balance", 0), allow_zero=True)
+        updated = balance - amount if entry["type"] == "credit" else balance + amount
+        if not 0 <= updated <= _MAX_PAISE:
+            raise KhataError("Correction would exceed the supported balance; reconciliation required", 409)
+        entries = tx.get(col(KHATA_TRANSACTIONS).where(filter=FieldFilter("ledger_id", "==", ledger_id)))
+        pending = sum(_money_paise((item.to_dict() or {}).get("amount")) for item in entries
+                      if (item.to_dict() or {}).get("status") == "pending")
+        if pending > updated:
+            raise KhataError("Review pending payment requests before reducing the balance", 409)
+        timestamp = now_iso()
+        changes = {"status": "voided", "void_reason": reason, "voided_by": g.user_id,
+                   "voided_at": timestamp}
+        tx.set(txn_ref, changes, merge=True)
+        tx.set(ledger_ref, {"balance": updated / 100, "status": "active", "updated_at": timestamp}, merge=True)
+        event = notification_data(ledger["customer_id"], "khata_transaction_voided", "Khata entry corrected",
+                                  f"A manual INR {amount / 100:.2f} entry was corrected.", ledger_id)
+        tx.set(notification_ref, event)
+        return {**entry, **changes, "uid": txn_ref.id, "can_void": False}, event
+
+    body, event = void(db().transaction())
+    deliver_push(event, lookup=doc)
+    return jsonify(body)
 
 
 def _idempotency_ref(ledger_id, payload):
@@ -373,7 +444,7 @@ def settle_ledger(ledger_id):
         if balance:
             transaction.set(txn_ref, {"ledger_id": ledger_id, "vendor_id": ledger.get("vendor_id"),
                 "customer_id": ledger.get("customer_id"), "type": "settlement", "amount": balance / 100,
-                "description": "Ledger settled", "payment_method": None, "recorded_by": g.user_id, "created_at": timestamp})
+                "description": "Ledger settled", "status": "confirmed", "payment_method": None, "recorded_by": g.user_id, "created_at": timestamp})
         transaction.set(ledger_ref, {"balance": 0.0, "status": "settled", "updated_at": timestamp}, merge=True)
         return {"ok": True}
 

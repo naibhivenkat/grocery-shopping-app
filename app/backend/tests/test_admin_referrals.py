@@ -184,6 +184,20 @@ class AdminReferralTests(unittest.TestCase):
         self.assertEqual(response.json["sent"], len(self.values(storage.USERS)))
         self.assertEqual(self.values(storage.NOTIFICATIONS)[0]["body"], "Details")
 
+    def test_announcement_push_occurs_after_inbox_commit_and_skips_suspended(self):
+        self.store.data[(storage.USERS, 'third_customer')]['is_suspended'] = True
+        seen = []
+        def delivered(event, **kwargs):
+            matches = [value for value in self.values(storage.NOTIFICATIONS) if value['user_id'] == event['user_id']]
+            self.assertEqual(len(matches), 1)
+            self.assertEqual(matches[0]['uid'], event['reference_id'])
+            seen.append(event['user_id'])
+        with patch.object(admin, 'deliver_push', side_effect=delivered):
+            response = self.call('/admin/notifications/send', {'title':'Notice', 'message':'Details', 'target':'customers'})
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(set(seen), {'customer', 'other_customer'})
+        self.assertEqual(response.json['sent'], 2)
+
     def generate(self, user="customer"):
         return self.call("/referrals/generate", user=user)
 

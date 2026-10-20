@@ -19,7 +19,7 @@ product_import_bp = Blueprint("product_import", __name__)
 product_import_bp.register_error_handler(KhataError, _khata_error)
 MAX_BYTES = 2 * 1024 * 1024
 MAX_ROWS = 200
-FIELDS = ("name", "category", "description", "price", "stock_quantity")
+FIELDS = ("name", "category", "description", "price", "stock_quantity", "selling_unit", "pricing_quantity", "stock_unit")
 
 
 def parse_products(contents, filename):
@@ -47,7 +47,7 @@ def parse_products(contents, filename):
             raise KhataError("A header row with name, price and stock_quantity is required")
         names = [str(value or "").strip().lower() for value in header]
         if len(set(names)) != len(names) or set(names) - set(FIELDS):
-            raise KhataError("Use only name, category, description, price, stock_quantity headers")
+            raise KhataError("Use only product fields and optional selling_unit, pricing_quantity, stock_unit headers")
         if not {"name", "price", "stock_quantity"}.issubset(names):
             raise KhataError("Required headers: name, price, stock_quantity")
         products, seen = [], set()
@@ -65,6 +65,11 @@ def parse_products(contents, filename):
             stock = values.get("stock_quantity")
             if isinstance(stock, float) and stock.is_integer():
                 values["stock_quantity"] = int(stock)
+            basis = values.get("pricing_quantity")
+            if isinstance(basis, float) and basis.is_integer():
+                values["pricing_quantity"] = int(basis)
+            elif isinstance(basis, str) and basis.isdigit():
+                values["pricing_quantity"] = int(basis)
             for field in ("name", "category", "description"):
                 values[field] = str(values.get(field) or "").strip()
             try:
@@ -91,7 +96,7 @@ def parse_products(contents, filename):
 @product_import_bp.get("/vendors/items/import/template")
 @require_role("vendor")
 def import_template():
-    return Response("name,category,description,price,stock_quantity\nRice,Groceries,1 kg bag,60,20\n",
+    return Response("name,category,description,price,stock_quantity,selling_unit,pricing_quantity,stock_unit\nRice,Groceries,Rice sold by weight,60,20000,kg,1000,g\n",
                     mimetype="text/csv", headers={"Content-Disposition": 'attachment; filename="products-template.csv"'})
 
 

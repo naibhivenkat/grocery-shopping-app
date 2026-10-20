@@ -161,6 +161,14 @@ def requested_journeys(api,store,customer,vendor,other,second_vendor,items,ledge
     api.call('vendor applies bill discount','PUT',discount,{'amount':2.35},vendor['token'])
     replaced=api.call('vendor replaces previous discount','PUT',discount,{'amount':5.35},vendor['token'])
     api.assertion('discount replacement and batch total exact',replaced['subtotal']==44.7 and replaced['discount']==5.35 and replaced['total']==39.35 and replaced['due']==39.35)
+    amounts={line['order_id']:line for line in replaced['lines']}
+    api.assertion('whole order discount shares conserve each paise',amounts[order_id]['discount']==2.96
+                  and amounts[batch['order_ids'][1]]['discount']==2.39 and sum(round(line['discount']*100) for line in replaced['lines'])==535)
+    selected=api.call('customer selects one discounted invoice item','GET',bill+'?line_id='+order_id,token=customer['token'])
+    api.assertion('selected invoice retains allocated discount without reapplying order rule',len(selected['lines'])==1
+                  and selected['lines'][0]['order_id']==order_id and selected['subtotal']==24.7 and selected['discount']==2.96
+                  and selected['total']==21.74 and selected['due']==21.74)
+    api.call('empty invoice selection rejected','GET',bill+'?line_id=',token=customer['token'],expected=422)
     vendor_bill=api.call('owner sees identical customer bill','GET',bill,token=vendor['token'])
     api.assertion('customer and owner share identical batch bill',vendor_bill==replaced)
     sibling=api.call('another cart line resolves same full bill','GET','/orders/'+batch['order_ids'][1]+'/invoice',token=customer['token'])
@@ -172,7 +180,7 @@ def requested_journeys(api,store,customer,vendor,other,second_vendor,items,ledge
     api.call('shop confirms discounted cash received','POST',cash_confirm,{},vendor['token'])
     api.call('cash confirmation retry','POST',cash_confirm,{},vendor['token'])
     paid=root.collection('customer_orders').document(order_id).get().to_dict()
-    api.assertion('discounted cash confirmation exact persisted values',paid['payment_status']=='paid' and paid['partial_amount_paid']==19.35 and paid['due_amount']==0)
+    api.assertion('discounted cash confirmation matches allocated line share',paid['payment_status']=='paid' and paid['subtotal']==24.7 and paid['discount_amount']==2.96 and paid['partial_amount_paid']==21.74 and paid['due_amount']==0)
     api.call('collected cash bill cannot be discounted','PUT',discount,{'amount':1},vendor['token'],409)
     api.call('paid cash cannot disappear through cancellation','POST','/orders/'+order_id+'/cancel',{},customer['token'],409)
     for oid in batch['order_ids']:
@@ -244,6 +252,99 @@ def requested_journeys(api,store,customer,vendor,other,second_vendor,items,ledge
     api.assertion('device revoked in actual emulator registry',root.collection('device_tokens').document(hashlib.sha256(token.encode()).hexdigest()).get().to_dict()['user_id'] is None)
 
 
+def remediation_journeys(api,store,customer,vendor,admin,suffix):
+    """Current amendment/unit invariants on real emulator transactions, no gateway."""
+    root=store.collection('localshop').document('v1')
+    def item(name,price,stock,**units):
+        return api.call(name+' fixture inventory','POST','/vendors/items',{'name':name,'price':price,
+                        'category':'Groceries','stock_quantity':stock,**units},vendor['token'],201)['uid']
+    def read(collection,identifier):return root.collection(collection).document(identifier).get().to_dict()
+    def order(identifier,quantity,key,**extra):
+        return api.call(key+' placement','POST','/orders',{'payment_method':'cash','item_id':identifier,
+                        'quantity':quantity,**extra},customer['token'],201,key+'-'+suffix)['order_id']
+    def propose(anchor,revision,lines,key):
+        return api.call(key+' proposal','POST','/vendors/orders/'+anchor+'/amendments',
+                        {'revision':revision,'reason':'Only these quantities are available','lines':lines},
+                        vendor['token'],201,key+'-'+suffix)
+    def desired(identifier,quantity,restock=False):
+        return {'item_id':identifier,'quantity':quantity,'quantity_unit':'piece','restock_removed':restock}
+    def accept(proposal,label):
+        return api.call(label,'POST','/order-amendments/'+proposal['uid']+'/decision',
+                        {'decision':'accepted','revision':proposal['revision']},customer['token'])
+
+    measured=item('Measured flour',100,10000,selling_unit='kg',pricing_quantity=1000,stock_unit='g')
+    measured_order=order(measured,250,'measured-order',quantity_unit='g')
+    api.assertion('250 grams priced from kilogram basis',read('customer_orders',measured_order)['total_price']==25
+                  and read('shop_items',measured)['stock_quantity']==9750)
+    api.call('old client cannot confuse kilogram with gram','POST','/orders',
+             {'item_id':measured,'quantity':1,'payment_method':'cash'},customer['token'],422,'missing-unit-'+suffix)
+    api.call('measured order cancellation','POST','/orders/'+measured_order+'/cancel',{},customer['token'])
+    api.assertion('measured cancellation restores canonical stock once',read('shop_items',measured)['stock_quantity']==10000)
+
+    partial=item('Partial stock fixture',10,10);substitute=item('Replacement fixture',20,3)
+    anchor=order(partial,10,'partial-order')
+    first=propose(anchor,0,[desired(partial,7)],'partial-seven')
+    api.assertion('proposal leaves original quantity and stock unchanged',read('customer_orders',anchor)['quantity']==10
+                  and read('shop_items',partial)['stock_quantity']==0)
+    api.call('pending proposal holds fulfillment','PUT','/vendors/orders/'+anchor+'/status',
+             {'status':'confirmed'},vendor['token'],409)
+    approved=accept(first,'customer accepts seven available pieces')
+    api.assertion('partial availability changes amount without phantom restock',approved['status']=='applied'
+                  and read('customer_orders',anchor)['quantity']==7 and read('customer_orders',anchor)['due_amount']==70
+                  and read('shop_items',partial)['stock_quantity']==0)
+    replay=accept(first,'customer approval replay')
+    api.assertion('acceptance replay retains one pricing revision',replay['uid']==first['uid']
+                  and read('customer_orders',anchor)['pricing_revision']==1)
+    replacement=propose(anchor,1,[desired(substitute,1)],'replace-unavailable')
+    api.call('admin cannot delete pending replacement product','DELETE','/admin/products/'+substitute,token=admin,expected=409)
+    replaced=accept(replacement,'customer accepts replacement')
+    replacement_id=replaced['lines'][0]['line_id']
+    bill=api.call('removed anchor still resolves current bill','GET','/orders/'+anchor+'/invoice',token=customer['token'])
+    api.assertion('replacement conserves inventory and tombstones original line',read('customer_orders',anchor)['status']=='removed'
+                  and read('shop_items',partial)['stock_quantity']==0 and read('shop_items',substitute)['stock_quantity']==2
+                  and [line['order_id'] for line in bill['lines']]==[replacement_id] and bill['total']==20)
+    increased=propose(anchor,2,[desired(substitute,2)],'increase-cash-order')
+    accept(increased,'customer accepts cash quantity increase')
+    api.assertion('cash increase applies quantity stock and payable once',read('customer_orders',replacement_id)['quantity']==2
+                  and read('customer_orders',replacement_id)['due_amount']==40 and read('shop_items',substitute)['stock_quantity']==1)
+    returned=propose(anchor,3,[desired(substitute,1,True)],'genuine-return')
+    accept(returned,'customer accepts explicit physical restock')
+    api.assertion('only explicit return restores inventory',read('shop_items',substitute)['stock_quantity']==2
+                  and read('customer_orders',replacement_id)['due_amount']==20)
+
+    paid_item=item('Paid cash fixture',10,10);paid_order=order(paid_item,10,'paid-cash-order')
+    api.call('emulator records cash receipt','POST','/vendors/orders/'+paid_order+'/payment/confirm',{},vendor['token'])
+    reduction=propose(paid_order,0,[desired(paid_item,7)],'paid-cash-seven')
+    reduced=accept(reduction,'customer accepts paid cash reduction')
+    api.assertion('paid cash reduction explicitly owes manual repayment',reduced['cash_refund_amount']==30
+                  and reduced['cash_refund_status']=='pending' and read('customer_orders',paid_order)['due_amount']==0
+                  and read('customer_orders',paid_order)['partial_amount_paid']==70)
+    refund_path='/order-amendments/'+reduction['uid']+'/cash-refund'
+    api.call('manual repayment requires actual reference','POST',refund_path,{'reference':''},vendor['token'],422)
+    repaid=api.call('emulator acknowledges manual repayment','POST',refund_path,{'reference':'LOCAL-ONLY-REPAYMENT'},vendor['token'])
+    retry=api.call('manual repayment acknowledgment replay','POST',refund_path,{'reference':'retry'},vendor['token'])
+    api.assertion('repayment retry preserves recorded reference',repaid==retry and repaid['cash_refund_status']=='completed'
+                  and repaid['cash_refund_reference']=='LOCAL-ONLY-REPAYMENT')
+
+    legacy_item=item('Legacy raw ID fixture',5,4);legacy=order(legacy_item,1,'legacy-order')
+    batch=read('customer_orders',legacy)['batch_id']
+    # Explicit historical emulator-only fixture. No production/provider records.
+    from google.cloud.firestore import DELETE_FIELD
+    root.collection('customer_orders').document(legacy).update({'batch_id':DELETE_FIELD})
+    root.collection('order_batches').document(batch).delete()
+    change=propose(legacy,0,[desired(legacy_item,2)],'legacy-change')
+    api.assertion('first legacy proposal binds raw ID to durable synthetic batch',read('customer_orders',legacy)['batch_id']=='single_'+legacy)
+    api.call('legacy proposal withdrawal','POST','/order-amendments/'+change['uid']+'/withdraw',{},vendor['token'])
+    # Seed a review hold directly, without inventing any captured payment.
+    root.collection('order_batches').document('single_'+legacy).update({'payment_review_required':True})
+    for method,suffix_path,body in (('PUT','/status',{'status':'confirmed'}),
+                                   ('POST','/payment/confirm',{}),('PUT','/discount',{'amount':0})):
+        api.call('legacy review hold blocks '+suffix_path,method,'/vendors/orders/'+legacy+suffix_path,body,vendor['token'],409)
+    api.call('legacy review hold blocks cancellation','POST','/orders/'+legacy+'/cancel',{},customer['token'],409)
+    api.assertion('legacy review retains original quantity and stock',read('customer_orders',legacy)['quantity']==1
+                  and read('customer_orders',legacy)['status']=='pending' and read('shop_items',legacy_item)['stock_quantity']==3)
+
+
 def journeys(api,store):
     suffix=uuid.uuid4().hex[:10];password=secrets.token_urlsafe(20)
     features=api.call('local feature contract','GET','/features')
@@ -312,11 +413,13 @@ def journeys(api,store):
         'ends_at':(now+timedelta(days=1)).isoformat()},vendor['token'],201)
     pid=promotion['uid'];purl='/promotions/'+pid
     api.assertion('free promotion pending moderation',promotion['price_paise']==0 and promotion['status']=='pending')
-    visible=lambda:api.call('public promotion feed','GET','/promotions?city_id='+city)
+    visible=lambda:api.call('selected shop promotion feed','GET','/promotions?city_id='+city+'&shop_id='+vendor['uid'])
     api.assertion('pending promotion hidden',all(p['uid']!=pid for p in visible()))
     api.call('customer cannot approve promotion','POST',purl+'/moderation',{'decision':'approved','revision':1},customer['token'],403)
     api.call('admin approves promotion','POST',purl+'/moderation',{'decision':'approved','revision':1},admin)
     api.assertion('approved promotion visible',any(p['uid']==pid for p in visible()))
+    api.assertion('global promotion feed stays empty',api.call('legacy global promotion feed','GET','/promotions?city_id='+city)==[])
+    api.assertion('another shop never shows this campaign',all(p['uid']!=pid for p in api.call('foreign shop promotion feed','GET','/promotions?city_id='+city+'&shop_id='+second_vendor['uid'])))
     api.call('vendor pauses promotion','PATCH',purl+'/pause',{'is_paused':True},vendor['token'])
     api.assertion('paused promotion hidden',all(p['uid']!=pid for p in visible()))
     api.call('vendor resumes promotion','PATCH',purl+'/pause',{'is_paused':False},vendor['token'])
@@ -352,6 +455,7 @@ def journeys(api,store):
     api.call('closed time booking rejected','POST','/bookings/create-pending',{'provider_id':vendor['uid'],'service_id':service,
         'slot_date':tomorrow,'slot_time':'23:00','duration':60},customer['token'],409)
     requested_journeys(api,store,customer,vendor,other,second_vendor,items,ledger,room,suffix)
+    remediation_journeys(api,store,customer,vendor,admin,suffix)
     api.assertion('no provider payment/capture records created',not list(store.collection('localshop').document('v1').collection('payment_orders').stream()))
 
 

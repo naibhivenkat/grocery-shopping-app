@@ -8,6 +8,8 @@ from auth_utils import require_role
 from db import CUSTOMER_ORDERS, SHOP_ITEMS, USERS, NOTIFICATIONS, col, db, doc, now_iso, to_dict
 from routes.khata import KhataError, _khata_error, _payload, _identifier, _text, _money_paise
 from notification_delivery import notification_data, deliver_push
+from routes.measurement import FIELDS as UNIT_FIELDS, metadata, explicit, acknowledge
+from routes.order_amendments import guard_order_mutation, cash_collection_plan
 
 
 vendors_bp = Blueprint("vendors", __name__)
@@ -24,12 +26,16 @@ def _stock(value):
 
 
 def _item_patch(payload, creating=False):
-    allowed = {"name", "description", "price", "category", "stock_quantity", "image_urls", "is_available", "low_stock_threshold"}
+    allowed = {"name", "description", "price", "category", "stock_quantity", "image_urls", "is_available", "low_stock_threshold"} | UNIT_FIELDS
     if set(payload) - allowed:
         raise KhataError("Unsupported item fields")
     if not payload:
         raise KhataError("Item fields required")
     data = {}
+    if creating and set(payload) & UNIT_FIELDS:
+        data.update(metadata(payload))
+    elif not creating:
+        data.update({key: payload[key] for key in UNIT_FIELDS if key in payload})
     for field, limit in (("name", 200), ("description", 4000), ("category", 200)):
         if field in payload or creating:
             data[field] = _text(payload.get(field), field, limit)
@@ -61,7 +67,8 @@ def _vendor_profile_fields():
     data = snap.to_dict() or {}
     return {
         "vendor_id": g.user_id,
-        "vendor_name": data.get("full_name") or data.get("shop_name"),
+        "vendor_name": data.get("shop_name") or data.get("full_name"),
+        "vendor_owner_name": data.get("full_name"),
         "vendor_phone": data.get("phone"),
         "vendor_email": data.get("email"),
         "vendor_latitude": data.get("latitude"),
@@ -109,6 +116,12 @@ def update_item(item_id):
             raise KhataError("Not your item", 403)
         if current.get("disabled_by_admin") is True and changes.get("is_available") is True and "stock_quantity" not in changes:
             raise KhataError("Only an admin can enable this item", 403)
+        combined = {**current, **changes}
+        metadata(combined)
+        if metadata(current)["stock_unit"] != metadata(combined)["stock_unit"]:
+            raise KhataError("Create a new product to change its inventory measurement", 409)
+        if any(field in changes for field in ("stock_quantity", "low_stock_threshold")):
+            acknowledge(current, changes.get("stock_unit"))
         stock = changes.get("stock_quantity", current.get("stock_quantity", 0))
         if changes.get("is_available") is True and _stock(stock) == 0:
             raise KhataError("An item with no stock cannot be available")
@@ -135,6 +148,11 @@ def delete_item(item_id):
         orders = tx.get(col(CUSTOMER_ORDERS).where(filter=FieldFilter("item_id", "==", item_id)))
         if any((snap.to_dict() or {}).get("status") in {"pending", "confirmed", "accepted", "packed"} for snap in orders):
             raise KhataError("Fulfill or cancel active orders before deleting this item", 409)
+        proposals = tx.get(col("order_amendments").where(filter=FieldFilter("vendor_id", "==", g.user_id)))
+        if any(((proposal.to_dict() or {}).get("status") in {"pending", "awaiting_payment"} or (proposal.to_dict() or {}).get("stock_reserved"))
+               and any(line.get("item_id") == item_id for line in (proposal.to_dict() or {}).get("lines", []))
+               for proposal in proposals):
+            raise KhataError("Resolve the pending order amendment before deleting this reserved product", 409)
         tx.delete(ref)
     remove(db().transaction())
     return jsonify({"ok": True})
@@ -182,6 +200,7 @@ def update_order_status(order_id):
             raise KhataError("Not your order", 403)
         if order.get("refund_status") in {"processing", "retryable", "submitted", "requires_review", "completed"}:
             raise KhataError("Refund is in progress or already processed", 409)
+        guard_order_mutation(tx, order, lookup=doc)
         current = aliases.get(order.get("status"), order.get("status"))
         if current == status:
             return None
@@ -192,7 +211,10 @@ def update_order_status(order_id):
         changes = {"status": status, "updated_at": now_iso()}
         if status == "delivered" and order.get("payment_method") == "cash":
             changes.update({"payment_status": "paid", "partial_amount_paid": order.get("total_price", 0), "due_amount": 0.0})
+        cash_writes = cash_collection_plan(tx, order, lookup=doc, collection=col) if status == "delivered" and order.get("payment_method") == "cash" else []
         tx.update(ref, changes)
+        for batch_ref, batch_changes in cash_writes:
+            tx.set(batch_ref, batch_changes, merge=True)
         event = notification_data(order["customer_id"], "order_status", "Order status updated",
             f"Your order is {status}.", order_id)
         tx.set(col(NOTIFICATIONS).document(), event)
@@ -215,6 +237,7 @@ def confirm_cash_payment(order_id):
             raise KhataError("Order not found", 404)
         if order.get("vendor_id") != g.user_id:
             raise KhataError("Not your order", 403)
+        guard_order_mutation(tx, order, lookup=doc)
         if order.get("payment_method") != "cash":
             raise KhataError("Online payments require provider verification", 409)
         if order.get("status") in {"cancelled", "rejected"} or order.get("refund_status"):
@@ -222,9 +245,18 @@ def confirm_cash_payment(order_id):
         if order.get("payment_status") == "paid":
             return None
         amount = _money_paise(order.get("total_price"), allow_zero=True)
+        if amount == 0:
+            if order.get("payment_exempt") is not True:
+                raise KhataError("Zero payment requires a verified order discount", 409)
+            tx.update(ref, {"payment_status": "paid", "partial_amount_paid": 0, "due_amount": 0,
+                            "updated_at": now_iso()})
+            return None
+        cash_writes = cash_collection_plan(tx, order, lookup=doc, collection=col)
         timestamp = now_iso()
         tx.update(ref, {"payment_status": "paid", "partial_amount_paid": amount / 100,
             "due_amount": 0, "paid_at": timestamp, "payment_confirmed_by": g.user_id, "updated_at": timestamp})
+        for batch_ref, batch_changes in cash_writes:
+            tx.set(batch_ref, batch_changes, merge=True)
         event = notification_data(order["customer_id"], "order_payment", "Cash payment confirmed",
             f"The shop confirmed INR {amount / 100:.2f} received.", ref.id)
         tx.set(col(NOTIFICATIONS).document(), event)

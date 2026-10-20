@@ -72,7 +72,7 @@ class BillingImportTests(unittest.TestCase):
         self.assertEqual(self.discount(10).json['total'], 150)
         self.assertEqual(self.discount(5).json['total'], 155)
         self.assertEqual(self.discount(0).json['total'], 160)
-        self.assertEqual(self.discount(120).status_code, 422)
+        self.assertEqual(self.discount(161).status_code, 422)
         self.assertEqual(self.discount('NaN').status_code, 422)
         self.assertEqual(self.discount(10, 'other').status_code, 403)
         self.assertEqual(self.discount(10, 'customer').status_code, 403)
@@ -81,6 +81,41 @@ class BillingImportTests(unittest.TestCase):
         with self.assertRaises(RuntimeError):
             self.discount(10)
         self.assertEqual(self.store.data, before)
+
+    def test_selected_invoice_uses_existing_discount_shares_only(self):
+        self.assertEqual(self.discount(16).status_code, 200)
+        result = self.client.get('/orders/rice/invoice?line_id=milk', headers=self.headers())
+        self.assertEqual(result.status_code, 200)
+        self.assertEqual([line['order_id'] for line in result.json['lines']], ['milk'])
+        self.assertEqual((result.json['subtotal'], result.json['discount'], result.json['total']), (40, 4, 36))
+        html = self.client.get('/orders/rice/invoice.html?line_id=milk', headers=self.headers())
+        self.assertEqual(html.status_code, 200)
+        self.assertIn(b'Selected items only', html.data)
+        self.assertIn(b'Milk', html.data)
+        self.assertNotIn(b'Rice', html.data)
+        self.assertEqual(html.headers['Cache-Control'], 'no-store')
+        with patch.object(billing, 'render_invoice', return_value=b'%PDF-selected') as render:
+            pdf = self.client.get('/orders/rice/invoice.pdf?line_id=milk', headers=self.headers())
+            self.assertEqual(pdf.status_code, 200)
+            self.assertEqual(render.call_args.args[0]['total'], 36)
+
+    def test_selection_rejects_empty_duplicates_foreign_and_removed_items(self):
+        for query in ('line_id=', 'line_id=milk&line_id=milk', 'line_id=foreign'):
+            self.assertEqual(self.client.get('/orders/rice/invoice?' + query, headers=self.headers()).status_code, 422)
+        self.store.data[(storage.CUSTOMER_ORDERS, 'milk')]['status'] = 'removed'
+        self.assertEqual(self.client.get('/orders/rice/invoice?line_id=milk', headers=self.headers()).status_code, 422)
+        full = self.client.get('/orders/rice/invoice', headers=self.headers())
+        self.assertEqual(len(full.json['lines']), 1)
+        self.assertEqual(self.client.get('/orders/rice/invoice.html').status_code, 401)
+        self.assertEqual(self.client.get('/orders/rice/invoice.html', headers=self.headers('other')).status_code, 403)
+
+    def test_html_escapes_all_stored_customer_and_product_content(self):
+        order = self.store.data[(storage.CUSTOMER_ORDERS, 'milk')]
+        order.update(item_name='<img src=x onerror=alert(1)>', customer_name='<script>bad()</script>')
+        html = self.client.get('/orders/milk/invoice.html', headers=self.headers())
+        self.assertNotIn(b'<img src=x', html.data)
+        self.assertNotIn(b'<script>bad()', html.data)
+        self.assertIn(b'&lt;img', html.data)
 
     def test_paid_online_khata_cancelled_discounts_blocked(self):
         order = self.store.data[(storage.CUSTOMER_ORDERS, 'rice')]

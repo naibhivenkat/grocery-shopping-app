@@ -109,6 +109,9 @@ def transactional(function):
 
 class BookingTransactionTests(unittest.TestCase):
     def setUp(self):
+        push = patch("routes.bookings.deliver_push")
+        self.push = push.start()
+        self.addCleanup(push.stop)
         self.store = Store()
         patches = [
             patch("db.col", self.store.col),
@@ -182,6 +185,21 @@ class BookingTransactionTests(unittest.TestCase):
         self.assertTrue(all(slot["booking_id"] == "booking-a" for slot in booked))
         self.assertEqual(self.confirm().status_code, 200)
         self.assertEqual(len([slot for slot in self.calendar()["slots"] if slot["status"] == "booked"]), 2)
+
+    def test_booking_events_are_committed_once_and_push_follows_transition(self):
+        self.assertEqual(self.confirm().status_code, 200)
+        self.assertEqual(self.confirm().status_code, 200)
+        self.assertEqual(self.push.call_count, 1)
+        event = self.push.call_args.args[0]
+        self.assertEqual(event['user_id'], 'provider-a')
+        self.assertEqual(event['reference_id'], 'booking-a')
+        self.assertEqual(event['type'], 'service_booking')
+        self.assertEqual(self.post('accept', identity='provider-a').status_code, 200)
+        self.assertEqual(self.push.call_args.args[0]['user_id'], 'customer-a')
+        events = [value for (collection, _), value in self.store.records.items() if collection == 'notifications']
+        self.assertEqual(len(events), 2)
+        self.assertEqual(self.post('accept', identity='other').status_code, 403)
+        self.assertEqual(self.push.call_count, 2)
 
     def test_confirm_preserves_server_quote_when_current_service_price_changes(self):
         self.store.data("provider_services", "service-a")["fixed_price"] = 300

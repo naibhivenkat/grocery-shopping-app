@@ -4,6 +4,8 @@ Provider calls are outside Firestore transactions. A persisted request, provider
 idempotency header and fenced lease make ambiguous response-loss retries safe.
 """
 from datetime import datetime, timedelta, timezone
+from routes.measurement import same_base
+from routes.order_amendments import guard_order_mutation, cancel_group_with_refunds
 from decimal import Decimal, InvalidOperation
 import hashlib
 import uuid
@@ -43,6 +45,14 @@ def _quantity(value, allow_zero=False):
 def refund_order(order_id, actor_id, allow_admin=False):
     if not isinstance(order_id, str) or not order_id or '/' in order_id or len(order_id) > 128:
         raise ValueError('Invalid order ID')
+    initial_snap = doc(CUSTOMER_ORDERS, order_id).get()
+    initial = initial_snap.to_dict() or {}
+    if initial.get('status') != 'cancelled' and (initial.get('total_paise') == 0 or initial.get('total_price') == 0):
+        raise ValueError('No payment was collected for this line; use an order amendment for group changes')
+    if initial.get('pricing_revision', 0) > 0 or (initial.get('batch_id') and initial.get('discount_amount', 0)):
+        if allow_admin:
+            raise ValueError('Revised shop orders must be cancelled through the owning shop amendment workflow')
+        return cancel_group_with_refunds(order_id, actor_id)
     order_ref = doc(CUSTOMER_ORDERS, order_id)
     refund_ref = doc(REFUNDS, order_id)
     lease_token = uuid.uuid4().hex
@@ -62,6 +72,9 @@ def refund_order(order_id, actor_id, allow_admin=False):
                 raise PermissionError('Current administrative permissions required')
         elif order.get('vendor_id') != actor_id:
             raise PermissionError('Not your order')
+        guard_order_mutation(tx, order, lookup=doc)
+        if order.get("pricing_revision", 0) > 0 or (order.get("batch_id") and order.get("discount_amount", 0)):
+            raise ValueError("Order changed; retry the refund through the group cancellation workflow")
         existing = refund_snap.to_dict() or {}
         status = existing.get('status')
         if status in {'completed', 'requires_review'}:
@@ -97,6 +110,8 @@ def refund_order(order_id, actor_id, allow_admin=False):
                 raise ValueError('Invalid original item; inventory reconciliation required')
             inventory_snap = doc(SHOP_ITEMS,item_id).get(transaction=tx)
             inventory = inventory_snap.to_dict() or {}
+            if inventory_snap.exists:
+                same_base(order, inventory)
             if inventory_snap.exists and inventory.get('stock_quantity') is not None:
                 _quantity(inventory['stock_quantity'],allow_zero=True)
         amount = _exact_paise(order)
@@ -196,6 +211,7 @@ def refund_order(order_id, actor_id, allow_admin=False):
                     inventory_error = 'Original item is missing; inventory reconciliation required'
                 elif item.get('stock_quantity') is not None:
                     try:
+                        same_base(order, item)
                         restore = _quantity(item['stock_quantity'],allow_zero=True) + _quantity(order.get('quantity'))
                     except ValueError:
                         inventory_error = 'Stock metadata changed; inventory reconciliation required'
@@ -228,7 +244,7 @@ def request_order_refund(order_id):
         return jsonify({'detail':'Refund amount and payment details are determined by the server; send an empty object'}),422
     try:
         result=refund_order(order_id,g.user_id)
-        status={'completed':200,'submitted':202,'processing':202,'retryable':503,'requires_review':409}[result['status']]
+        status={'completed':200,'submitted':202,'processing':202,'pending':202,'retryable':503,'requires_review':409}[result['status']]
         return jsonify({'success':result['status'] in {'submitted','completed'},'refund':result}),status
     except PermissionError as exc:
         return jsonify({'detail':str(exc)}),403

@@ -10,25 +10,27 @@ from db import (CUSTOMER_ORDERS, SUBSCRIPTION_PLANS, VENDOR_SUBSCRIPTIONS, NOTIF
                 WALLET_TRANSACTIONS, WALLETS, col, db, doc, now_iso)
 from razorpay_config import get_razorpay_client, get_razorpay_key_id
 from notification_delivery import notification_data, deliver_push
+from routes.order_amendments import guard_order_mutation, validate_amendment_payment, settle_captured_amendment, _expired
 
 razorpay_api_bp = Blueprint("razorpay_api", __name__)
 PAYMENT_ORDERS = "payment_orders"
-ALLOWED_PURPOSES = {"order", "subscription", "service"}
+ALLOWED_PURPOSES = {"order", "subscription", "service", "order_amendment"}
 
 
-def _amount_paise(value):
+def _amount_paise(value, *, allow_zero=False):
     try:
         amount = Decimal(str(value))
         paise = (amount * 100).quantize(Decimal("1"), rounding=ROUND_HALF_UP)
     except (InvalidOperation, TypeError, ValueError):
         return None
-    if not amount.is_finite() or paise <= 0 or paise > 10_000_000_00:
+    if not amount.is_finite() or amount < 0 or (paise < 0 if allow_zero else paise <= 0) or paise > 10_000_000_00:
         return None
     return int(paise)
 
 
 def _target_spec(purpose):
     return {"order": (CUSTOMER_ORDERS, "customer_id", "total_price"),
+            "order_amendment": ("order_amendments", "customer_id", "amount_due"),
             "service": ("service_bookings", "requester_id", "final_total"),
             "subscription": (VENDOR_SUBSCRIPTIONS, "vendor_id", "amount")}[purpose]
 
@@ -56,6 +58,8 @@ def _trusted_checkout(purpose, reference_id, user_id):
             raise ValueError("Payment reference is no longer payable")
         if purpose == "order" and data.get("payment_method") not in {"upi", "razorpay"}:
             raise ValueError("Order is not a Razorpay checkout")
+        if purpose == "order_amendment" and (data.get("status") != "awaiting_payment" or _expired(data)):
+            raise ValueError("Order amendment is no longer payable")
         if purpose == "service" and data.get("status") != "pending_payment":
             raise ValueError("Booking is no longer payable")
         amount = data.get(amount_field)
@@ -64,10 +68,12 @@ def _trusted_checkout(purpose, reference_id, user_id):
             if not plan.exists:
                 raise ValueError("Subscription plan not found")
             amount = (plan.to_dict() or {}).get("price")
-        paise = _amount_paise(amount)
-        if paise is None:
+        paise = _amount_paise(amount, allow_zero=purpose == "order")
+        if paise is None or (purpose == "order" and paise == 0 and data.get("payment_exempt") is not True):
             raise ValueError("Payment reference has an invalid server price")
         total += paise
+    if total <= 0:
+        raise ValueError("No payment is required for this order")
     if total > 10_000_000_00:
         raise ValueError("Checkout amount exceeds limit")
     return targets, total
@@ -119,6 +125,10 @@ def settle_payment_order(intent_id, payment_id, event_id=None):
                     "user_id": intent["user_id"], "type": "credit", "amount": amount,
                     "description": "Razorpay wallet recharge", "payment_intent_id": intent_id,
                     "payment_id": payment_id, "created_at": now_iso()}))
+        elif purpose == "order_amendment":
+            outcome = settle_captured_amendment(transaction, intent, payment_id, intent_id)
+            settlement_status = outcome["settlement_status"]
+            events.extend(outcome.get("events", []))
         elif purpose in ALLOWED_PURPOSES:
             collection, owner_field, _ = _target_spec(purpose)
             target_ids = intent.get("target_ids") or [intent.get("reference_id")]
@@ -135,6 +145,12 @@ def settle_payment_order(intent_id, payment_id, event_id=None):
                     or (data.get("payment_status") == "paid" and data.get("payment_intent_id") != intent_id)):
                     settlement_status = "requires_review"
                 targets.append((ref, data))
+            if purpose == "order":
+                amounts = [_amount_paise(data.get("total_price"), allow_zero=True) for _, data in targets]
+                if (any(value is None for value in amounts)
+                        or any(amount == 0 and data.get("payment_exempt") is not True for (_, data), amount in zip(targets, amounts))
+                        or sum(value or 0 for value in amounts) != intent.get("amount_paise")):
+                    settlement_status = "requires_review"
             # All target documents are read before any writes. A captured
             # cancelled/duplicate payment is retained for refund review.
             if settlement_status == "settled":
@@ -143,7 +159,8 @@ def settle_payment_order(intent_id, payment_id, event_id=None):
                         "payment_intent_id": intent_id, "razorpay_payment_id": payment_id,
                         "payment_id": payment_id, "paid_at": now_iso(), "updated_at": now_iso()}
                     if purpose == "order":
-                        updates.update({"partial_amount_paid": data.get("total_price"), "due_amount": 0})
+                        updates.update({"partial_amount_paid": data.get("total_price"), "due_amount": 0,
+                                        "payment_exempt": _amount_paise(data.get("total_price"), allow_zero=True) == 0})
                         for recipient in (data.get("customer_id"), data.get("vendor_id")):
                             if recipient:
                                 event = notification_data(recipient, "order_payment", "Payment confirmed",
@@ -242,12 +259,16 @@ def create_razorpay_order():
                 collection, owner_field, price_field = _target_spec(purpose)
                 if data.get(owner_field) != g.user_id:
                     raise PermissionError("Payment reference belongs to another account")
+                if purpose == "order":
+                    guard_order_mutation(tx, data, lookup=doc)
+                elif purpose == "order_amendment":
+                    validate_amendment_payment(tx, data, snap.id, g.user_id)
                 price = data.get(price_field)
                 if purpose == "subscription":
                     current_plan = doc(SUBSCRIPTION_PLANS, data.get("plan_id")).get(transaction=tx)
                     price = (current_plan.to_dict() or {}).get("price")
-                current_paise = _amount_paise(price)
-                if current_paise is None:
+                current_paise = _amount_paise(price, allow_zero=purpose == "order")
+                if current_paise is None or (purpose == "order" and current_paise == 0 and data.get("payment_exempt") is not True):
                     raise ValueError("Payment reference has an invalid server price")
                 reserved_total += current_paise
                 prior_id = data.get("payment_intent_id")

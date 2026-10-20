@@ -19,6 +19,8 @@ class InAppSupportTests(unittest.TestCase):
             ('users', 'service'): {'role': 'service'}, ('users', 'pending_vendor'): {'role': 'vendor', 'status': 'pending'},
             ('users', 'admin'): {'role': 'admin'}, ('users', 'suspended'): {'role': 'customer', 'is_suspended': True},
         }
+        push = patch.object(support, 'deliver_push')
+        self.push = push.start(); self.addCleanup(push.stop)
         self.gmail = MagicMock()
         self.app = Flask(__name__)
         self.app.config['TESTING'] = True
@@ -184,6 +186,8 @@ class InAppSupportTests(unittest.TestCase):
         self.assertEqual(self.store.data, before)
         self.assertEqual(len(self.values('audit_logs')), 1)
         self.assertEqual(len(self.values('notifications')), 1)
+        self.assertEqual(self.push.call_count, 1)
+        self.assertEqual(self.push.call_args.args[0]['reference_id'], ticket)
         detail = self.call(f'/support/tickets/{ticket}', method='GET').json
         self.assertEqual(detail['status'], 'resolved')
         self.assertEqual(detail['messages'][-1]['bodyText'], 'Here is the answer')

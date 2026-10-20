@@ -9,7 +9,8 @@ from google.cloud import firestore
 from google.cloud.firestore_v1.base_query import FieldFilter
 
 from auth_utils import require_auth
-from db import db, col, doc, now_iso
+from db import db, col, doc, now_iso, NOTIFICATIONS
+from notification_delivery import notification_data, deliver_push
 from routes.availability import lock_slots_txn, release_slots_txn, validate_selection, _load_availability
 
 bookings_bp = Blueprint("bookings", __name__)
@@ -17,6 +18,16 @@ bookings_bp = Blueprint("bookings", __name__)
 COLL_BOOKINGS = "service_bookings"
 COLL_SERVICES = "provider_services"
 USERS = "users"
+
+def _booking_notice(transaction, booking_id, booking, state):
+    recipient = booking.get('provider_id') if g.user_id == booking.get('requester_id') else booking.get('requester_id')
+    if not _valid_id(recipient):
+        return None
+    event = notification_data(recipient, 'service_booking', 'Service booking ' + state,
+                              'Open your booking to view the latest details.', booking_id)
+    transaction.set(doc(NOTIFICATIONS, f'booking_{booking_id}_{state}_{recipient}'), event)
+    return event
+
 
 def _calculate_service_cost(service: dict, duration_minutes: int) -> float:
     pricing_type = service.get("pricing_type", "fixed")
@@ -284,9 +295,12 @@ def confirm_booking(booking_id):
             "updated_at": now_iso()
         }
         transaction.update(ref, updates)
+        return _booking_notice(transaction, booking_id, booking, "confirmed")
 
     try:
-        _confirm_tx(db().transaction())
+        event = _confirm_tx(db().transaction())
+        if event:
+            deliver_push(event, lookup=doc)
         return jsonify({"success": True, "detail": "Booking confirmed"}), 200
     except PermissionError as e:
         return jsonify({"detail": str(e)}), 403
@@ -321,9 +335,12 @@ def accept_booking(booking_id):
             "accepted_at": now_iso(),
             "updated_at": now_iso()
         })
+        return _booking_notice(transaction, booking_id, booking, "accepted")
 
     try:
-        _accept_tx(db().transaction())
+        event = _accept_tx(db().transaction())
+        if event:
+            deliver_push(event, lookup=doc)
         return jsonify({"success": True, "detail": "Booking accepted"}), 200
     except PermissionError as e:
         return jsonify({"detail": str(e)}), 403
@@ -375,8 +392,12 @@ def reject_booking(booking_id):
             "status": "rejected", "reject_reason": reason, "updated_at": now_iso(),
         })
 
+        return _booking_notice(transaction, booking_id, booking, "rejected")
+
     try:
-        _reject_tx(db().transaction())
+        event = _reject_tx(db().transaction())
+        if event:
+            deliver_push(event, lookup=doc)
     except PermissionError as e:
         return jsonify({"detail": str(e)}), 403
     except ValueError as e:
@@ -413,9 +434,12 @@ def start_booking(booking_id):
             "started_at": now_iso(),
             "updated_at": now_iso()
         })
+        return _booking_notice(transaction, booking_id, booking, "started")
 
     try:
-        _start_tx(db().transaction())
+        event = _start_tx(db().transaction())
+        if event:
+            deliver_push(event, lookup=doc)
         return jsonify({"success": True, "detail": "Service started"}), 200
     except PermissionError as e:
         return jsonify({"detail": str(e)}), 403
@@ -439,7 +463,7 @@ def complete_booking(booking_id):
             raise PermissionError("Forbidden: You are not the provider")
 
         if booking.get("status") == "completed":
-            return booking
+            return None
         if booking.get("status") != "started" or booking.get("payment_status") != "paid":
             raise ValueError("Service must be started before completion")
 
@@ -463,10 +487,12 @@ def complete_booking(booking_id):
                 })
                 transaction.set(e_ref, {"lifetime_total": e_total + provider_earning, "updated_at": now_iso()}, merge=True)
         transaction.update(ref, {"status": "completed", "completed_at": now_iso(), "updated_at": now_iso()})
-        return booking
+        return _booking_notice(transaction, booking_id, booking, "completed")
 
     try:
-        _complete_tx(db().transaction())
+        event = _complete_tx(db().transaction())
+        if event:
+            deliver_push(event, lookup=doc)
         return jsonify({"success": True, "detail": "Service completed & earnings settled"}), 200
     except PermissionError as e:
         return jsonify({"detail": str(e)}), 403
@@ -506,8 +532,12 @@ def cancel_booking(booking_id):
             )
         transaction.update(ref, {"status": "cancelled", "cancelled_by": g.user_id, "updated_at": now_iso()})
 
+        return _booking_notice(transaction, booking_id, booking, "cancelled")
+
     try:
-        _cancel_tx(db().transaction())
+        event = _cancel_tx(db().transaction())
+        if event:
+            deliver_push(event, lookup=doc)
     except PermissionError as e:
         return jsonify({"detail": str(e)}), 403
     except ValueError as e:

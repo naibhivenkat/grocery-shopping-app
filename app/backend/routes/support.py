@@ -1,4 +1,5 @@
 """Authorized Support Center with durable send identity and honest mail status."""
+from notification_delivery import deliver_push
 import base64
 import binascii
 import hashlib
@@ -332,12 +333,14 @@ def send_ticket_reply(ticket_id,reply_body,actor_id,actor_email='',actor_name=''
         if not message_snap.exists:
             tx.create(doc(AUDIT_LOGS,message_id),{'admin_id':actor_id,'admin_email':actor_email,'action':'Reply to Ticket',
                 'target_id':ticket_id,'target_type':'support_ticket','created_at':timestamp})
-        return {'message_id':message_id,'request':original,'channel':channel,'inbound_id':ticket.get('last_inbound_message_id')}
+        return {'message_id':message_id,'request':original,'channel':channel,'inbound_id':ticket.get('last_inbound_message_id'), 'push': ({'user_id':customer_id,'type':'support_reply','title':'Support replied','body':'You have a new reply to your support request','reference_id':ticket_id} if notification_ref is not None and not notification_exists else None)}
     acquired=acquire(db().transaction())
     if acquired.get('missing'):return {'detail':'Ticket not found'},404
     if acquired.get('skip'):
         status=acquired['status']
         return {'success':status in {'sent','recorded'},'status':status,'message_id':acquired['message_id'],**({'delivery_channel':acquired['channel']} if acquired.get('channel') else {})},202 if status=='sending' else 200
+    if acquired.get('push'):
+        deliver_push(acquired['push'], lookup=doc)
     if acquired.get('channel')=='internal':return {'success':True,'status':'recorded','delivery_channel':'internal','message_id':acquired['message_id']},200
     message_ref=doc(SUPPORT_MESSAGES,acquired['message_id']);original=acquired['request']
     sent=None;error_status=None

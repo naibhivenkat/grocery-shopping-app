@@ -12,6 +12,7 @@ from auth_utils import require_role
 from db import SHOP_ITEMS, col, db, doc, now_iso, to_dict
 from routes.khata import KhataError, _khata_error, _payload, _identifier
 from routes.vendors import _stock
+from routes.measurement import acknowledge
 
 
 inventory_bp = Blueprint("inventory", __name__)
@@ -40,22 +41,23 @@ def list_inventory():
 def update_stock(item_id):
     payload = _payload()
     quantity = _stock(payload.get("quantity"))
-    _update_atomic([(_identifier(item_id, "item_id"), quantity)])
+    _update_atomic([(_identifier(item_id, "item_id"), quantity, payload.get("stock_unit"))])
     return jsonify({"ok": True})
 
 
 def _update_atomic(items):
     @firestore.transactional
     def update(tx):
-        refs = [doc(SHOP_ITEMS, identifier) for identifier, _ in items]
+        refs = [doc(SHOP_ITEMS, identifier) for identifier, _, _ in items]
         snapshots = [ref.get(transaction=tx) for ref in refs]
-        for snap in snapshots:
+        for snap, (_, _, unit) in zip(snapshots, items):
             if not snap.exists:
                 raise KhataError("Item not found", 404)
             if (snap.to_dict() or {}).get("vendor_id") != g.user_id:
                 raise KhataError("Not your item", 403)
+            acknowledge(snap.to_dict() or {}, unit)
         timestamp = now_iso()
-        for ref, snap, (_, quantity) in zip(refs, snapshots, items):
+        for ref, snap, (_, quantity, _) in zip(refs, snapshots, items):
             available = quantity > 0 and (snap.to_dict() or {}).get("disabled_by_admin") is not True
             tx.update(ref, {"stock_quantity": quantity, "is_available": available,
                 "last_restocked": timestamp, "updated_at": timestamp})
@@ -76,7 +78,7 @@ def bulk_update():
         if identifier in seen:
             raise KhataError("Duplicate item_id in stock update")
         seen.add(identifier)
-        prepared.append((identifier, _stock(entry.get("quantity"))))
+        prepared.append((identifier, _stock(entry.get("quantity")), entry.get("stock_unit")))
     _update_atomic(prepared)
     return jsonify({"ok": True, "updated": len(prepared)})
 

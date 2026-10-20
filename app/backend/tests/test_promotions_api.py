@@ -74,12 +74,17 @@ class Store:
     def transaction(self):
         return self
 
+    def set(self, ref, data):
+        ref.set(data)
+
     def update(self, ref, data):
         ref.update(data)
 
 
 class PromotionsApiTests(unittest.TestCase):
     def setUp(self):
+        push = patch("routes.promotions.deliver_push")
+        self.push = push.start(); self.addCleanup(push.stop)
         self.store = Store()
         self.patches = [
             patch("db.col", self.store.col),
@@ -142,7 +147,7 @@ class PromotionsApiTests(unittest.TestCase):
         self.assertEqual(campaign["revision"], 1)
         self.assertEqual(campaign["shop_id"], "vendor-a")
         self.assertEqual(campaign["city_id"], "city-a")
-        self.assertEqual(self.client.get("/promotions").json, [])
+        self.assertEqual(self.client.get("/promotions?shop_id=vendor-a").json, [])
 
     def test_create_product_and_forbid_another_vendor_targets(self):
         product = {**self.content, "target_type": "product", "product_id": "product-a"}
@@ -158,14 +163,21 @@ class PromotionsApiTests(unittest.TestCase):
         campaign_b = self.create(identity="vendor-b").json
         self.assertEqual(self.moderate(campaign["uid"]).status_code, 200)
         self.assertEqual(self.moderate(campaign_b["uid"], admin="superadmin-a").status_code, 200)
-        response = self.client.get("/promotions?city_id=city-a")
+        self.assertEqual(self.push.call_count, 2)
+        self.assertEqual(self.push.call_args.args[0]['type'], 'promotion_review')
+        self.assertEqual(len(self.store.col('notifications').records), 2)
+        response = self.client.get("/promotions?shop_id=vendor-a&city_id=city-a")
         self.assertEqual(response.status_code, 200)
         self.assertEqual(len(response.json), 1)
         public = response.json[0]
         self.assertEqual(public["shop_id"], "vendor-a")
         for private in ("email", "phone", "moderated_by", "moderation_reason", "vendor_id", "price_paise"):
             self.assertNotIn(private, public)
-        self.assertEqual(self.client.get("/promotions?limit=1").json[0]["uid"], campaign["uid"])
+        self.assertEqual(self.client.get("/promotions?shop_id=vendor-a&limit=1").json[0]["uid"], campaign["uid"])
+        self.assertEqual(self.client.get("/promotions").json, [])
+        other = self.client.get("/promotions?shop_id=vendor-b").json
+        self.assertEqual([value['uid'] for value in other], [campaign_b['uid']])
+        self.assertEqual(self.client.get("/promotions?shop_id=vendor-a&city_id=city-b").json, [])
 
     def test_edit_resets_approval_and_stale_review_cannot_approve(self):
         campaign = self.create().json
@@ -177,7 +189,7 @@ class PromotionsApiTests(unittest.TestCase):
         self.assertEqual(response.json["status"], "pending")
         self.assertEqual(response.json["revision"], 2)
         self.assertIsNone(response.json["moderated_by"])
-        self.assertEqual(self.client.get("/promotions").json, [])
+        self.assertEqual(self.client.get("/promotions?shop_id=vendor-a").json, [])
         self.assertEqual(self.moderate(campaign["uid"], revision=1).status_code, 409)
         self.assertEqual(self.moderate(campaign["uid"], revision=2).status_code, 200)
 
@@ -203,9 +215,9 @@ class PromotionsApiTests(unittest.TestCase):
         response = self.client.patch(url, json={"is_paused": True}, headers=self.headers())
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response.json["status"], "approved")
-        self.assertEqual(self.client.get("/promotions").json, [])
+        self.assertEqual(self.client.get("/promotions?shop_id=vendor-a").json, [])
         self.client.patch(url, json={"is_paused": False}, headers=self.headers())
-        self.assertEqual(len(self.client.get("/promotions").json), 1)
+        self.assertEqual(len(self.client.get("/promotions?shop_id=vendor-a").json), 1)
 
     def test_vendor_cannot_edit_or_pause_another_vendor_campaign(self):
         campaign = self.create().json
@@ -278,15 +290,15 @@ class PromotionsApiTests(unittest.TestCase):
     def test_public_hides_future_expired_suspended_missing_or_unavailable_targets(self):
         campaign = self.create({**self.content, "target_type": "product", "product_id": "product-a"}).json
         self.moderate(campaign["uid"])
-        self.assertEqual(len(self.client.get("/promotions").json), 1)
+        self.assertEqual(len(self.client.get("/promotions?shop_id=vendor-a").json), 1)
         self.store.col("users").records["vendor-a"]["is_suspended"] = True
-        self.assertEqual(self.client.get("/promotions").json, [])
+        self.assertEqual(self.client.get("/promotions?shop_id=vendor-a").json, [])
         self.store.col("users").records["vendor-a"]["is_suspended"] = False
         product = self.store.col("shop_items").records["product-a"]
         for change in ({"is_available": False}, {"stock_quantity": 0}, {"vendor_id": "vendor-b"}):
             original = copy.deepcopy(product)
             product.update(change)
-            self.assertEqual(self.client.get("/promotions").json, [])
+            self.assertEqual(self.client.get("/promotions?shop_id=vendor-a").json, [])
             product.clear()
             product.update(original)
         record = self.store.col("promotions").records[campaign["uid"]]
@@ -297,11 +309,11 @@ class PromotionsApiTests(unittest.TestCase):
             {"ends_at": (now - timedelta(seconds=1)).isoformat()}, {"starts_at": "invalid"},
         ):
             record.update(change)
-            self.assertEqual(self.client.get("/promotions").json, [])
+            self.assertEqual(self.client.get("/promotions?shop_id=vendor-a").json, [])
             record.clear()
             record.update(original)
         del self.store.col("shop_items").records["product-a"]
-        self.assertEqual(self.client.get("/promotions").json, [])
+        self.assertEqual(self.client.get("/promotions?shop_id=vendor-a").json, [])
 
     def test_admin_cannot_approve_expired_or_unavailable_campaign(self):
         campaign = self.create().json
@@ -322,10 +334,10 @@ class PromotionsApiTests(unittest.TestCase):
         # is_available remains true: administrative suspension still wins.
         self.assertEqual(self.create(content).status_code, 409)
         self.assertEqual(self.moderate(second["uid"]).status_code, 409)
-        self.assertEqual(self.client.get("/promotions").json, [])
+        self.assertEqual(self.client.get("/promotions?shop_id=vendor-a").json, [])
 
     def test_query_and_moderation_validation(self):
-        for query in ("limit=0", "limit=101", "limit=invalid", "city_id=..", "city_id=a/b"):
+        for query in ("limit=0", "limit=101", "limit=invalid", "city_id=..", "city_id=a/b", "shop_id=..", "shop_id=a/b"):
             self.assertEqual(self.client.get("/promotions?" + query).status_code, 422)
         self.assertEqual(self.client.get("/promotions/admin?status=active", headers=self.headers("admin-a")).status_code, 422)
         campaign = self.create().json

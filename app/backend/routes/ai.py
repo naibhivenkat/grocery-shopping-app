@@ -1,6 +1,8 @@
 """Inventory aggregation and private budget suggestions, without an external LLM."""
 
 from collections import Counter, defaultdict
+from routes.measurement import metadata, explicit
+from routes.khata import KhataError
 from decimal import Decimal, ROUND_DOWN, ROUND_HALF_UP
 
 from flask import Blueprint, g, jsonify, request
@@ -25,10 +27,11 @@ def _available_items(city_id):
         if item.get("is_available") is False or item.get("disabled_by_admin"):
             continue
         try:
+            metadata(item)
             item["price"] = finite_number(item.get("price"), "price", 0.01)
             if item.get("stock_quantity") is not None:
                 stock = finite_number(item["stock_quantity"], "stock_quantity", 1)
-                if not stock.is_integer():
+                if not stock.is_integer() or stock < metadata(item)["pricing_quantity"]:
                     continue
             vendor_id = valid_id(item.get("vendor_id"), "vendor_id")
             if vendor_id not in vendors:
@@ -40,7 +43,7 @@ def _available_items(city_id):
             item["category"] = text(item.get("category"), "category", 100)
             for field in ("name", "vendor_name", "area", "shop_area", "city_name"):
                 item[field] = text(item.get(field), field, 200)
-        except ValidationError:
+        except (ValidationError, KhataError):
             continue
         yield item
 
@@ -112,7 +115,8 @@ def budget_plan():
         if total_paise + price_paise > budget_paise:
             continue
         suggested.append({"item_id": item["uid"], "item_name": item["name"], "shop_name": item["vendor_name"],
-            "price": price_paise / 100, "category": item["category"]})
+            "price": price_paise / 100, "category": item["category"],
+            **({**metadata(item), "quantity": metadata(item)["pricing_quantity"], "quantity_unit": metadata(item)["stock_unit"]} if explicit(item) else {})})
         total_paise += price_paise
         if len(suggested) >= 20:
             break

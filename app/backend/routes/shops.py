@@ -22,6 +22,9 @@ from db import (
     to_dict,
 )
 from notification_delivery import notification_data, deliver_push
+from routes.measurement import metadata, explicit, acknowledge, line_paise, same_base, quantity_label
+from routes.discounts import best_promotion
+from routes.order_amendments import guard_order_mutation
 
 
 shops_bp = Blueprint("shops", __name__)
@@ -67,6 +70,7 @@ def _with_vendor_profile(item: dict) -> dict:
             "vendor_latitude",
             "vendor_longitude",
             "vendor_shop_description",
+            "vendor_owner_name",
         )
     )
     if not needs_profile:
@@ -78,16 +82,19 @@ def _with_vendor_profile(item: dict) -> dict:
 
     data = vendor.to_dict() or {}
     enriched = dict(item)
+    if "customer_id" not in item and data.get("shop_name"):
+        enriched["vendor_name"] = data["shop_name"]
     _fill_missing(
         enriched,
         "vendor_name",
-        data.get("full_name") or data.get("shop_name"),
+        data.get("shop_name") or data.get("full_name"),
     )
     _fill_missing(enriched, "vendor_phone", data.get("phone"))
     _fill_missing(enriched, "vendor_email", data.get("email"))
     _fill_missing(enriched, "vendor_latitude", data.get("latitude"))
     _fill_missing(enriched, "vendor_longitude", data.get("longitude"))
     _fill_missing(enriched, "vendor_shop_description", data.get("shop_address"))
+    _fill_missing(enriched, "vendor_owner_name", data.get("full_name"))
     return enriched
 
 @shops_bp.get("/shops")
@@ -176,6 +183,7 @@ def add_favorite():
         "price": item.get("price"),
         "image_urls": image_urls,
         "vendor_name": item.get("vendor_name"),
+        **({**metadata(item)} if explicit(item) else {}),
         "average_rating": item.get("average_rating"),
         "created_at": now_iso(),
     })
@@ -256,8 +264,8 @@ def _create_orders(payload, lines):
             qty = line.get("quantity")
             if not isinstance(item_id, str) or not item_id or "/" in item_id or item_id in seen:
                 raise ValueError("Each item must have a unique valid item_id")
-            if isinstance(qty, bool) or not str(qty).isdigit() or not 1 <= int(qty) <= 10000:
-                raise ValueError("quantity must be a positive integer up to 10000")
+            if isinstance(qty, bool) or not str(qty).isdigit() or not 1 <= int(qty) <= 10000000:
+                raise ValueError("quantity must be a positive canonical integer up to 10000000")
             seen.add(item_id)
             if method == "khata" and _paise(line.get("partial_amount_paid", 0)) != 0:
                 raise ValueError("Khata payments must be confirmed by the shop owner")
@@ -267,7 +275,8 @@ def _create_orders(payload, lines):
     batch_ref = col("order_batches").document(
         hashlib.sha256(f"{g.user_id}:{key}".encode()).hexdigest() if key else None)
     order_refs = [col(CUSTOMER_ORDERS).document() for _ in prepared]
-    fingerprint = hashlib.sha256(repr((method, [(i, q) for i, q, _ in prepared])).encode()).hexdigest()
+    fingerprint_lines = [(i, q, line["quantity_unit"]) if "quantity_unit" in line else (i, q) for i, q, line in prepared]
+    fingerprint = hashlib.sha256(repr((method, fingerprint_lines)).encode()).hexdigest()
     customer_name = _customer_name(g.user_id)
 
     @firestore.transactional
@@ -275,6 +284,8 @@ def _create_orders(payload, lines):
         existing = batch_ref.get(transaction=tx)
         if existing.exists:
             saved = existing.to_dict() or {}
+            if saved.get("abandoned"):
+                raise KhataError("Checkout was abandoned; start a new cart", 409)
             if saved.get("fingerprint") != fingerprint:
                 raise ValueError("idempotency_key already belongs to a different order")
             return saved["response"], None
@@ -302,7 +313,10 @@ def _create_orders(payload, lines):
             price = _paise(item.get("price"))
             if price <= 0:
                 raise ValueError("Item price is invalid")
-            total = price * quantity
+            units = acknowledge(item, line.get("quantity_unit"))
+            if not explicit(item) and quantity > 10000:
+                raise ValueError("Legacy quantity must not exceed 10000")
+            total = line_paise(price, quantity, item)
             if "total_price" in line and _paise(line["total_price"]) != total:
                 raise ValueError("Item price changed; refresh your cart")
             stock = item.get("stock_quantity")
@@ -318,12 +332,33 @@ def _create_orders(payload, lines):
                 "partial_amount_paid": 0.0, "due_amount": total / 100,
                 "item_name": item.get("name"), "item_description": item.get("description"),
                 "item_image_urls": item.get("image_urls") or ([item["image_url"]] if item.get("image_url") else []),
-                "item_unit_price": price / 100, "vendor_name": item.get("vendor_name"),
+                "item_unit_price": price / (100 * units["pricing_quantity"]),
+                "vendor_name": (vendor.to_dict() or {}).get("shop_name") or item.get("vendor_name") or (vendor.to_dict() or {}).get("full_name"),
+                "vendor_owner_name": (vendor.to_dict() or {}).get("full_name"),
+                "vendor_phone": (vendor.to_dict() or {}).get("phone") or item.get("vendor_phone"),
+                "vendor_email": (vendor.to_dict() or {}).get("email") or item.get("vendor_email"),
+                "vendor_shop_description": (vendor.to_dict() or {}).get("shop_address") or item.get("vendor_shop_description"),
+                **({**units, "item_selling_price": price / 100} if explicit(item) else {}),
                 "batch_id": batch_ref.id, "customer_name": customer_name,
                 "khata_ledger_id": ledger_ref.id if ledger_ref else None,
                 "created_at": now_iso(), "updated_at": now_iso(),
             }))
-        if debt > 1_000_000_000:
+        promotion_snapshots = list(tx.get(col("promotions").where(filter=FieldFilter("vendor_id", "==", vendor_id))))
+        promotion = best_promotion(promotion_snapshots, vendor_id,
+                                   [(data["item_id"], data["total_paise"]) for _, _, _, _, data in documents])
+        subtotal = debt
+        debt -= promotion["amount_paise"]
+        for _, _, _, _, data in documents:
+            gross = data["total_paise"]
+            share = promotion["shares"].get(data["item_id"], 0)
+            net = gross - share
+            data.update({"subtotal": gross / 100, "discount_amount": share / 100,
+                         "total_price": net / 100, "total_paise": net, "due_amount": net / 100,
+                         "promotion_id": promotion["promotion_id"], "promotion_revision": promotion["promotion_revision"],
+                         "promotion_rules": promotion["promotion_rules"], "payment_exempt": net == 0})
+            if debt == 0:
+                data.update({"payment_status": "paid", "due_amount": 0})
+        if subtotal > 1_000_000_000:
             raise ValueError("Order total exceeds the supported limit")
         new_balance = None
         if ledger_ref:
@@ -336,19 +371,26 @@ def _create_orders(payload, lines):
             if stock is not None:
                 remaining = int(stock) - quantity
                 tx.update(item_ref, {"stock_quantity": remaining, "is_available": remaining > 0, "updated_at": now_iso()})
-            if ledger_ref:
+            if ledger_ref and data["total_paise"] > 0:
                 tx.create(doc(KHATA_TRANSACTIONS, f"order_{ref.id}"), {
                     "ledger_id": ledger_ref.id, "vendor_id": vendor_id,
                     "customer_id": g.user_id, "type": "credit", "amount": data["total_price"],
-                    "order_id": ref.id, "description": "Khata order", "created_at": now_iso(),
+                    "order_id": ref.id, "batch_id": batch_ref.id,
+                    "item_name": data.get("item_name") or "Product",
+                    "quantity_label": quantity_label(data["quantity"], data),
+                    "description": f"{data.get('item_name') or 'Product'} · {quantity_label(data['quantity'], data)}",
+                    "created_at": now_iso(),
                 })
         if ledger_ref:
             tx.update(ledger_ref, {"balance": new_balance / 100, "updated_at": now_iso()})
         response = {"batch_id": batch_ref.id, "order_ids": [r.id for r in order_refs],
                     "order_id": order_refs[-1].id, "uid": order_refs[-1].id,
-                    "vendor_id": vendor_id, "count": len(order_refs), "total_price": debt / 100}
+                    "vendor_id": vendor_id, "count": len(order_refs), "total_price": debt / 100,
+                    "subtotal": subtotal / 100, "discount_amount": promotion["amount_paise"] / 100,
+                    "promotion_id": promotion["promotion_id"], "promotion_revision": promotion["promotion_revision"],
+                    "payment_exempt": debt == 0}
         tx.create(batch_ref, {"customer_id": g.user_id, "fingerprint": fingerprint,
-                              "response": response, "created_at": now_iso()})
+                              "response": response, "promotion_rules": promotion["promotion_rules"], "created_at": now_iso()})
         event = notification_data(vendor_id, "new_order", "New order",
             f"{customer_name or 'A customer'} placed an order for INR {debt / 100:.2f}.", response["order_id"])
         tx.set(col(NOTIFICATIONS).document(), event)
@@ -383,7 +425,7 @@ def create_orders_batch():
 @require_auth
 def list_customer_orders():
     query = col(CUSTOMER_ORDERS).where(filter=FieldFilter("customer_id", "==", g.user_id))
-    return jsonify([to_dict(d) for d in query.stream()])
+    return jsonify([_with_vendor_profile(to_dict(d)) for d in query.stream()])
 
 
 def cancel_order_atomic(order_id, actor_id, vendor=False):
@@ -400,8 +442,12 @@ def cancel_order_atomic(order_id, actor_id, vendor=False):
             return None
         if order.get("status") not in {"pending", "confirmed"}:
             raise ValueError("Order cannot be cancelled at this stage")
-        if order.get("payment_status") == "paid" and order.get("payment_method") in {"razorpay", "upi", "cash"}:
+        if order.get("payment_status") == "paid" and _paise(order.get("total_price")) > 0 and order.get("payment_method") in {"razorpay", "upi", "cash"}:
             raise ValueError("Paid orders require an original-method refund before cancellation")
+        guard_order_mutation(tx, order, lookup=doc)
+        discounted_members = list(tx.get(col(CUSTOMER_ORDERS).where(filter=FieldFilter("batch_id", "==", order["batch_id"])))) if order.get("batch_id") and _paise(order.get("discount_amount", 0)) > 0 else []
+        if order.get("pricing_revision", 0) > 0 or len(discounted_members) > 1:
+            raise ValueError("Use an order amendment to cancel or reprice this revised or discounted shop order")
         item_ref = doc(SHOP_ITEMS, order["item_id"])
         item = item_ref.get(transaction=tx)
         ledger_ref = ledger = None
@@ -411,6 +457,8 @@ def cancel_order_atomic(order_id, actor_id, vendor=False):
             ledger = ledger_ref.get(transaction=tx)
         item_data = item.to_dict() or {}
         restored_stock = None
+        if item.exists:
+            same_base(order, item_data)
         if item.exists and item_data.get("stock_quantity") is not None:
             restored_stock = _whole_quantity(item_data["stock_quantity"], allow_zero=True) + _whole_quantity(order["quantity"])
         balance = amount = None
@@ -427,7 +475,7 @@ def cancel_order_atomic(order_id, actor_id, vendor=False):
         tx.update(ref, {"status": "cancelled", "due_amount": 0.0, "updated_at": now_iso()})
         if restored_stock is not None:
             tx.update(item_ref, {"stock_quantity": restored_stock, "is_available": item_data.get("disabled_by_admin") is not True, "updated_at": now_iso()})
-        if ledger_ref:
+        if ledger_ref and amount > 0:
             tx.update(ledger_ref, {"balance": (balance - amount) / 100, "updated_at": now_iso()})
             tx.create(doc(KHATA_TRANSACTIONS, f"cancel_{order_id}"), {
                 "ledger_id": ledger_ref.id, "vendor_id": order["vendor_id"],

@@ -93,6 +93,10 @@ from routes.media import media_bp
 from routes.referrals import referrals_bp
 from routes.reviews import reviews_bp
 from routes.shops import shops_bp
+from routes.shop_applications import shop_applications_bp
+from routes.order_amendments import order_amendments_bp
+from routes.checkout_abandon import checkout_abandon_bp
+from routes.advertisements import advertisements_bp
 from routes.smoke import smoke_bp
 from routes.support import support_bp
 from routes.gmail_admin import gmail_admin_bp
@@ -157,6 +161,10 @@ def create_app() -> Flask:
     for bp in (
         auth_bp,
         shops_bp,
+        shop_applications_bp,
+        order_amendments_bp,
+        checkout_abandon_bp,
+        advertisements_bp,
         cities_bp,
         vendors_bp,
         admin_bp,

@@ -87,7 +87,7 @@ def _normalize_image(raw, declared_mime):
 
 
 @media_bp.post("/media/images")
-@require_role("vendor", "service")
+@require_role("vendor", "service", "admin", "super_admin")
 def upload_image():
     if (not isinstance(g.user_id, str) or not re.fullmatch(r"[A-Za-z0-9_.-]{1,128}", g.user_id)
         or g.user_id in (".", "..")):

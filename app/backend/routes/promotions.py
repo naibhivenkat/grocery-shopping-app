@@ -16,7 +16,10 @@ from flask import Blueprint, g, jsonify, request
 from google.cloud.firestore_v1.base_query import FieldFilter
 
 from auth_utils import require_role
-from db import SHOP_ITEMS, USERS, col, db, doc, now_iso, to_dict
+from db import SHOP_ITEMS, USERS, NOTIFICATIONS, col, db, doc, now_iso, to_dict
+from notification_delivery import notification_data, deliver_push
+from routes.discounts import RULE_FIELDS, rules
+from routes.khata import KhataError
 
 
 promotions_bp = Blueprint("promotions", __name__)
@@ -24,11 +27,11 @@ PROMOTIONS = "promotions"
 CONTENT_FIELDS = {
     "target_type", "shop_id", "product_id", "title", "body", "image_url",
     "starts_at", "ends_at",
-}
+} | RULE_FIELDS
 PUBLIC_FIELDS = {
     "uid", "target_type", "shop_id", "product_id", "city_id", "title", "body",
     "image_url", "starts_at", "ends_at", "target_name",
-}
+} | RULE_FIELDS
 
 
 class PromotionError(Exception):
@@ -162,8 +165,12 @@ def _content(content, vendor_id, vendor):
         raise PromotionError("ends_at must be in the future")
     if (ends - starts).days > 90 or (ends - starts).total_seconds() > 90 * 86400:
         raise PromotionError("A promotion can run for at most 90 days")
+    try:
+        discount_rules = rules(content)
+    except KhataError as error:
+        raise PromotionError(error.detail) from None
     return {
-        **_target(content, vendor_id, vendor),
+        **discount_rules, **_target(content, vendor_id, vendor),
         "title": _text(content.get("title"), "title", 100, required=True),
         "body": _text(content.get("body"), "body", 1000),
         "image_url": _image(content.get("image_url")),
@@ -222,6 +229,11 @@ def _visible_target(data):
 
 @promotions_bp.get("/promotions")
 def list_promotions():
+    # Shop campaigns belong only on that shop's page. Legacy global-feed
+    # callers receive an empty list; admin advertisements have a separate feed.
+    shop_id = request.args.get("shop_id")
+    if shop_id is not None:
+        _id(shop_id, "shop_id")
     city_id = request.args.get("city_id")
     if city_id is not None:
         _id(city_id, "city_id")
@@ -231,7 +243,10 @@ def list_promotions():
         raise PromotionError("limit must be an integer from 1 to 100")
     if not 1 <= limit <= 100:
         raise PromotionError("limit must be an integer from 1 to 100")
+    if not shop_id:
+        return jsonify([])
     query = col(PROMOTIONS).where(filter=FieldFilter("status", "==", "approved"))
+    query = query.where(filter=FieldFilter("shop_id", "==", shop_id))
     if city_id:
         query = query.where(filter=FieldFilter("city_id", "==", city_id))
     now = datetime.now(timezone.utc)
@@ -265,7 +280,7 @@ def create_promotion():
     ref.set({
         **content, "vendor_id": g.user_id, "status": "pending", "is_paused": False,
         "revision": 1, "price_paise": 0, "moderation_reason": None,
-        "moderated_at": None, "moderated_by": None,
+        "moderated_at": None, "moderated_by": None, "approved_revision": None,
         "created_at": timestamp, "updated_at": timestamp,
     })
     return jsonify(to_dict(ref.get())), 201
@@ -290,7 +305,7 @@ def update_promotion(promotion_id):
         content = _content(merged, g.user_id, account)
         transaction.update(ref, {
             **content, "status": "pending", "revision": data.get("revision", 0) + 1,
-            "moderation_reason": None, "moderated_at": None, "moderated_by": None,
+            "moderation_reason": None, "moderated_at": None, "moderated_by": None, "approved_revision": None,
             "updated_at": now_iso(),
         })
 
@@ -362,7 +377,13 @@ def moderate_promotion(promotion_id):
         transaction.update(ref, {
             "status": decision, "moderation_reason": reason or None,
             "moderated_by": g.user_id, "moderated_at": timestamp, "updated_at": timestamp,
+            "approved_revision": revision if decision == "approved" else None,
         })
+        event = notification_data(data['vendor_id'], 'promotion_review', 'Promotion ' + decision,
+                                  reason or 'Your shop promotion is approved.', promotion_id)
+        transaction.set(doc(NOTIFICATIONS, f'promotion_{promotion_id}_{revision}_{decision}'), event)
+        return event
 
-    moderate(db().transaction())
+    event = moderate(db().transaction())
+    deliver_push(event, lookup=doc)
     return jsonify(to_dict(ref.get()))

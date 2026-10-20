@@ -18,11 +18,13 @@ from db import (
     SHOP_ITEMS,
     APP_SETTINGS
 )
+from notification_delivery import deliver_push
 from flask import Blueprint, jsonify, request, g
 from firebase_admin import firestore
 from db import db
 from routes.khata import KhataError, _khata_error, _payload, _identifier, _text, _money_paise
 from routes.vendors import _item_patch, _stock
+from routes.measurement import metadata, acknowledge
 from google.cloud.firestore_v1.base_query import FieldFilter
 
 admin_bp = Blueprint("admin", __name__)
@@ -517,6 +519,12 @@ def update_product(product_id):
         if not snap.exists:
             raise KhataError("Product not found", 404)
         current = snap.to_dict() or {}
+        combined = {**current, **changes}
+        metadata(combined)
+        if metadata(current)["stock_unit"] != metadata(combined)["stock_unit"]:
+            raise KhataError("Create a new product to change its inventory measurement", 409)
+        if any(field in changes for field in ("stock_quantity", "low_stock_threshold")):
+            acknowledge(current, changes.get("stock_unit"))
         if changes.get("is_available") is True and _stock(changes.get("stock_quantity", current.get("stock_quantity", 0))) == 0:
             raise KhataError("An item with no stock cannot be available")
         tx.update(ref, {**changes, "updated_at": now_iso()})
@@ -611,8 +619,11 @@ def send_notification():
     batch = db.batch()
 
     count = 0
+    pending_pushes = []
 
     for user in users:
+        if (user.to_dict() or {}).get("is_suspended"):
+            continue
         ref = col(NOTIFICATIONS).document()
 
         batch.set(
@@ -630,14 +641,21 @@ def send_notification():
             },
         )
 
+        pending_pushes.append({"user_id": user.id, "type": "announcement", "title": title,
+                               "body": message, "reference_id": ref.id})
         count += 1
 
         if count % 450 == 0:
             batch.commit()
+            for event in pending_pushes:
+                deliver_push(event, lookup=doc)
+            pending_pushes.clear()
             batch = db.batch()
 
     if count % 450 != 0:
         batch.commit()
+        for event in pending_pushes:
+            deliver_push(event, lookup=doc)
 
     return jsonify(
         {
@@ -772,11 +790,17 @@ def delete_product(product_id):
     ref = doc(SHOP_ITEMS, _identifier(product_id, "product_id"))
     @firestore.transactional
     def remove(tx):
-        if not ref.get(transaction=tx).exists:
+        snapshot = ref.get(transaction=tx)
+        if not snapshot.exists:
             raise KhataError("Product not found", 404)
         orders = tx.get(col(CUSTOMER_ORDERS).where(filter=FieldFilter("item_id", "==", product_id)))
         if any((snap.to_dict() or {}).get("status") in {"pending", "confirmed", "accepted", "packed"} for snap in orders):
             raise KhataError("Fulfill or cancel active orders before deleting this item", 409)
+        proposals = tx.get(col("order_amendments").where(filter=FieldFilter("vendor_id", "==", (snapshot.to_dict() or {}).get("vendor_id"))))
+        if any(((proposal.to_dict() or {}).get("status") in {"pending", "awaiting_payment"} or (proposal.to_dict() or {}).get("stock_reserved"))
+               and any(line.get("item_id") == product_id for line in (proposal.to_dict() or {}).get("lines", []))
+               for proposal in proposals):
+            raise KhataError("Resolve the pending order amendment before deleting this reserved product", 409)
         tx.delete(ref)
     remove(db().transaction())
     log_admin_action(g.user_id, getattr(g, "user_email", ""), "Delete Product", product_id, "product")

@@ -85,9 +85,11 @@ class MediaImageTests(unittest.TestCase):
         self.assertEqual(response.status_code, 201)
         self.assertEqual(response.json["content_type"], "image/jpeg")
 
-    def test_customer_admin_deleted_and_suspended_accounts_cannot_upload(self):
-        for identity in ("customer-a", "admin-a"):
+    def test_customer_deleted_and_suspended_accounts_cannot_upload(self):
+        for identity in ("customer-a",):
             self.assertEqual(self.upload(identity=identity).status_code, 403)
+        self.store.col("users").records["admin-a"]["is_suspended"] = True
+        self.assertEqual(self.upload(identity="admin-a").status_code, 403)
         self.store.col("users").records["vendor-a"]["is_suspended"] = True
         self.assertEqual(self.upload().status_code, 403)
         del self.store.col("users").records["vendor-a"]
@@ -98,6 +100,13 @@ class MediaImageTests(unittest.TestCase):
         response = self.upload(identity="service-a")
         self.assertEqual(response.status_code, 201)
         self.assertTrue(response.json["path"].startswith("vendor_images/service-a/"))
+
+    def test_administrator_uploads_advertisement_image_in_own_prefix(self):
+        for identity, role in (("admin-a", "admin"), ("super-a", "super_admin")):
+            self.store.col("users").document(identity).set({"role": role})
+            response = self.upload(identity=identity)
+            self.assertEqual(response.status_code, 201)
+            self.assertTrue(response.json["path"].startswith(f"vendor_images/{identity}/"))
 
     def test_unsafe_account_id_and_duplicate_files_cannot_choose_object_paths(self):
         self.store.col("users").document("..").set({"role": "vendor"})
