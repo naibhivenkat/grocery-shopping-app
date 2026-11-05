@@ -6,7 +6,7 @@ from firebase_admin import firestore
 from flask import Blueprint, g, jsonify
 from google.cloud.firestore_v1.base_query import FieldFilter
 from auth_utils import require_role
-from db import REVIEWS, SHOP_ITEMS, USERS, col, db, doc, now_iso, to_dict
+from db import CUSTOMER_ORDERS, REVIEWS, SHOP_ITEMS, USERS, col, db, doc, now_iso, to_dict
 from routes.khata import KhataError, _khata_error, _payload, _identifier, _text
 
 reviews_bp = Blueprint("reviews", __name__)
@@ -51,6 +51,16 @@ def add_review():
             raise KhataError("Vendor is unavailable", 404)
         if not user.exists or (user.to_dict() or {}).get("role") != "customer" or (user.to_dict() or {}).get("is_suspended"):
             raise KhataError("Customer is unavailable", 403)
+        # Derive eligibility from trusted order records, never client linkage or
+        # author fields. Batch checkout also stores one order per item here.
+        orders = tx.get(col(CUSTOMER_ORDERS).where(filter=FieldFilter("customer_id", "==", g.user_id)))
+        if not any(
+            (order.to_dict() or {}).get("item_id") == item_id
+            and (order.to_dict() or {}).get("vendor_id") == vendor_id
+            and (order.to_dict() or {}).get("status") == "delivered"
+            for order in orders
+        ):
+            raise KhataError("A completed order for this item is required", 403)
         previous = list(tx.get(col(REVIEWS).where(filter=FieldFilter("item_id", "==", item_id))))
         own = [snap for snap in previous if (snap.to_dict() or {}).get("user_id") == g.user_id]
         if len(own) > 1:
