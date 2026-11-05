@@ -110,6 +110,24 @@ class SavedAddressTests(unittest.TestCase):
                 with self.subTest(verb=verb, body=body):
                     self.assertEqual(self.call(verb, identifier, body).status_code, 422)
         self.assertEqual(self.data, before)
+    def test_trimmed_boundaries_on_create_and_replace(self):
+        identifier = self.create()
+        for method, target, expected in (('POST', '', 201), ('PUT', identifier, 200)):
+            for field, limit in (('label', 80), ('address', 1000)):
+                with self.subTest(method=method, field=field):
+                    body = {'label': 'Home', 'address': 'Synthetic'}
+                    body[field] = ' \t' + 'x'*limit + '\n '
+                    response = self.call(method, target, body)
+                    self.assertEqual(response.status_code, expected)
+                    self.assertEqual(response.json[field], 'x'*limit)
+                    stored = self.call(identifier=response.json['id']).json
+                    self.assertEqual(stored[field], 'x'*limit)
+                    before = copy.deepcopy(self.data)
+                    for invalid in (' \t\n ', ' ' + 'x'*(limit+1) + ' '):
+                        body[field] = invalid
+                        self.assertEqual(self.call(method, target, body).status_code, 422)
+                    self.assertEqual(self.data, before)
+
     def test_boundaries_invalid_json_and_account_state(self):
         r = self.call('POST', body={'label': 'L'*80, 'address': 'A'*1000})
         self.assertEqual(r.status_code, 201)

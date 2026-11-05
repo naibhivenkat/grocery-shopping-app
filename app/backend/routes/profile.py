@@ -76,9 +76,12 @@ def _address_payload():
     cleaned = {}
     for field, limit in _ADDRESS_FIELDS.items():
         value = payload[field]
-        if not isinstance(value, str) or len(value) > limit or not value.strip():
+        if not isinstance(value, str):
             return None
-        cleaned[field] = value.strip()
+        value = value.strip()
+        if not value or len(value) > limit:
+            return None
+        cleaned[field] = value
     return cleaned
 
 
