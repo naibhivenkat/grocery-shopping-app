@@ -187,3 +187,57 @@ def list_service_reviews(service_id):
 @reviews_bp.get("/reviews/provider/<provider_id>")
 def list_provider_reviews(provider_id):
     return _list_service("provider_id", provider_id)
+
+
+@reviews_bp.put("/reviews/<review_id>/reply")
+@require_role("vendor", "service_provider")
+def put_review_reply(review_id):
+    review_id = _identifier(review_id, "review_id")
+    payload = _payload()
+    if set(payload) != {"text"}:
+        raise KhataError("Only text is required")
+    text = _text(payload["text"], "text", 2000)
+    if not text:
+        raise KhataError("text must not be blank")
+    review_ref = doc(REVIEWS, review_id)
+    reply_ref = doc("review_replies", review_id)
+
+    @firestore.transactional
+    def save(tx):
+        review = review_ref.get(transaction=tx)
+        if not review.exists:
+            raise KhataError("Review not found", 404)
+        data = review.to_dict() or {}
+        is_service = bool(data.get("service_id"))
+        target_id = data.get("service_id" if is_service else "item_id")
+        owner_id = data.get("provider_id" if is_service else "vendor_id")
+        role = "service_provider" if is_service else "vendor"
+        if not isinstance(target_id, str) or not target_id or "/" in target_id:
+            raise KhataError("Review target unavailable", 404)
+        target = doc("provider_services" if is_service else SHOP_ITEMS, target_id).get(transaction=tx)
+        if not target.exists:
+            raise KhataError("Review target unavailable", 404)
+        if (g.user_role != role or owner_id != g.user_id or
+                (target.to_dict() or {}).get("provider_id" if is_service else "vendor_id") != g.user_id):
+            raise KhataError("Insufficient permissions", 403)
+        previous = reply_ref.get(transaction=tx)
+        timestamp = now_iso()
+        reply = {"text": text, "created_at": (previous.to_dict() or {}).get("created_at", timestamp) if previous.exists else timestamp,
+                 "updated_at": timestamp}
+        tx.set(reply_ref, reply)
+        return reply, 200 if previous.exists else 201
+
+    body, status = save(db().transaction())
+    return jsonify(body), status
+
+
+@reviews_bp.get("/reviews/<review_id>/reply")
+def get_review_reply(review_id):
+    review_id = _identifier(review_id, "review_id")
+    if not doc(REVIEWS, review_id).get().exists:
+        raise KhataError("Review not found", 404)
+    reply = doc("review_replies", review_id).get()
+    if not reply.exists:
+        raise KhataError("Reply not found", 404)
+    data = reply.to_dict() or {}
+    return jsonify({key: data[key] for key in ("text", "created_at", "updated_at") if key in data})
