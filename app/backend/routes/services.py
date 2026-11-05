@@ -220,6 +220,7 @@ def discover_available_services():
 
     for s in query.stream():
         data = s.to_dict() or {}
+        raw_data = dict(data)
         provider_id = data.get("provider_id")
 
         # Skip malformed service documents without a provider.
@@ -274,6 +275,8 @@ def discover_available_services():
             "minimum_charge": data.get("minimum_charge", 0),
             "inspection_charge": data.get("inspection_charge", 0),
 
+            "discovery_metadata": _discovery_metadata(raw_data, user_data, prof_data),
+
             # Provider metadata
             "rating": _rating(
                 user_data.get("rating")
@@ -308,6 +311,26 @@ def discover_available_services():
     )
 
     return jsonify(result), 200
+
+def _discovery_metadata(service, user, profile):
+    """Keep discovery values distinct from legacy defaults and slot availability."""
+    def number(value, field, high=10_000_000):
+        try:
+            return finite_number(value, field, 0, high)
+        except ValidationError:
+            return None
+
+    fields = ("fixed_price", "min_price", "hourly_price", "per_30min_price",
+              "minimum_charge", "inspection_charge")
+    metadata = {field: number(service.get(field), field) for field in fields}
+    rating = number(user.get("rating"), "rating", 5)
+    if rating is None:
+        rating = number(profile.get("rating"), "rating", 5)
+    metadata["rating"] = rating
+    active = profile.get("is_active")
+    metadata["is_active"] = active if isinstance(active, bool) else None
+    return metadata
+
 
 def _rating(value):
     try:
