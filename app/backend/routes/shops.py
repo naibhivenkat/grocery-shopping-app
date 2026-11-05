@@ -27,7 +27,10 @@ from routes.discounts import best_promotion
 from routes.order_amendments import guard_order_mutation
 
 
+from routes.favorites import register_favorites
+
 shops_bp = Blueprint("shops", __name__)
+register_favorites(shops_bp)
 
 
 def _customer_name(user_id: str) -> str:
@@ -161,7 +164,8 @@ def list_favorites():
     query = col(USER_FAVORITES).where(
         filter=FieldFilter("user_id", "==", g.user_id)
     )
-    return jsonify([to_dict(d) for d in query.stream()])
+    return jsonify([to_dict(d) for d in query.stream()
+                    if "kind" not in (d.to_dict() or {})])
 
 
 @shops_bp.post("/shops/favorites")
