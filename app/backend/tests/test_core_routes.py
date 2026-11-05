@@ -184,6 +184,9 @@ class CoreRoutesTests(unittest.TestCase):
         self.assertEqual(self.values(storage.REVIEWS), [])
 
     def test_review_one_per_customer_and_atomic_average(self):
+        for customer in ("customer", "other_customer"):
+            self.store.data[(storage.CUSTOMER_ORDERS, "review_" + customer)] = {
+                "customer_id": customer, "vendor_id": "vendor", "item_id": "rice", "status": "delivered"}
         first = self.review(3)
         self.assertEqual(first.status_code, 201)
         self.assertEqual(self.review(5).status_code, 200)
@@ -195,6 +198,9 @@ class CoreRoutesTests(unittest.TestCase):
         self.assertNotIn("password_hash", first.json)
 
     def test_review_failure_does_not_leave_summary_or_review_written(self):
+        for customer in ("customer", "other_customer"):
+            self.store.data[(storage.CUSTOMER_ORDERS, "review_" + customer)] = {
+                "customer_id": customer, "vendor_id": "vendor", "item_id": "rice", "status": "delivered"}
         self.store.fail_commit = True
         before = copy.deepcopy(self.store.data)
         with self.assertRaises(RuntimeError):

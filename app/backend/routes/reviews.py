@@ -1,4 +1,4 @@
-"""Customer reviews with bounded ratings and an atomic item rating summary."""
+"""Eligible customer reviews with atomic item and service rating summaries."""
 import hashlib
 import json
 import math
@@ -30,6 +30,10 @@ def _rating(value):
 @require_role("customer")
 def add_review():
     payload = _payload()
+    if "service_id" in payload or "provider_id" in payload:
+        if "item_id" in payload or "vendor_id" in payload:
+            raise KhataError("Choose exactly one review target family")
+        return _add_service_review(payload)
     item_id = _identifier(payload.get("item_id"), "item_id")
     vendor_id = _identifier(payload.get("vendor_id"), "vendor_id")
     rating = _rating(payload.get("rating"))
@@ -89,7 +93,7 @@ def add_review():
 
 def _list(field, identifier):
     query = col(REVIEWS).where(filter=FieldFilter(field, "==", _identifier(identifier, field)))
-    items = [{key: value for key, value in to_dict(snap).items() if key in _PUBLIC_FIELDS} for snap in query.stream()]
+    items = [{key: value for key, value in to_dict(snap).items() if key in _PUBLIC_FIELDS} for snap in query.stream() if not (snap.to_dict() or {}).get("service_id")]
     items.sort(key=lambda item: item.get("created_at") or "", reverse=True)
     return jsonify(items)
 
@@ -102,3 +106,84 @@ def list_item_reviews(item_id):
 @reviews_bp.get("/reviews/vendor/<vendor_id>")
 def list_vendor_reviews(vendor_id):
     return _list("vendor_id", vendor_id)
+
+
+_SERVICE_PUBLIC_FIELDS = (_PUBLIC_FIELDS - {"item_id", "vendor_id"}) | {"service_id", "provider_id"}
+
+
+def _add_service_review(payload):
+    service_id = _identifier(payload.get("service_id"), "service_id")
+    provider_id = _identifier(payload.get("provider_id"), "provider_id")
+    booking_id = _identifier(payload.get("booking_id"), "booking_id")
+    rating = _rating(payload.get("rating"))
+    comment = _text(payload.get("comment"), "comment", 2000)
+    digest = hashlib.sha256(json.dumps([g.user_id, service_id]).encode()).hexdigest()
+    ref = doc(REVIEWS, "service_review_" + digest)
+    service_ref = doc("provider_services", service_id)
+
+    @firestore.transactional
+    def save(tx):
+        service = service_ref.get(transaction=tx)
+        provider = doc(USERS, provider_id).get(transaction=tx)
+        profile = doc("provider_profiles", provider_id).get(transaction=tx)
+        user = doc(USERS, g.user_id).get(transaction=tx)
+        booking = doc("service_bookings", booking_id).get(transaction=tx)
+        current = service.to_dict() or {}
+        if not service.exists or current.get("is_deleted") or current.get("is_active") is False:
+            raise KhataError("Service is unavailable", 404)
+        if current.get("provider_id") != provider_id:
+            raise KhataError("Provider does not own this service", 422)
+        if (not provider.exists or (provider.to_dict() or {}).get("is_suspended")
+                or not profile.exists or (profile.to_dict() or {}).get("is_active") is False):
+            raise KhataError("Provider is unavailable", 404)
+        user_data = user.to_dict() or {}
+        if not user.exists or user_data.get("role") != "customer" or user_data.get("is_suspended"):
+            raise KhataError("Customer is unavailable", 403)
+        data = booking.to_dict() or {}
+        if (not booking.exists or data.get("requester_id") != g.user_id
+                or data.get("service_id") != service_id or data.get("provider_id") != provider_id
+                or data.get("status") != "completed" or data.get("payment_status") != "paid"):
+            raise KhataError("A completed paid booking for this service is required", 403)
+        previous = list(tx.get(col(REVIEWS).where(filter=FieldFilter("service_id", "==", service_id))))
+        own = [snap for snap in previous if (snap.to_dict() or {}).get("user_id") == g.user_id]
+        if len(own) > 1:
+            raise KhataError("Duplicate customer reviews require reconciliation", 409)
+        selected = own[0].reference if own else ref
+        timestamp = now_iso()
+        data = {"user_id": g.user_id, "service_id": service_id, "provider_id": provider_id,
+                "booking_id": booking_id, "rating": rating, "comment": comment,
+                "user_name": user_data.get("full_name") or user_data.get("username") or "Customer",
+                "user_avatar": user_data.get("avatar_url"),
+                "created_at": (own[0].to_dict() or {}).get("created_at", timestamp) if own else timestamp,
+                "updated_at": timestamp}
+        ratings = [rating]
+        for snap in previous:
+            if snap.id == selected.id:
+                continue
+            try:
+                ratings.append(_rating((snap.to_dict() or {}).get("rating")))
+            except KhataError:
+                continue
+        tx.set(selected, data)
+        tx.update(service_ref, {"average_rating": sum(ratings) / len(ratings), "rating_count": len(ratings)})
+        return {**data, "uid": selected.id}, 200 if own else 201
+    body, status = save(db().transaction())
+    return jsonify(body), status
+
+
+def _list_service(field, identifier):
+    query = col(REVIEWS).where(filter=FieldFilter(field, "==", _identifier(identifier, field)))
+    items = [{key: value for key, value in to_dict(snap).items() if key in _SERVICE_PUBLIC_FIELDS}
+             for snap in query.stream() if (snap.to_dict() or {}).get("service_id")]
+    items.sort(key=lambda item: item.get("created_at") or "", reverse=True)
+    return jsonify(items)
+
+
+@reviews_bp.get("/reviews/service/<service_id>")
+def list_service_reviews(service_id):
+    return _list_service("service_id", service_id)
+
+
+@reviews_bp.get("/reviews/provider/<provider_id>")
+def list_provider_reviews(provider_id):
+    return _list_service("provider_id", provider_id)
