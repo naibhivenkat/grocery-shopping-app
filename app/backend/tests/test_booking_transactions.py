@@ -128,7 +128,7 @@ class BookingTransactionTests(unittest.TestCase):
         app.register_blueprint(bookings_bp)
         app.register_blueprint(availability_bp)
         self.client = app.test_client()
-        for identity, role in (("customer-a", "customer"), ("provider-a", "vendor"), ("other", "customer")):
+        for identity, role in (("customer-a", "customer"), ("provider-a", "service"), ("other", "customer")):
             self.store.put("users", identity, {"role": role, "full_name": identity})
         self.store.put("provider_profiles", "provider-a", {
             "working_schedule": {day: {"from": "09:00 AM", "to": "06:00 PM"} for day in ("Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun")},

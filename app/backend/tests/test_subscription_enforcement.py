@@ -28,6 +28,10 @@ class EnforcementTests(unittest.TestCase):
             self.app.register_blueprint(getattr(module, module.__name__.split('.')[-1] + '_bp'))
             for name, value in (('doc', self.store.doc), ('col', self.store.col), ('db', lambda: self.store)):
                 current = patch.object(module, name, value); current.start(); self.addCleanup(current.stop)
+        promotion_clock = patch.object(promotions, 'datetime', wraps=promotions.datetime)
+        promotion_datetime = promotion_clock.start()
+        self.addCleanup(promotion_clock.stop)
+        promotion_datetime.now.return_value = NOW
         for current in (patch.object(admin, 'log_admin_action'), patch.object(promotions, 'deliver_push'),
                         patch.object(auth.firestore, 'transactional', self.store.transactional)):
             current.start(); self.addCleanup(current.stop)

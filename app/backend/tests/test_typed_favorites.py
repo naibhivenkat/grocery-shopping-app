@@ -100,6 +100,7 @@ class TypedFavoritesTests(unittest.TestCase):
         self.data['shop_items','shared']={'disabled_by_admin':True}
         self.assertEqual(self.add('product').status_code,404)
     def test_legacy_union_dedup_and_shapes(self):
+        self.data['users','shared']['role'] = 'service'
         h={'Authorization':'Bearer alice'}
         self.assertEqual(self.client.post('/shops/favorites',json={'shop_item_id':'shared'},headers=h).status_code,201)
         self.assertEqual(self.client.post('/services/favourites/add',json={'provider_id':'shared'},headers=h).status_code,200)
@@ -107,7 +108,8 @@ class TypedFavoritesTests(unittest.TestCase):
         for k in ('product','provider'):
             self.assertTrue(self.call(suffix='/'+k+'/shared/check').json['is_favorite']);self.add(k)
         self.assertEqual(before,self.data)
-        self.add('shop')
+        self.data['users','shop'] = {'role': 'vendor', 'shop_name': 'Synthetic shop'}
+        self.assertEqual(self.add('shop','shop').status_code, 200)
         self.assertEqual(len(self.call().json['favorites']),3)
         self.assertTrue(all('kind' not in r for r in self.client.get('/shops/favorites',headers=h).json))
         self.assertEqual(len(self.client.get('/services/favourites',headers=h).json['providers']),1)

@@ -16,6 +16,13 @@ COLL_PROFILES = "provider_profiles"
 SERVICE_TIMEZONE = ZoneInfo("Asia/Kolkata")
 
 
+def _own_provider_active():
+    if g.user_role != "service":
+        return False
+    profile = doc(COLL_PROFILES, g.user_id).get()
+    return profile.exists and (profile.to_dict() or {}).get("is_active") is not False
+
+
 def validate_date(date):
     if not isinstance(date, str) or not re.fullmatch(r"\d{4}-\d{2}-\d{2}", date):
         raise ValueError("date must be YYYY-MM-DD")
@@ -144,6 +151,8 @@ def release_slots_txn(transaction, provider_id, date, start_time, duration, book
 @availability_bp.get("/provider/availability")
 @require_auth
 def get_own_availability():
+    if not _own_provider_active():
+        return jsonify({"detail": "An active provider profile is required"}), 403
     date = request.args.get("date")
     try:
         validate_date(date)
@@ -161,6 +170,8 @@ def get_own_availability():
 @availability_bp.put("/provider/availability")
 @require_auth
 def update_own_availability():
+    if not _own_provider_active():
+        return jsonify({"detail": "An active provider profile is required"}), 403
     payload = request.get_json(silent=True)
     if not isinstance(payload, dict):
         return jsonify({"detail": "Request body must be a JSON object"}), 422
@@ -225,7 +236,7 @@ def get_target_availability(provider_id):
         profile = doc(COLL_PROFILES, provider_id).get(transaction=transaction)
         user_data = user.to_dict() or {} if user.exists else {}
         profile_data = profile.to_dict() or {} if profile.exists else {}
-        if not user.exists or not profile.exists or user_data.get("is_suspended") or profile_data.get("is_active") is False:
+        if not user.exists or not profile.exists or user_data.get("is_suspended") or user_data.get("role") != "service" or profile_data.get("is_active") is False:
             raise ValueError("Provider not available")
         return _load_availability(transaction, provider_id, date)[1]
 

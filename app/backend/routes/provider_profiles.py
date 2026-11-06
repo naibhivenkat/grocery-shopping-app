@@ -6,7 +6,7 @@ from datetime import datetime
 
 from flask import Blueprint, g, jsonify, request
 
-from auth_utils import require_auth
+from auth_utils import require_role
 from db import doc, now_iso, to_dict
 
 provider_profiles_bp = Blueprint("provider_profiles", __name__)
@@ -86,7 +86,7 @@ def schedule(value):
 
 
 @provider_profiles_bp.get("/provider/profile")
-@require_auth
+@require_role("service")
 def get_provider_profile():
     snap = doc(PROVIDER_PROFILES, g.user_id).get()
     if not snap.exists:
@@ -95,7 +95,7 @@ def get_provider_profile():
 
 
 @provider_profiles_bp.put("/provider/profile")
-@require_auth
+@require_role("service")
 def update_provider_profile():
     payload = json_object({"location", "service_category_ids", "bank", "working_schedule", "is_active"})
     data = {}

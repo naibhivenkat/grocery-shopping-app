@@ -28,7 +28,7 @@ def _provider_data(user_id):
     profile = doc(PROVIDER_PROFILES, user_id).get()
     user_data = user.to_dict() or {} if user.exists else {}
     profile_data = profile.to_dict() or {} if profile.exists else {}
-    if not user.exists or not profile.exists or user_data.get("is_suspended") or profile_data.get("is_active") is False:
+    if not user.exists or not profile.exists or user_data.get("is_suspended") or user_data.get("role") != "service" or profile_data.get("is_active") is False:
         return None
     return user_data, profile_data
 
@@ -105,6 +105,8 @@ def update_service(service_id):
 @require_auth
 def delete_service(service_id):
     """Soft-delete an existing service. Verifies ownership."""
+    if not _provider_data(g.user_id):
+        raise ValidationError("An active provider profile is required", 403)
     valid_id(service_id, "service_id")
     snap = doc(PROVIDER_SERVICES, service_id).get()
     if not snap.exists:
@@ -125,6 +127,8 @@ def delete_service(service_id):
 @require_auth
 def list_own_services():
     """List services belonging to the authenticated provider."""
+    if not _provider_data(g.user_id):
+        raise ValidationError("An active provider profile is required", 403)
     query = col(PROVIDER_SERVICES).where(
         filter=FieldFilter("provider_id", "==", g.user_id)
     ).where(filter=FieldFilter("is_deleted", "==", False))
@@ -403,18 +407,13 @@ def get_favourites():
         if not provider_id:
             continue
 
-        # Look up provider details
-        user_snap = doc(USERS, provider_id).get()
-        prof_snap = doc(PROVIDER_PROFILES, provider_id).get()
-
-        if not user_snap.exists or not prof_snap.exists:
+        try:
+            eligible = _provider_data(provider_id)
+        except ValidationError:
             continue
-
-        user_data = user_snap.to_dict() or {}
-        prof_data = prof_snap.to_dict() or {} if prof_snap.exists else {}
-
-        if user_data.get("is_suspended") or prof_data.get("is_active") is False:
+        if not eligible:
             continue
+        user_data, prof_data = eligible
         # Preserve the ProviderEntity-compatible fields expected by Flutter
         providers.append({
             "id": provider_id,

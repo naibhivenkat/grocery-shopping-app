@@ -1,6 +1,8 @@
 """`/auth/*` endpoints consumed by `AuthRemoteDataSource` (Flutter)."""
 
 import hashlib
+import hmac
+import secrets
 import json
 import logging
 import os
@@ -33,7 +35,7 @@ def _validate_auth_json():
     if not isinstance(payload, dict):
         return jsonify({"detail": "JSON object required"}), 422
     fields = {"email", "username", "password", "new_password", "full_name",
-              "role", "phone", "city_id", "otp", "id_token"}
+              "role", "phone", "city_id", "otp", "id_token", "registration_proof"}
     if any(value is not None and (not isinstance(value, str) or len(value) > 4096)
            for key, value in payload.items() if key in fields):
         return jsonify({"detail": "Authentication fields must be strings"}), 422
@@ -134,7 +136,7 @@ def _identifier_reservation(field, value):
     return doc("auth_identifiers", field + "_" + hashlib.sha256(value.encode()).hexdigest())
 
 
-def _create_account_atomic(data, *, requires_otp=False):
+def _create_account_atomic(data, *, requires_otp=False, registration_proof=None):
     """Reserve unique identifiers and consume signup OTP with the new account.
 
     Legacy users are queried without rewriting them. Reservation documents also
@@ -170,7 +172,9 @@ def _create_account_atomic(data, *, requires_otp=False):
             otp_data = otp_snapshot.to_dict() or {}
             expires = _parse_iso(otp_data.get("expires_at"))
             if (not otp_snapshot.exists or otp_data.get("verified") is not True or expires is None or expires <= _utcnow()
-                or otp_data.get("purpose") not in (None, "registration") or otp_data.get("email") != data["email"]):
+                or otp_data.get("purpose") != "registration" or otp_data.get("email") != data["email"]
+                or not isinstance(registration_proof, str) or not registration_proof
+                or not hmac.compare_digest(otp_data.get("proof_hash") or "", hashlib.sha256(registration_proof.encode()).hexdigest())):
                 raise RegistrationError("Please verify OTP before registering", 400)
         from subscription_service import vendor_activation_plan
         activate_subscription = vendor_activation_plan(tx, ref.id, ref.id, lookup=doc) if data.get("role") == "vendor" else (lambda: None)
@@ -197,7 +201,7 @@ def _password_reset_otp_ref(email: str):
     return col("auth_otps").document(key)
 
 
-def _check_otp(ref, otp, *, purpose=None, mark_verified=False):
+def _check_otp(ref, otp, *, purpose=None, mark_verified=False, proof_hash=None):
     @firestore.transactional
     def verify(tx):
         snap = ref.get(transaction=tx)
@@ -205,7 +209,7 @@ def _check_otp(ref, otp, *, purpose=None, mark_verified=False):
         if not snap.exists or (purpose and data.get("purpose") != purpose):
             return None, "Invalid or expired OTP", 400
         expires = _parse_iso(data.get("expires_at"))
-        if expires is None or expires < _utcnow():
+        if expires is None or (expires <= _utcnow() if purpose == "registration" else expires < _utcnow()):
             tx.delete(ref)
             return None, "OTP expired", 400
         attempts = int(data.get("failed_attempts") or 0)
@@ -215,7 +219,7 @@ def _check_otp(ref, otp, *, purpose=None, mark_verified=False):
             tx.update(ref, {"failed_attempts": attempts + 1})
             return None, "Invalid OTP", 400
         if mark_verified:
-            tx.update(ref, {"verified": True, "verified_at": now_iso()})
+            tx.update(ref, {"verified": True, "verified_at": now_iso(), **({"proof_hash": proof_hash} if proof_hash else {})})
         return data, None, 200
     return verify(db().transaction())
 
@@ -341,6 +345,7 @@ def send_otp():
     expires_at = _utcnow() + timedelta(minutes=_OTP_TTL_MINUTES)
     if not _save_otp(_otp_ref(email), {
         "email": email,
+        "purpose": "registration",
         "otp_hash": hash_password(otp),
         "verified": False,
         "created_at": now_iso(),
@@ -370,10 +375,13 @@ def verify_otp():
         return jsonify({"detail": "Email and OTP are required"}), 422
 
     ref = _otp_ref(email)
-    _, error, status = _check_otp(ref, otp, mark_verified=True)
+    proof = secrets.token_urlsafe(32)
+    challenge, error, status = _check_otp(ref, otp, purpose="registration", mark_verified=True,
+                                  proof_hash=hashlib.sha256(proof.encode()).hexdigest())
     if error:
         return jsonify({"detail": error}), status
-    return jsonify({"success": True, "status": "success", "message": "OTP verified"})
+    expires_at = _parse_iso(challenge["expires_at"]).astimezone(timezone.utc).isoformat()
+    return jsonify({"success": True, "status": "success", "message": "OTP verified", "registration_proof": proof, "expires_at": expires_at})
 
 
 @auth_bp.post("/auth/login")
@@ -627,7 +635,7 @@ def register():
     data = {"email": email, "username": username, "password_hash": hash_password(password),
             "full_name": _registration_text(payload.get("full_name"), "full_name", 200), "role": role,
             "phone": _registration_text(payload.get("phone"), "phone", 40), "city_id": city_id, "is_suspended": False}
-    user = safe_delete_fields(_create_account_atomic(data, requires_otp=request.path.endswith("register_after_otp")), "password_hash")
+    user = safe_delete_fields(_create_account_atomic(data, requires_otp=True, registration_proof=payload.get("registration_proof")), "password_hash")
     token = create_token(user["uid"], role)
     return jsonify({"success": True, "access_token": token, "token": token, "user": user}), 201
 

@@ -1,5 +1,6 @@
 """Atomic registration uniqueness and OTP consumption without provider access."""
 import copy
+import hashlib
 import unittest
 from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timedelta, timezone
@@ -31,18 +32,20 @@ class RegistrationTests(unittest.TestCase):
         self.client = self.app.test_client()
 
     def register(self, path="/auth/register", **extra):
-        return self.client.post(path, json={"email": "alice@example.test", "username": "alice", "password": "strong-password", **extra})
+        return self.client.post(path, json={"email": "alice@example.test", "username": "alice", "password": "strong-password", "registration_proof": "test-proof", **extra})
 
     def otp(self, email="alice@example.test", verified=True, expired=False, **extra):
         ref = auth._otp_ref(email)
-        self.store.data[ref.key] = {"email": email, "verified": verified,
+        self.store.data[ref.key] = {"email": email, "verified": verified, "purpose": "registration",
+            "proof_hash": hashlib.sha256(b"test-proof").hexdigest(),
             "expires_at": (datetime.now(timezone.utc) + timedelta(minutes=-10 if expired else 10)).isoformat(), **extra}
         return ref
 
     def users(self):
         return [data for (name, _), data in self.store.data.items() if name == storage.USERS]
 
-    def test_legacy_registration_requires_no_otp_and_password_is_verbatim(self):
+    def test_plain_registration_with_verified_otp_preserves_password_verbatim(self):
+        self.otp()
         password = " strong-password "
         response = self.register(password=password, email=" Alice@Example.Test ")
         self.assertEqual(response.status_code, 201)
@@ -55,6 +58,7 @@ class RegistrationTests(unittest.TestCase):
 
     def test_public_roles_never_grant_administrative_access(self):
         for index, role in enumerate(("customer", "vendor", "service", "shopkeeper", "admin", "super_admin")):
+            self.otp(email=f"person{index}@example.test")
             response = self.register(email=f"person{index}@example.test", username=f"person{index}", role=role)
             self.assertEqual(response.status_code, 201)
             expected = "vendor" if role == "shopkeeper" else "customer" if role in {"admin", "super_admin"} else role
@@ -74,7 +78,9 @@ class RegistrationTests(unittest.TestCase):
         self.assertEqual(self.users(), [])
 
     def test_default_username_supports_short_and_plus_address_local_part(self):
+        self.otp(email="ab@example.test")
         first = self.register(email="ab@example.test", username=None)
+        self.otp(email="alice+shop@example.test")
         second = self.register(email="alice+shop@example.test", username=None)
         self.assertEqual(first.status_code, 201)
         self.assertEqual(first.json["user"]["username"], "ab_user")
@@ -90,6 +96,7 @@ class RegistrationTests(unittest.TestCase):
         self.assertEqual(len(self.users()), 1)
 
     def test_duplicate_registration_does_not_replace_original(self):
+        self.otp()
         first = self.register()
         original = copy.deepcopy(self.users()[0])
         self.assertEqual(self.register(password="different-password").status_code, 422)
@@ -98,7 +105,7 @@ class RegistrationTests(unittest.TestCase):
         self.assertEqual(first.json["user"]["role"], "customer")
 
     def test_otp_aliases_require_verified_unexpired_same_email_registration_otp(self):
-        for path in ("/auth/register_after_otp", "/register_after_otp"):
+        for path in ("/auth/register", "/auth/register_after_otp", "/register_after_otp"):
             self.assertEqual(self.register(path).status_code, 400)
         for options in ({"verified": False}, {"expired": True}, {"purpose": "password_reset"}):
             self.otp(**options)
@@ -131,18 +138,21 @@ class RegistrationTests(unittest.TestCase):
         self.assertEqual(len(self.users()), 1)
 
     def test_concurrent_duplicate_email_and_username_creation_is_once_only(self):
+        self.otp(email="shared@example.test")
         def create(index):
             with self.app.test_client() as client:
-                return client.post("/auth/register", json={"email": "shared@example.test", "username": f"user{index}", "password": "strong-password"}).status_code
+                return client.post("/auth/register", json={"email": "shared@example.test", "username": f"user{index}", "password": "strong-password", "registration_proof": "test-proof"}).status_code
         with ThreadPoolExecutor(max_workers=4) as pool:
             statuses = list(pool.map(create, range(8)))
         self.assertEqual(statuses.count(201), 1)
         self.assertEqual(statuses.count(422), 7)
         self.assertEqual(len(self.users()), 1)
         self.store.data.clear()
+        for index in range(8):
+            self.otp(email=f"user{index}@example.test")
         def same_username(index):
             with self.app.test_client() as client:
-                return client.post("/auth/register", json={"email": f"user{index}@example.test", "username": "shared", "password": "strong-password"}).status_code
+                return client.post("/auth/register", json={"email": f"user{index}@example.test", "username": "shared", "password": "strong-password", "registration_proof": "test-proof"}).status_code
         with ThreadPoolExecutor(max_workers=4) as pool:
             statuses = list(pool.map(same_username, range(8)))
         self.assertEqual(statuses.count(201), 1)
@@ -162,6 +172,7 @@ class RegistrationTests(unittest.TestCase):
         self.assertEqual(self.register(username="different").status_code, 422)
 
     def test_google_stale_precheck_cannot_create_duplicate_of_password_registration(self):
+        self.otp()
         response = self.register(role="vendor")
         original = copy.deepcopy(self.users()[0])
         snapshot = self.store.doc(storage.USERS, response.json["user"]["uid"]).get()
@@ -186,6 +197,7 @@ class RegistrationTests(unittest.TestCase):
         reservation = auth._identifier_reservation("email", "alice@example.test")
         self.store.data[reservation.key] = {"user_id": "prior", "kind": "email", "value": "alice@example.test"}
         before = copy.deepcopy(self.store.data[(storage.USERS, "prior")])
+        self.otp()
         self.assertEqual(self.register().status_code, 201)
         self.assertEqual(self.store.data[(storage.USERS, "prior")], before)
         self.assertNotEqual(self.store.data[reservation.key]["user_id"], "prior")
