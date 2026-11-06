@@ -212,3 +212,72 @@ class LifecycleFinancialWriterTests(unittest.TestCase):
         self.assertEqual(row['lifecycle']['revision'], 2)
         self.assertIsNone(row['payment_intent_id'])
         self.assertEqual(row['lifecycle_receipts'], {'x': {'result': 'saved'}})
+
+    def test_legacy_status_cash_and_cancel_reconcile_once(self):
+        from test_core_routes import CoreRoutesTests
+        h = CoreRoutesTests('test_order_transitions_aliases_and_cash_delivery_confirmation')
+        h.setUp()
+        self.addCleanup(h.doCleanups)
+        row = h.store.data['customer_orders', 'order']
+        row.update(lifecycle=native_lifecycle(), lifecycle_receipts={'x': {'result': 'saved'}})
+        path = '/vendors/orders/order/status'
+        for expected, status in enumerate(('accepted', 'packed', 'completed'), 1):
+            self.assertEqual(h.call(path, {'status': status}, 'PUT').status_code, 200)
+            row = h.store.data['customer_orders', 'order']
+            self.assertEqual(row['lifecycle']['revision'], expected)
+            self.assertEqual(row['lifecycle_receipts'], {'x': {'result': 'saved'}})
+        self.assertEqual(row['payment_status'], 'paid')
+        self.assertEqual(h.call(path, {'status': 'completed'}, 'PUT').status_code, 200)
+        self.assertEqual(h.store.data['customer_orders', 'order']['lifecycle']['revision'], 3)
+
+    def test_cash_confirmation_zero_positive_and_replay(self):
+        from test_core_routes import CoreRoutesTests
+        for zero in (False, True):
+            with self.subTest(zero=zero):
+                h = CoreRoutesTests('test_order_transitions_aliases_and_cash_delivery_confirmation')
+                h.setUp()
+                try:
+                    row = h.store.data['customer_orders', 'order']
+                    row['lifecycle'] = native_lifecycle()
+                    if zero:
+                        row.update(total_price=0, payment_exempt=True)
+                    path = '/vendors/orders/order/payment/confirm'
+                    self.assertEqual(h.call(path, {}, 'POST').status_code, 200)
+                    self.assertEqual(h.store.data['customer_orders', 'order']['lifecycle']['revision'], 1)
+                    self.assertEqual(h.call(path, {}, 'POST').status_code, 200)
+                    self.assertEqual(h.store.data['customer_orders', 'order']['lifecycle']['revision'], 1)
+                finally:
+                    h.doCleanups()
+
+    def test_customer_cancel_restores_stock_once_and_bumps_revision(self):
+        from test_orders_api import OrdersTests
+        h = OrdersTests('test_cash_exact_price_and_stock_reservation')
+        h.setUp()
+        self.addCleanup(h.doCleanups)
+        created = h.order()
+        identifier = created.json['order_id']
+        self.assertEqual(h.cancel(created).status_code, 200)
+        row = h.store.data['customer_orders', identifier]
+        self.assertEqual((row['lifecycle']['stage'], row['lifecycle']['revision']), ('cancelled', 1))
+        self.assertEqual(h.cancel(created).status_code, 200)
+        self.assertEqual(h.store.data['customer_orders', identifier]['lifecycle']['revision'], 1)
+        self.assertEqual(h.stock(), 10)
+
+    def test_new_amendment_child_does_not_inherit_receipts(self):
+        from test_order_amendments import AmendmentTests
+        import db as storage
+        h = AmendmentTests('test_unpaid_ten_to_seven_changes_only_after_accept_without_phantom_stock')
+        h.setUp()
+        self.addCleanup(h.doCleanups)
+        h.place()
+        h.row()['lifecycle_receipts'] = {'old': {'result': 'private'}}
+        proposal = h.propose(lines=[h.desired(quantity=1, item='milk')])
+        self.assertEqual(proposal.status_code, 201, proposal.json)
+        decision = h.decide(proposal)
+        self.assertEqual(decision.status_code, 200, decision.json)
+        children = [value for (collection, identifier), value in h.store.data.items()
+                    if collection == storage.CUSTOMER_ORDERS and identifier != h.anchor]
+        self.assertEqual(len(children), 1)
+        self.assertNotIn('lifecycle_receipts', children[0])
+        self.assertEqual(children[0]['lifecycle'], native_lifecycle())
+        self.assertEqual(h.row()['lifecycle_receipts'], {'old': {'result': 'private'}})
