@@ -311,3 +311,19 @@ class LifecycleFinancialWriterTests(unittest.TestCase):
         self.assertEqual(result.status_code, 200, result.json)
         self.assertEqual(h.row()['lifecycle']['revision'], 2)
         self.assertFalse(h.row()['amendment_pending'])
+
+    def test_refund_finalize_bumps_each_commit_and_replay_is_noop(self):
+        from test_order_refunds import OrderRefundTests
+        from routes.order_refunds import refund_order
+        h = OrderRefundTests('test_pending_refund_is_submitted_cancels_and_restores_stock_once')
+        h.setUp()
+        self.addCleanup(h.doCleanups)
+        h.store.data['customer_orders', 'a'].update(lifecycle=native_lifecycle(), lifecycle_receipts={'x': {'result': 'saved'}})
+        self.assertEqual(refund_order('a', 'vendor')['status'], 'submitted')
+        row = h.store.data['customer_orders', 'a']
+        self.assertEqual((row['lifecycle']['stage'], row['lifecycle']['revision']), ('cancelled', 2))
+        self.assertEqual(row['lifecycle_receipts'], {'x': {'result': 'saved'}})
+        self.assertEqual(h.store.data['shop_items', 'item']['stock_quantity'], 10)
+        h.provider.refund.fetch.return_value = h.entity('pending')
+        refund_order('a', 'vendor')
+        self.assertEqual(h.store.data['shop_items', 'item']['stock_quantity'], 10)
