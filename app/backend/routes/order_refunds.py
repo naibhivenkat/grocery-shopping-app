@@ -11,6 +11,7 @@ import hashlib
 import uuid
 from flask import Blueprint, g, jsonify, request
 from google.cloud import firestore
+from services.order_lifecycle import legacy_patch
 from auth_utils import require_role
 from db import CUSTOMER_ORDERS, SHOP_ITEMS, USERS, doc, db, now_iso
 from razorpay_config import get_razorpay_client
@@ -143,7 +144,7 @@ def refund_order(order_id, actor_id, allow_admin=False):
         tx.set(refund_ref, {**existing, 'order_id':order_id, 'vendor_id':order['vendor_id'], 'requested_by':actor_id,
             'request':immutable, 'status':'processing', 'lease_token':lease_token,
             'started_at':now_iso(), 'created_at':existing.get('created_at') or now_iso(), 'updated_at':now_iso()})
-        tx.update(order_ref, {'refund_status':'processing', 'refund_requested_at':order.get('refund_requested_at') or now_iso()})
+        tx.update(order_ref, legacy_patch(order, {'refund_status':'processing', 'refund_requested_at':order.get('refund_requested_at') or now_iso()}))
         return {'request':immutable, 'refund_id':existing.get('refund_id')}
 
     acquired = acquire(db().transaction())
@@ -175,9 +176,11 @@ def refund_order(order_id, actor_id, allow_admin=False):
             current = snap.to_dict() or {}
             if current.get('lease_token') != lease_token or current.get('status') != 'processing':
                 return {'status':current.get('status','requires_review'), 'refund_id':current.get('refund_id')}
+            order_snap = order_ref.get(transaction=tx)
+            order = order_snap.to_dict() or {}
             status = 'requires_review' if isinstance(exc, ValueError) else 'retryable'
             tx.update(refund_ref, {'status':status, 'error':'Provider refund could not be confirmed', 'updated_at':now_iso()})
-            tx.update(order_ref, {'refund_status':status})
+            tx.update(order_ref, legacy_patch(order, {'refund_status':status}))
             return {'status':status}
         return retry(db().transaction())
 
@@ -228,7 +231,7 @@ def refund_order(order_id, actor_id, allow_admin=False):
             if eligible_state and order.get('status') != 'cancelled' and not inventory_error:
                 updates['refund_stock_restored_at']=timestamp
         if status == 'completed': updates['refunded_at']=timestamp
-        tx.update(order_ref,updates)
+        tx.update(order_ref, legacy_patch(order, updates))
         if restore is not None:
             tx.update(item_ref,{'stock_quantity':restore,'is_available':restore > 0 and item.get('disabled_by_admin') is not True,'updated_at':timestamp})
         return {'status':status,'refund_id':refund_id,'amount_paise':original['amount_paise'],

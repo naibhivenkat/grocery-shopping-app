@@ -9,6 +9,7 @@ import uuid
 from datetime import datetime, timedelta, timezone
 
 from firebase_admin import firestore
+from services.order_lifecycle import legacy_patch, native_lifecycle
 from flask import Blueprint, g, jsonify, request
 from google.cloud.firestore_v1.base_query import FieldFilter
 
@@ -274,9 +275,9 @@ def _hold_writes(tx, ctx, identifier):
     for row in ctx['active']:
         # Bind legacy single-line orders to the same durable batch that holds
         # their payment review fence, including after proposal markers clear.
-        tx.update(row.reference, {'batch_id': ctx['batch_id'],
+        tx.update(row.reference, legacy_patch(row.to_dict() or {}, {'batch_id': ctx['batch_id'],
                                   'amendment_pending': bool(identifier), 'current_amendment_id': identifier,
-                                  'pending_amendment_id': identifier, 'updated_at': now_iso()})
+                                  'pending_amendment_id': identifier, 'updated_at': now_iso()}))
     tx.set(ctx['batch_ref'], {'active_amendment_id': identifier, 'pricing_revision': ctx['revision'],
                                'updated_at': now_iso()}, merge=True)
 
@@ -401,10 +402,11 @@ def _apply(tx, ctx, proposal_id, proposal, financials, inventory_writes, ledger_
     original_map = {row.id: row.to_dict() or {} for row in ctx['rows']}
     for row in ctx['active']:
         if row.id not in desired_ids:
-            tx.update(row.reference, {'status': 'removed', 'quantity_before_removal': (row.to_dict() or {}).get('quantity'),
+            final_status = 'cancelled' if proposal.get('kind') == 'cancellation' else 'removed'
+            tx.update(row.reference, legacy_patch(row.to_dict() or {}, {'status': final_status, 'quantity_before_removal': (row.to_dict() or {}).get('quantity'),
                                      'quantity': 0, 'total_price': 0, 'total_paise': 0, 'due_amount': 0,
                                      'partial_amount_paid': 0, 'pricing_revision': revision, 'amendment_pending': False,
-                                     'current_amendment_id': None, 'pending_amendment_id': None, 'updated_at': timestamp})
+                                     'current_amendment_id': None, 'pending_amendment_id': None, 'updated_at': timestamp}))
     for line in lines:
         data = {key: value for key, value in line.items() if key not in {'uid', 'line_id', 'total', 'gross_paise', 'restock_removed'}}
         existing = original_map.get(line['line_id'], {})
@@ -422,6 +424,15 @@ def _apply(tx, ctx, proposal_id, proposal, financials, inventory_writes, ledger_
                      'pending_amendment_id': None, 'status': status, 'created_at': existing.get('created_at') or timestamp,
                      'updated_at': timestamp, 'last_amendment_id': proposal_id,
                      'adjustment_refund_amount': refund_amount / 100})
+        # Saved proposal data can contain stale or another identity's history.
+        data.pop('lifecycle', None)
+        data.pop('lifecycle_receipts', None)
+        if line['line_id'] in original_map:
+            data = legacy_patch(existing, data)
+            if 'lifecycle_receipts' in existing:
+                data['lifecycle_receipts'] = existing['lifecycle_receipts']
+        else:
+            data['lifecycle'] = native_lifecycle()
         if method == 'khata':
             data['khata_ledger_id'] = ledger_plan['ref'].id
         tx.set(doc(CUSTOMER_ORDERS, line['line_id']), data)

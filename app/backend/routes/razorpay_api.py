@@ -4,6 +4,7 @@ from decimal import Decimal, InvalidOperation, ROUND_HALF_UP
 import uuid
 from flask import Blueprint, g, jsonify, request
 from google.cloud import firestore
+from services.order_lifecycle import legacy_patch
 from google.cloud.firestore_v1.base_query import FieldFilter
 from auth_utils import require_auth
 from db import (CUSTOMER_ORDERS, SUBSCRIPTION_PLANS, VENDOR_SUBSCRIPTIONS, NOTIFICATIONS,
@@ -172,7 +173,7 @@ def settle_payment_order(intent_id, payment_id, event_id=None):
                         updates.update({"status": "active", "activated_at": now.isoformat(),
                             "start_date": now.isoformat(), "end_date": (now + timedelta(
                                 days=int(intent.get("duration_days") or 30))).isoformat()})
-                    writes.append(("update", ref, updates))
+                    writes.append(("update", ref, legacy_patch(data, updates) if purpose == "order" else updates))
         else:
             settlement_status = "requires_review"
         for method, ref, data in writes:
@@ -279,15 +280,16 @@ def create_razorpay_order():
                     # order per checkout rather than permitting double charging.
                     if prior.exists:
                         raise ValueError("Checkout already has a payment attempt; retry that checkout")
-                refs.append(target.reference)
+                refs.append((target.reference, data))
             if reserved_total != amount_paise:
                 raise ValueError("Checkout total changed; refresh and retry")
             tx.create(intent_ref, {"user_id": g.user_id, "amount": amount_paise / 100,
                 "amount_paise": amount_paise, "currency": "INR", "purpose": purpose,
                 "reference_id": reference_id, "target_ids": [s.id for s in targets],
                 "status": "initializing", "duration_days": duration_days, "created_at": now_iso()})
-            for ref in refs:
-                tx.update(ref, {"payment_intent_id": intent_ref.id})
+            for ref, data in refs:
+                changes = {"payment_intent_id": intent_ref.id}
+                tx.update(ref, legacy_patch(data, changes) if purpose == "order" else changes)
         _reserve(db().transaction())
         try:
             order = client.order.create({"amount": amount_paise, "currency": "INR",
@@ -302,7 +304,8 @@ def create_razorpay_order():
                 snaps = [s.reference.get(transaction=tx) for s in targets]
                 for snap in snaps:
                     if (snap.to_dict() or {}).get("payment_intent_id") == intent_ref.id:
-                        tx.update(snap.reference, {"payment_intent_id": None})
+                        changes = {"payment_intent_id": None}
+                        tx.update(snap.reference, legacy_patch(snap.to_dict() or {}, changes) if purpose == "order" else changes)
                 tx.update(intent_ref, {"status": "creation_failed"})
             _release(db().transaction())
             raise

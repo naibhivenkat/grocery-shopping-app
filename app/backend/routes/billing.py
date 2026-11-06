@@ -6,6 +6,7 @@ from routes.order_amendments import guard_order_mutation
 from xml.sax.saxutils import escape
 
 from firebase_admin import firestore
+from services.order_lifecycle import legacy_patch
 from flask import Blueprint, g, jsonify, request, send_file, Response
 from google.cloud.firestore_v1.base_query import FieldFilter
 
@@ -306,14 +307,14 @@ def discount_order(order_id):
         shares = allocate([(member.id, gross) for member, _, gross in lines], amount)
         subtotal = sum(gross for _, _, gross in lines)
         timestamp = now_iso()
-        for member, _, gross in lines:
+        for member, value, gross in lines:
             discount = shares[member.id]
             total = gross - discount
-            tx.update(member.reference, {"subtotal": gross / 100, "discount_amount": discount / 100,
+            tx.update(member.reference, legacy_patch(value, {"subtotal": gross / 100, "discount_amount": discount / 100,
                 "total_price": total / 100, "total_paise": total, "due_amount": total / 100,
                 "payment_exempt": total == 0, "payment_status": "paid" if subtotal == amount else "pending",
                 "partial_amount_paid": 0, "promotion_id": None, "promotion_revision": None, "promotion_rules": None,
-                "discount_source": "manual", "discount_updated_by": g.user_id, "updated_at": timestamp})
+                "discount_source": "manual", "discount_updated_by": g.user_id, "updated_at": timestamp}))
         tx.set(audit_ref, {"vendor_id": g.user_id, "customer_id": order.get("customer_id"),
                            "batch_id": batch_id, "order_id": order_id, "amount_paise": amount,
                            "previous": [{"order_id": member.id, "discount_amount": value.get("discount_amount", 0),

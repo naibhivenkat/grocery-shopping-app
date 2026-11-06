@@ -7,6 +7,7 @@ Captured purchases are retained; an unresolved payment is never cancelled here.
 import hashlib
 
 from firebase_admin import firestore
+from services.order_lifecycle import legacy_patch
 from flask import Blueprint, g, jsonify
 from google.cloud.firestore_v1.base_query import FieldFilter
 
@@ -172,8 +173,8 @@ def abandon_checkout():
             ledger_updates[ledger_id] = (balance - reduction) / 100
         timestamp, events = now_iso(), []
         for ref, order in changes:
-            tx.update(ref, {'status': 'cancelled', 'due_amount': 0, 'updated_at': timestamp,
-                            'checkout_abandoned_at': timestamp})
+            tx.update(ref, legacy_patch(order, {'status': 'cancelled', 'due_amount': 0, 'updated_at': timestamp,
+                            'checkout_abandoned_at': timestamp}))
             if order.get('khata_ledger_id') and _money_paise(order['total_price'], allow_zero=True):
                 tx.create(doc(KHATA_TRANSACTIONS, f'cancel_{ref.id}'), {
                     'ledger_id': order['khata_ledger_id'], 'vendor_id': order['vendor_id'],

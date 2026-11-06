@@ -25,6 +25,7 @@ from notification_delivery import notification_data, deliver_push
 from routes.measurement import metadata, explicit, acknowledge, line_paise, same_base, quantity_label
 from routes.discounts import best_promotion
 from routes.order_amendments import guard_order_mutation
+from services.order_lifecycle import legacy_patch, native_lifecycle, project
 
 
 from routes.favorites import register_favorites
@@ -371,6 +372,7 @@ def _create_orders(payload, lines):
                 raise ValueError("Khata balance exceeds the supported limit")
         # All related documents were read before the first transaction write.
         for ref, item_ref, stock, quantity, data in documents:
+            data["lifecycle"] = native_lifecycle()
             tx.create(ref, data)
             if stock is not None:
                 remaining = int(stock) - quantity
@@ -429,7 +431,14 @@ def create_orders_batch():
 @require_auth
 def list_customer_orders():
     query = col(CUSTOMER_ORDERS).where(filter=FieldFilter("customer_id", "==", g.user_id))
-    return jsonify([_with_vendor_profile(to_dict(d)) for d in query.stream()])
+    result = []
+    for snap in query.stream():
+        order = to_dict(snap)
+        order.pop("lifecycle_receipts", None)
+        order["lifecycle"] = project(order)
+        order["allowed_actions"] = []
+        result.append(_with_vendor_profile(order))
+    return jsonify(result)
 
 
 def cancel_order_atomic(order_id, actor_id, vendor=False):
@@ -476,7 +485,7 @@ def cancel_order_atomic(order_id, actor_id, vendor=False):
             amount = _paise(order["total_price"])
             if balance < amount:
                 raise ValueError("Khata payments require shop owner reconciliation before cancellation")
-        tx.update(ref, {"status": "cancelled", "due_amount": 0.0, "updated_at": now_iso()})
+        tx.update(ref, legacy_patch(order, {"status": "cancelled", "due_amount": 0.0, "updated_at": now_iso()}))
         if restored_stock is not None:
             tx.update(item_ref, {"stock_quantity": restored_stock, "is_available": item_data.get("disabled_by_admin") is not True, "updated_at": now_iso()})
         if ledger_ref and amount > 0:

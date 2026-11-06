@@ -1,5 +1,7 @@
 """`/vendors/*` endpoints consumed by `VendorRemoteDataSource`."""
 
+import hashlib
+
 from firebase_admin import firestore
 from flask import Blueprint, g, jsonify, request
 from google.cloud.firestore_v1.base_query import FieldFilter
@@ -10,6 +12,7 @@ from routes.khata import KhataError, _khata_error, _payload, _identifier, _text,
 from notification_delivery import notification_data, deliver_push
 from routes.measurement import FIELDS as UNIT_FIELDS, metadata, explicit, acknowledge
 from routes.order_amendments import guard_order_mutation, cash_collection_plan
+from services.order_lifecycle import action_for, legacy_patch, project, transition
 import subscription_service as subscriptions
 from routes.subscriptions import subscription_error
 
@@ -174,7 +177,97 @@ def list_orders():
     query = col(CUSTOMER_ORDERS).where(
         filter=FieldFilter("vendor_id", "==", g.user_id)
     )
-    return jsonify([to_dict(d) for d in query.stream()])
+    def read_visible(ref):
+        @firestore.transactional
+        def visible(tx):
+            snap = ref.get(transaction=tx)
+            if not snap.exists:
+                return None
+            order = snap.to_dict() or {}
+            if order.get("vendor_id") != g.user_id:
+                return None
+            result = to_dict(snap)
+            result.pop("lifecycle_receipts", None)
+            result["lifecycle"] = project(order)
+            result["allowed_actions"] = []
+            try:
+                _lifecycle_guards(tx, order)
+                action = action_for(order)
+                if action:
+                    result["allowed_actions"] = [action]
+            except KhataError:
+                pass
+            return result
+        return visible(db().transaction())
+    return jsonify([value for d in query.stream()
+                    if (value := read_visible(d.reference)) is not None])
+
+
+def _lifecycle_guards(tx, order):
+    if order.get("refund_status") in {"processing", "retryable", "submitted", "requires_review", "completed"}:
+        raise KhataError("Refund is in progress or already processed", 409)
+    guard_order_mutation(tx, order, lookup=doc)
+    if order.get("payment_method") in {"razorpay", "upi"} and order.get("payment_status") != "paid":
+        raise KhataError("Online payment must be captured before fulfillment", 409)
+    if order.get("status") not in {"pending", "confirmed", "accepted", "packed"}:
+        raise KhataError("Order is no longer eligible for preparation", 409)
+
+
+@vendors_bp.post("/vendors/orders/<order_id>/lifecycle-actions")
+@require_role("vendor")
+def lifecycle_action(order_id):
+    payload = _payload()
+    if set(payload) != {"action", "expected_revision", "request_id"}:
+        raise KhataError("action, expected_revision and request_id are required")
+    action = payload["action"]
+    revision = payload["expected_revision"]
+    request_id = payload["request_id"]
+    if action not in ("accept", "start_preparing", "mark_ready") or type(revision) is not int or revision < 0:
+        raise KhataError("Invalid action or expected_revision")
+    if not isinstance(request_id, str) or not request_id.strip() or len(request_id) > 200:
+        raise KhataError("Invalid request_id")
+    ref = doc(CUSTOMER_ORDERS, _identifier(order_id, "order_id"))
+    try:
+        key = hashlib.sha256(request_id.encode("utf-8")).hexdigest()
+    except UnicodeEncodeError:
+        raise KhataError("Invalid request_id") from None
+
+    @firestore.transactional
+    def apply(tx):
+        snap = ref.get(transaction=tx)
+        if not snap.exists:
+            raise KhataError("Order not found", 404)
+        order = snap.to_dict() or {}
+        if order.get("vendor_id") != g.user_id:
+            raise KhataError("Not your order", 403)
+        _lifecycle_guards(tx, order)
+        receipts = dict(order.get("lifecycle_receipts") or {})
+        previous = receipts.get(key)
+        fingerprint = {"request_id": request_id, "actor_id": g.user_id,
+                       "action": action, "expected_revision": revision}
+        if previous:
+            if any(previous.get(k) != v for k, v in fingerprint.items()):
+                raise KhataError("Request id already used with different input", 409)
+            return previous["result"], None
+        current = project(order)
+        if current.get("revision") != revision:
+            raise KhataError("Stale lifecycle revision", 409)
+        try:
+            lifecycle, status = transition(current, action)
+        except ValueError as exc:
+            raise KhataError(str(exc), 409) from None
+        result = {"status": status, "lifecycle": lifecycle}
+        receipts[key] = {**fingerprint, "result": result}
+        tx.update(ref, {"status": status, "lifecycle": lifecycle,
+                        "lifecycle_receipts": receipts, "updated_at": now_iso()})
+        event = notification_data(order["customer_id"], "order_status", "Order status updated",
+                                  f"Your order is {status}.", order_id)
+        tx.set(col(NOTIFICATIONS).document(), event)
+        return result, event
+    result, event = apply(db().transaction())
+    if event:
+        deliver_push(event, lookup=doc)
+    return jsonify(result)
 
 
 @vendors_bp.put("/vendors/orders/<order_id>/status")
@@ -222,7 +315,7 @@ def update_order_status(order_id):
         if status == "delivered" and order.get("payment_method") == "cash":
             changes.update({"payment_status": "paid", "partial_amount_paid": order.get("total_price", 0), "due_amount": 0.0})
         cash_writes = cash_collection_plan(tx, order, lookup=doc, collection=col) if status == "delivered" and order.get("payment_method") == "cash" else []
-        tx.update(ref, changes)
+        tx.update(ref, legacy_patch(order, changes))
         for batch_ref, batch_changes in cash_writes:
             tx.set(batch_ref, batch_changes, merge=True)
         event = notification_data(order["customer_id"], "order_status", "Order status updated",
@@ -258,13 +351,13 @@ def confirm_cash_payment(order_id):
         if amount == 0:
             if order.get("payment_exempt") is not True:
                 raise KhataError("Zero payment requires a verified order discount", 409)
-            tx.update(ref, {"payment_status": "paid", "partial_amount_paid": 0, "due_amount": 0,
-                            "updated_at": now_iso()})
+            tx.update(ref, legacy_patch(order, {"payment_status": "paid", "partial_amount_paid": 0, "due_amount": 0,
+                            "updated_at": now_iso()}))
             return None
         cash_writes = cash_collection_plan(tx, order, lookup=doc, collection=col)
         timestamp = now_iso()
-        tx.update(ref, {"payment_status": "paid", "partial_amount_paid": amount / 100,
-            "due_amount": 0, "paid_at": timestamp, "payment_confirmed_by": g.user_id, "updated_at": timestamp})
+        tx.update(ref, legacy_patch(order, {"payment_status": "paid", "partial_amount_paid": amount / 100,
+            "due_amount": 0, "paid_at": timestamp, "payment_confirmed_by": g.user_id, "updated_at": timestamp}))
         for batch_ref, batch_changes in cash_writes:
             tx.set(batch_ref, batch_changes, merge=True)
         event = notification_data(order["customer_id"], "order_payment", "Cash payment confirmed",
