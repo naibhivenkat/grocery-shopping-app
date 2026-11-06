@@ -327,3 +327,23 @@ class LifecycleFinancialWriterTests(unittest.TestCase):
         h.provider.refund.fetch.return_value = h.entity('pending')
         refund_order('a', 'vendor')
         self.assertEqual(h.store.data['shop_items', 'item']['stock_quantity'], 10)
+
+    def test_expiry_get_releases_hold_with_revision(self):
+        from datetime import datetime, timedelta, timezone
+        from test_order_amendments import AmendmentTests
+        from routes.order_amendments import AMENDMENTS
+        h = AmendmentTests('test_expiry_releases_reservation_without_payment_intent')
+        h.setUp()
+        self.addCleanup(h.doCleanups)
+        h.place('razorpay', quantity=2, paid=True)
+        h.row()['lifecycle_receipts'] = {'x': {'result': 'saved'}}
+        proposal = h.propose([h.desired(4)])
+        self.assertEqual(h.row()['lifecycle']['revision'], 1)
+        self.assertEqual(h.decide(proposal).status_code, 200)
+        h.store.data[AMENDMENTS, proposal.json['uid']]['expires_at'] = (datetime.now(timezone.utc) - timedelta(seconds=1)).isoformat()
+        history = h.client.get(f'/orders/{h.anchor}/amendments', headers={'Authorization': 'Bearer customer'})
+        self.assertEqual(history.status_code, 200)
+        self.assertEqual(history.json[0]['status'], 'expired')
+        self.assertEqual(h.row()['lifecycle']['revision'], 2)
+        self.assertEqual(h.row()['lifecycle_receipts'], {'x': {'result': 'saved'}})
+        self.assertEqual(h.stock(), 8)
