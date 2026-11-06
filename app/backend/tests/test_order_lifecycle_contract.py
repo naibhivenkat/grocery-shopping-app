@@ -281,3 +281,33 @@ class LifecycleFinancialWriterTests(unittest.TestCase):
         self.assertNotIn('lifecycle_receipts', children[0])
         self.assertEqual(children[0]['lifecycle'], native_lifecycle())
         self.assertEqual(h.row()['lifecycle_receipts'], {'old': {'result': 'private'}})
+
+    def test_legacy_write_invalidates_observed_revision(self):
+        from test_order_amendments import AmendmentTests
+        h = AmendmentTests('test_unpaid_ten_to_seven_changes_only_after_accept_without_phantom_stock')
+        h.setUp()
+        self.addCleanup(h.doCleanups)
+        h.place()
+        path = f'/vendors/orders/{h.anchor}/lifecycle-actions'
+        legacy = h.client.put(f'/vendors/orders/{h.anchor}/status', json={'status': 'accepted'},
+                              headers={'Authorization': 'Bearer vendor'})
+        self.assertEqual(legacy.status_code, 200)
+        stale = h.post(path, {'action': 'start_preparing', 'expected_revision': 0, 'request_id': 'stale'}, user='vendor')
+        self.assertEqual(stale.status_code, 409)
+        self.assertEqual(h.row()['lifecycle']['revision'], 1)
+        current = h.post(path, {'action': 'start_preparing', 'expected_revision': 1, 'request_id': 'current'}, user='vendor')
+        self.assertEqual(current.status_code, 200, current.json)
+
+    def test_amendment_hold_and_rejection_each_increment_once(self):
+        from test_order_amendments import AmendmentTests
+        h = AmendmentTests('test_unpaid_ten_to_seven_changes_only_after_accept_without_phantom_stock')
+        h.setUp()
+        self.addCleanup(h.doCleanups)
+        h.place()
+        proposal = h.propose()
+        self.assertEqual(proposal.status_code, 201)
+        self.assertEqual(h.row()['lifecycle']['revision'], 1)
+        result = h.decide(proposal, decision='rejected')
+        self.assertEqual(result.status_code, 200, result.json)
+        self.assertEqual(h.row()['lifecycle']['revision'], 2)
+        self.assertFalse(h.row()['amendment_pending'])
