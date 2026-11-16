@@ -68,7 +68,7 @@ class ServiceChatReferralTests(unittest.TestCase):
         del self.store.data[(storage.USERS, "provider")]
         self.assertEqual(self.call(f"/chat/rooms/{room}/messages", {"text": "Hello"}).status_code, 403)
 
-    def test_service_referral_generation_and_application_remain_once_only_no_wallet_rewards(self):
+    def test_service_referral_code_is_reusable_and_each_referee_is_once_only_without_rewards(self):
         generated = self.call("/referrals/generate", user="provider")
         self.assertEqual(generated.status_code, 200)
         code = generated.json["code"]
@@ -81,9 +81,13 @@ class ServiceChatReferralTests(unittest.TestCase):
         self.assertEqual(self.call("/referrals", user="other_provider", method="GET").json[0]["code"], code)
         self.assertEqual(self.call("/referrals/apply", {"code": code}, user="other_provider").status_code, 200)
         self.assertEqual(self.call("/referrals/apply", {"code": code}, user="provider").status_code, 422)
-        before = copy.deepcopy(self.store.data)
-        self.assertEqual(self.call("/referrals/apply", {"code": code}).status_code, 409)
-        self.assertEqual(self.store.data, before)
+        first_application = copy.deepcopy(history[0])
+        self.assertEqual(self.call("/referrals/apply", {"code": code}).status_code, 200)
+        history = self.call("/referrals", user="provider", method="GET").json
+        self.assertEqual(len(history), 2)
+        self.assertIn(first_application, history)
+        other_code = self.call("/referrals/generate", user="vendor").json["code"]
+        self.assertEqual(self.call("/referrals/apply", {"code": other_code}).status_code, 409)
         self.assertFalse(any(name in {storage.WALLETS, storage.WALLET_TRANSACTIONS} for name, _ in self.store.data))
 
 

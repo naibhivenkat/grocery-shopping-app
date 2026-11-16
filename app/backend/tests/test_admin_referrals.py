@@ -1,5 +1,6 @@
 """Critical admin authorization and referral integrity, with isolated mocks."""
 import copy
+from datetime import datetime, timezone
 import unittest
 from concurrent.futures import ThreadPoolExecutor
 from unittest.mock import patch
@@ -215,7 +216,27 @@ class AdminReferralTests(unittest.TestCase):
         self.assertEqual(self.values(storage.WALLETS), [])
         self.assertEqual(self.values(storage.WALLET_TRANSACTIONS), [])
 
-    def test_referral_invalid_own_consumed_or_second_apply_is_blocked(self):
+    def test_referral_code_can_be_applied_by_multiple_distinct_accounts(self):
+        code = self.generate().json["code"]
+        self.assertEqual(self.apply(code, user="other_customer").status_code, 200)
+        first_application = copy.deepcopy(self.values(storage.REFERRALS))
+        second = self.apply(code, user="third_customer")
+        self.assertEqual(second.status_code, 200, second.json)
+        self.assertFalse(second.json["reward_credited"])
+        self.assertEqual(self.generate().json["code"], code)
+        for user in ("other_customer", "third_customer"):
+            history = self.call("/referrals", method="GET", user=user).json
+            self.assertEqual(len(history), 1)
+            self.assertEqual(history[0]["code"], code)
+            self.assertEqual(history[0]["referee_id"], user)
+            self.assertEqual(self.apply(code, user=user).status_code, 200)
+        self.assertTrue(all(value in self.values(storage.REFERRALS)
+                            for value in first_application))
+        self.assertEqual(len(self.values("referral_applications")), 2)
+        self.assertEqual(self.values(storage.WALLETS), [])
+        self.assertEqual(self.values(storage.WALLET_TRANSACTIONS), [])
+
+    def test_referral_invalid_own_or_another_referrer_is_blocked(self):
         first = self.generate().json["code"]
         second = self.generate(user="vendor").json["code"]
         self.assertEqual(self.apply(first, user="customer").status_code, 422)
@@ -224,7 +245,7 @@ class AdminReferralTests(unittest.TestCase):
         self.assertEqual(self.apply(first).status_code, 200)
         self.assertEqual(self.apply(first).status_code, 200)
         self.assertEqual(self.apply(second).status_code, 409)
-        self.assertEqual(self.apply(first, user="third_customer").status_code, 409)
+        self.assertEqual(self.apply(first, user="third_customer").status_code, 200)
 
     def test_legacy_referral_reused_and_legacy_application_prevents_second(self):
         self.store.data[(storage.REFERRALS, "legacy")] = {"referrer_id": "customer", "referee_id": "other_customer", "code": "LEGACY88", "status": "applied"}
@@ -232,6 +253,108 @@ class AdminReferralTests(unittest.TestCase):
         code = self.generate(user="vendor").json["code"]
         self.assertEqual(self.apply(code).status_code, 409)
         self.assertEqual(self.apply("LEGACY88").status_code, 200)
+
+    def test_consumed_legacy_code_remains_reusable_without_mutating_original_history(self):
+        legacy = {"referrer_id": "customer", "referee_id": "other_customer",
+                  "code": "LEGACY88", "status": "applied", "created_at": "2026-01-01T00:00:00Z"}
+        self.store.data[(storage.REFERRALS, "legacy")] = copy.deepcopy(legacy)
+        self.assertEqual(self.apply(" legacy88 ", user="third_customer").status_code, 200)
+        self.assertEqual(self.store.data[(storage.REFERRALS, "legacy")], legacy)
+        self.assertEqual(self.generate().json["code"], "LEGACY88")
+        self.assertEqual(self.apply("LEGACY88", user="third_customer").status_code, 200)
+        self.assertEqual(len(self.values(storage.REFERRALS)), 2)
+
+    def test_canonical_code_is_preferred_over_application_rows_and_mixed_legacy_timestamps(self):
+        code = self.generate().json["code"]
+        self.store.data[(storage.REFERRALS, "old_application")] = {
+            "referrer_id": "customer", "referee_id": "other_customer", "code": "OLDCODE8",
+            "status": "applied", "created_at": datetime(2020, 1, 1, tzinfo=timezone.utc)}
+        self.assertEqual(self.generate().json["code"], code)
+        del self.store.data[(storage.REFERRALS, referrals._owner_id("customer"))]
+        self.store.data[(storage.REFERRALS, "new_application")] = {
+            "referrer_id": "customer", "referee_id": "third_customer", "code": "NEWCODE8",
+            "status": "applied", "created_at": "2021-01-01T00:00:00Z"}
+        self.assertEqual(self.generate().json["code"], "OLDCODE8")
+
+    def test_referral_errors_have_stable_codes_and_never_change_state(self):
+        code = self.generate().json["code"]
+        for text, user, status, reason in [
+            ("bad", "other_customer", 422, "referral_invalid_code"),
+            ("ZZZZZZZZ", "other_customer", 404, "referral_invalid_code"),
+            (code, "customer", 422, "referral_self_referral"),
+        ]:
+            before = copy.deepcopy(self.store.data)
+            response = self.apply(text, user=user)
+            self.assertEqual(response.status_code, status)
+            self.assertEqual(response.json["code"], reason)
+            self.assertEqual(self.store.data, before)
+        self.assertEqual(self.apply(code).status_code, 200)
+        second = self.generate(user="vendor").json["code"]
+        response = self.apply(second)
+        self.assertEqual(response.status_code, 409)
+        self.assertEqual(response.json["code"], "referral_already_applied")
+
+    def test_referral_code_conflicting_owners_is_rejected_but_same_owner_rows_are_allowed(self):
+        code = self.generate().json["code"]
+        self.store.data[(storage.REFERRALS, "duplicate")] = {
+            "referrer_id": "vendor", "referee_id": "", "code": code}
+        before = copy.deepcopy(self.store.data)
+        for response in (self.apply(code), self.generate()):
+            self.assertEqual(response.status_code, 409)
+            self.assertEqual(response.json["code"], "referral_ambiguous_code")
+        self.assertEqual(self.store.data, before)
+
+    def test_invalid_saved_code_and_reservation_conflicts_fail_with_actionable_reasons(self):
+        code = self.generate().json["code"]
+        owner = (storage.REFERRALS, referrals._owner_id("customer"))
+        self.store.data[owner]["code"] = ""
+        response = self.generate()
+        self.assertEqual(response.status_code, 409)
+        self.assertEqual(response.json["code"], "referral_saved_code_invalid")
+        self.store.data[owner]["code"] = code
+        self.store.data[("referral_codes", code)]["referrer_id"] = "vendor"
+        response = self.apply(code)
+        self.assertEqual(response.status_code, 409)
+        self.assertEqual(response.json["code"], "referral_ambiguous_code")
+
+    def test_collision_exhaustion_and_inconsistent_application_are_fail_closed(self):
+        code = self.generate().json["code"]
+        with patch.object(referrals, "_generate_code", return_value=code):
+            response = self.generate(user="vendor")
+        self.assertEqual(response.status_code, 503)
+        self.assertEqual(response.json["code"], "referral_code_exhausted")
+        application_id = "application_" + referrals.hashlib.sha256(b"other_customer").hexdigest()
+        self.store.data[(storage.REFERRALS, application_id)] = {"status": "corrupt"}
+        response = self.apply(code)
+        self.assertEqual(response.status_code, 409)
+        self.assertEqual(response.json["code"], "referral_application_conflict")
+
+    def test_atomic_failure_on_reused_code_does_not_append_application_or_marker(self):
+        code = self.generate().json["code"]
+        self.assertEqual(self.apply(code).status_code, 200)
+        before = copy.deepcopy(self.store.data)
+        self.store.fail_commit = True
+        with self.assertRaises(RuntimeError):
+            self.apply(code, user="third_customer")
+        self.assertEqual(self.store.data, before)
+
+    def test_concurrent_retries_and_different_codes_allow_only_one_application_per_referee(self):
+        first = self.generate().json["code"]
+        second = self.generate(user="vendor").json["code"]
+        def apply_code(code):
+            with self.app.test_client() as client:
+                return client.post("/referrals/apply", json={"code": code},
+                                   headers={"Authorization": "Bearer other_customer"}).status_code
+        with ThreadPoolExecutor(max_workers=2) as pool:
+            statuses = list(pool.map(apply_code, (first, second)))
+        self.assertEqual(sorted(statuses), [200, 409])
+        marker = self.store.data[("referral_applications", "other_customer")]
+        with ThreadPoolExecutor(max_workers=4) as pool:
+            self.assertEqual(list(pool.map(apply_code, [marker["code"]] * 8)), [200] * 8)
+        applications = [row for row in self.values(storage.REFERRALS)
+                        if row.get("referee_id") == "other_customer"]
+        self.assertEqual(len(applications), 1)
+        self.assertEqual(len(self.values("referral_applications")), 1)
 
     def test_referral_atomic_failure_does_not_consume_code(self):
         code = self.generate().json["code"]
@@ -249,7 +372,7 @@ class AdminReferralTests(unittest.TestCase):
         self.assertEqual(self.apply(first).status_code, 403)
         self.assertEqual(self.generate(user="admin").status_code, 403)
 
-    def test_concurrent_referral_generation_and_application_are_once_only(self):
+    def test_concurrent_referral_generation_is_once_and_distinct_referees_can_apply(self):
         def generate(_):
             with self.app.test_client() as client:
                 return client.post("/referrals/generate", headers={"Authorization": "Bearer customer"}).json["code"]
@@ -262,8 +385,8 @@ class AdminReferralTests(unittest.TestCase):
                 return client.post("/referrals/apply", json={"code": codes[0]}, headers={"Authorization": f"Bearer {user}"}).status_code
         with ThreadPoolExecutor(max_workers=2) as pool:
             statuses = list(pool.map(apply, ("other_customer", "third_customer")))
-        self.assertEqual(sorted(statuses), [200, 409])
-        self.assertEqual(len(self.values("referral_applications")), 1)
+        self.assertEqual(sorted(statuses), [200, 200])
+        self.assertEqual(len(self.values("referral_applications")), 2)
 
 
 if __name__ == "__main__":
